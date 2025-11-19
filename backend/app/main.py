@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, WebSocket
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
@@ -38,6 +38,18 @@ app.include_router(upload.router, prefix="/api")
 app.include_router(tasks.router, prefix="/api")
 app.include_router(reminders.router, prefix="/api")
 app.include_router(dashboard.router, prefix="/api")
+
+# --- WebSocket Endpoint (Added) ---
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    await websocket.accept()
+    try:
+        # Keep the connection open
+        while True:
+            await websocket.receive_text()
+    except Exception:
+        pass
+# ----------------------------------
 
 # Fix static path resolution
 frontend_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../frontend"))
