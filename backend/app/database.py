@@ -5,7 +5,7 @@ from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, B
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 from datetime import datetime
-import os
+from .config import config  # Relative import
 
 Base = declarative_base()
 
@@ -33,9 +33,17 @@ class Document(Base):
     embedding_id = Column(String(100))
     uploaded_at = Column(DateTime, default=datetime.utcnow)
 
-engine = create_engine(f'sqlite:///{config.DB_PATH}')
-Base.metadata.create_all(engine)
+# SQLite args required for FastAPI multithreading
+engine = create_engine(
+    f'sqlite:///{config.DB_PATH}', 
+    connect_args={"check_same_thread": False}
+)
+
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+# FIXED: Restore the init_db function required by main.py
+def init_db():
+    Base.metadata.create_all(engine)
 
 def get_db():
     db = SessionLocal()
@@ -43,9 +51,6 @@ def get_db():
         yield db
     finally:
         db.close()
-
-def init_db():
-    Base.metadata.create_all(engine)
 
 # ChromaDB
 chroma_client = chromadb.PersistentClient(path=config.CHROMA_PATH)

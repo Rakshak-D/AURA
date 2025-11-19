@@ -4,62 +4,58 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Aura Dashboard</title>
-    <script src="https://cdn.tailwindcss.com"></title>
+    <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="/js/main.js" defer></script>
-    <script src="/js/chat.js" defer></script>
-    <script src="/js/upload.js" defer></script>
-    <script src="/js/tasks.js" defer></script>
-    <script src="/js/voice.js" defer></script>
-    <script src="/js/search.js" defer></script>
-    <link rel="stylesheet" href="/css/styles.css">
+    
+    <script src="/static/js/main.js" defer></script>
+    <script src="/static/js/chat.js" defer></script>
+    <script src="/static/js/upload.js" defer></script>
+    <script src="/static/js/tasks.js" defer></script>
+    <script src="/static/js/voice.js" defer></script>
+    <script src="/static/js/search.js" defer></script>
+    
+    <link rel="stylesheet" href="/static/css/styles.css">
 </head>
 <body class="bg-gray-100">
     <div id="dashboard">
         <header class="bg-blue-600 text-white p-4">
             <h1 class="text-2xl">🌟 Aura - Your Personal Assistant</h1>
             <div id="search-bar" class="mt-2">
-                <input type="text" placeholder="Global Search..." class="p-2 rounded">
+                <input type="text" placeholder="Global Search..." class="p-2 rounded text-black">
             </div>
         </header>
         
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4 p-4">
-            <!-- Today's Tasks -->
             <div class="bg-white p-4 rounded shadow">
                 <h2>Today's Tasks</h2>
-                <ul id="tasks-list"></ul>
-                <button onclick="addTask()" class="bg-green-500 text-white p-2 rounded">Add Task</button>
+                <ul id="tasks-list" class="list-disc pl-5"></ul>
+                <button onclick="addTask()" class="bg-green-500 text-white p-2 rounded mt-2">Add Task</button>
             </div>
             
-            <!-- Calendar -->
             <div class="bg-white p-4 rounded shadow">
-                <h2>Calendar</h2>
-                <div id="calendar"></div>
+                <h2>Daily Schedule</h2>
+                <div id="calendar" class="text-xs"></div>
             </div>
             
-            <!-- Stats -->
             <div class="bg-white p-4 rounded shadow">
                 <h2>Productivity Stats</h2>
                 <canvas id="stats-chart"></canvas>
             </div>
         </div>
         
-        <!-- Chat Interface -->
-        <div class="fixed bottom-4 right-4 bg-white p-4 rounded shadow w-80">
-            <div id="chat-messages"></div>
-            <input type="text" id="chat-input" placeholder="Talk to Aura..." onkeypress="sendMessage(event)">
-            <button onclick="activateVoice()">🎤 Hey Aura</button>
+        <div class="fixed bottom-4 right-4 bg-white p-4 rounded shadow w-80 border border-gray-300">
+            <div id="chat-messages" class="h-64 overflow-y-auto mb-2 border-b"></div>
+            <input type="text" id="chat-input" placeholder="Talk to Aura..." class="border p-1 w-full" onkeypress="sendMessage(event)">
+            <button onclick="activateVoice()" class="mt-2 bg-red-500 text-white p-1 rounded text-sm">🎤 Hey Aura</button>
         </div>
         
-        <!-- Upload Panel -->
-        <div class="fixed top-20 right-4 bg-white p-4 rounded shadow w-80 hidden" id="upload-panel">
-            <input type="file" id="file-upload" onchange="handleUpload()">
-            <button onclick="toggleUpload()">Close</button>
+        <div class="fixed top-20 right-4 bg-white p-4 rounded shadow w-80 hidden border border-gray-300" id="upload-panel">
+            <input type="file" id="file-upload" class="mb-2" onchange="handleUpload()">
+            <button onclick="toggleUpload()" class="bg-gray-500 text-white p-1 rounded">Close</button>
         </div>
         <button onclick="toggleUpload()" class="bg-blue-500 text-white p-2 rounded fixed top-4 right-4">Upload</button>
         
-        <!-- Notifications -->
-        <div id="notifications" class="fixed top-4 left-4 bg-yellow-500 text-white p-2 rounded"></div>
+        <div id="notifications" class="fixed top-4 left-4 bg-yellow-500 text-white p-2 rounded hidden"></div>
     </div>
 </body>
 </html>

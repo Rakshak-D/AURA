@@ -1,7 +1,8 @@
-from fastapi import APIRouter, UploadFile, File, Form
-from services.rag_service import add_to_rag
-from utils.parser import parse_document
-from database import get_db, Document
+from fastapi import APIRouter, UploadFile, File, Form, Depends
+from sqlalchemy.orm import Session
+from ..services.rag_service import add_to_rag
+from ..utils.parser import parse_document
+from ..database import get_db, Document
 
 router = APIRouter()
 

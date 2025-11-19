@@ -1,27 +1,29 @@
 from datetime import datetime, timedelta
-from utils.parser import parse_timetable
-from database import get_db, Task
-import json
+from ..utils.parser import parse_timetable
+from ..database import Task
+from sqlalchemy.orm import Session
 
-def generate_daily_schedule(user_id: int, timetable_file: str = None):
-    db = next(get_db())
+def generate_daily_schedule(user_id: int, db: Session, timetable_file: str = None):
     events = parse_timetable(timetable_file) if timetable_file else []
     tasks = db.query(Task).filter_by(user_id=user_id).all()
+    now = datetime.now()
     
-    # Simple adaptive: Prioritize overdue
-    overdue = [t for t in tasks if t.due_date < datetime.now() and not t.completed]
-    today_tasks = [t for t in tasks if t.due_date.date() == datetime.now().date()]
+    today_tasks = [t for t in tasks if t.due_date and t.due_date.date() == now.date()]
+    completed_today = len([t for t in today_tasks if t.completed])
+    total_today = len(today_tasks)
     
     plan = {
-        "today": today_tasks + events,
-        "forecast_tomorrow": [t for t in tasks if t.due_date.date() == datetime.now().date() + timedelta(days=1)],
-        "insights": {"completion_rate": len([t for t in today_tasks if t.completed]) / len(today_tasks) if today_tasks else 0}
+        "today": [{"title": t.title, "completed": t.completed} for t in today_tasks] + events,
+        "forecast_tomorrow": [{"title": t.title} for t in tasks if t.due_date and t.due_date.date() == now.date() + timedelta(days=1)],
+        "insights": {
+            "completion_rate": (completed_today / total_today) if total_today > 0 else 0
+        }
     }
-    return json.dumps(plan)
+    return plan
 
-def add_task(user_id: int, task_data: dict):
-    db = next(get_db())
+def add_task(user_id: int, task_data: dict, db: Session):
     new_task = Task(**task_data, user_id=user_id)
     db.add(new_task)
     db.commit()
+    db.refresh(new_task)
     return new_task.id

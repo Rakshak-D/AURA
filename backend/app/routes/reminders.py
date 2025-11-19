@@ -1,6 +1,6 @@
 from fastapi import APIRouter
-from services.reminder_service import schedule_reminder
-from models.pydantic_models import Reminder
+from ..services.reminder_service import schedule_reminder
+from ..models.pydantic_models import Reminder
 
 router = APIRouter()
 

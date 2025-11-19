@@ -1,9 +1,29 @@
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
-from routes import chat, upload, tasks, reminders, dashboard
+from contextlib import asynccontextmanager
+from apscheduler.schedulers.background import BackgroundScheduler
+import os
 
-app = FastAPI(title="Aura API")
+# Use relative import for routes
+from .routes import chat, upload, tasks, reminders, dashboard
+from .services.reminder_service import check_adaptive
+from .database import init_db
+
+# Setup Scheduler
+scheduler = BackgroundScheduler()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    init_db()
+    scheduler.add_job(lambda: check_adaptive(1), 'interval', hours=1)
+    scheduler.start()
+    print("--- Scheduler Started ---")
+    yield
+    scheduler.shutdown()
+    print("--- Scheduler Shutdown ---")
+
+app = FastAPI(title="Aura API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -19,12 +39,14 @@ app.include_router(tasks.router, prefix="/api")
 app.include_router(reminders.router, prefix="/api")
 app.include_router(dashboard.router, prefix="/api")
 
-# Serve frontend
-app.mount("/static", StaticFiles(directory="../frontend"), name="static")
+# Fix static path resolution
+frontend_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../frontend"))
+app.mount("/static", StaticFiles(directory=frontend_path), name="static")
 
 @app.get("/")
 def root():
-    return {"message": "Aura Backend Running"}
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/static/index.html")
 
 if __name__ == "__main__":
     import uvicorn
