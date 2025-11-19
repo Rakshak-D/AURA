@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aura Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="/js/main.js" defer></script>
+    <script src="/js/chat.js" defer></script>
+    <script src="/js/upload.js" defer></script>
+    <script src="/js/tasks.js" defer></script>
+    <script src="/js/voice.js" defer></script>
+    <script src="/js/search.js" defer></script>
+    <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body class="bg-gray-100">
+    <div id="dashboard">
+        <header class="bg-blue-600 text-white p-4">
+            <h1 class="text-2xl">🌟 Aura - Your Personal Assistant</h1>
+            <div id="search-bar" class="mt-2">
+                <input type="text" placeholder="Global Search..." class="p-2 rounded">
+            </div>
+        </header>
+        
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 p-4">
+            <!-- Today's Tasks -->
+            <div class="bg-white p-4 rounded shadow">
+                <h2>Today's Tasks</h2>
+                <ul id="tasks-list"></ul>
+                <button onclick="addTask()" class="bg-green-500 text-white p-2 rounded">Add Task</button>
+            </div>
+            
+            <!-- Calendar -->
+            <div class="bg-white p-4 rounded shadow">
+                <h2>Calendar</h2>
+                <div id="calendar"></div>
+            </div>
+            
+            <!-- Stats -->
+            <div class="bg-white p-4 rounded shadow">
+                <h2>Productivity Stats</h2>
+                <canvas id="stats-chart"></canvas>
+            </div>
+        </div>
+        
+        <!-- Chat Interface -->
+        <div class="fixed bottom-4 right-4 bg-white p-4 rounded shadow w-80">
+            <div id="chat-messages"></div>
+            <input type="text" id="chat-input" placeholder="Talk to Aura..." onkeypress="sendMessage(event)">
+            <button onclick="activateVoice()">🎤 Hey Aura</button>
+        </div>
+        
+        <!-- Upload Panel -->
+        <div class="fixed top-20 right-4 bg-white p-4 rounded shadow w-80 hidden" id="upload-panel">
+            <input type="file" id="file-upload" onchange="handleUpload()">
+            <button onclick="toggleUpload()">Close</button>
+        </div>
+        <button onclick="toggleUpload()" class="bg-blue-500 text-white p-2 rounded fixed top-4 right-4">Upload</button>
+        
+        <!-- Notifications -->
+        <div id="notifications" class="fixed top-4 left-4 bg-yellow-500 text-white p-2 rounded"></div>
+    </div>
+</body>
+</html>

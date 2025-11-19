@@ -1,0 +1,3 @@
+/* Tailwind base; add custom */
+#stats-chart { height: 200px; }
+.hidden { display: none; }
