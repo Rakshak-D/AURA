@@ -3,59 +3,137 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Aura Dashboard</title>
+    <title>Aura | Personal AI</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    
+    <link rel="stylesheet" href="/static/css/styles.css">
     
     <script src="/static/js/main.js" defer></script>
     <script src="/static/js/chat.js" defer></script>
-    <script src="/static/js/upload.js" defer></script>
     <script src="/static/js/tasks.js" defer></script>
     <script src="/static/js/voice.js" defer></script>
-    <script src="/static/js/search.js" defer></script>
-    
-    <link rel="stylesheet" href="/static/css/styles.css">
+    <script src="/static/js/upload.js" defer></script>
 </head>
-<body class="bg-gray-100">
-    <div id="dashboard">
-        <header class="bg-blue-600 text-white p-4">
-            <h1 class="text-2xl">🌟 Aura - Your Personal Assistant</h1>
-            <div id="search-bar" class="mt-2">
-                <input type="text" placeholder="Global Search..." class="p-2 rounded text-black">
+<body class="bg-[#1e1f20] text-gray-100 font-sans h-screen flex overflow-hidden">
+
+    <aside class="w-64 bg-[#131314] flex flex-col border-r border-gray-700 transition-all duration-300" id="sidebar">
+        <div class="p-6 flex items-center gap-3">
+            <div class="w-8 h-8 bg-gradient-to-tr from-blue-500 to-purple-500 rounded-full flex items-center justify-center animate-pulse">
+                <i class="fa-solid fa-sparkles text-white text-sm"></i>
             </div>
-        </header>
+            <h1 class="text-xl font-semibold tracking-wide">Aura</h1>
+        </div>
+
+        <nav class="flex-1 px-3 space-y-2">
+            <button onclick="navigate('chat')" class="nav-item active w-full flex items-center gap-4 px-4 py-3 rounded-full hover:bg-[#282a2c] transition text-sm font-medium">
+                <i class="fa-regular fa-message"></i> Chat
+            </button>
+            <button onclick="navigate('dashboard')" class="nav-item w-full flex items-center gap-4 px-4 py-3 rounded-full hover:bg-[#282a2c] transition text-sm font-medium">
+                <i class="fa-solid fa-list-check"></i> Tasks & Schedule
+            </button>
+            <button onclick="navigate('files')" class="nav-item w-full flex items-center gap-4 px-4 py-3 rounded-full hover:bg-[#282a2c] transition text-sm font-medium">
+                <i class="fa-solid fa-folder-open"></i> Knowledge Base
+            </button>
+        </nav>
+
+        <div class="p-4 border-t border-gray-700">
+             <div class="flex items-center gap-3 p-2 rounded-lg bg-[#282a2c]">
+                <div class="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center text-xs font-bold">U</div>
+                <div class="text-sm">
+                    <p class="font-semibold">User</p>
+                    <p class="text-xs text-gray-400">Pro Account</p>
+                </div>
+             </div>
+        </div>
+    </aside>
+
+    <main class="flex-1 flex flex-col relative">
         
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 p-4">
-            <div class="bg-white p-4 rounded shadow">
-                <h2>Today's Tasks</h2>
-                <ul id="tasks-list" class="list-disc pl-5"></ul>
-                <button onclick="addTask()" class="bg-green-500 text-white p-2 rounded mt-2">Add Task</button>
+        <div class="md:hidden p-4 bg-[#131314] flex justify-between items-center">
+            <span class="font-bold">Aura</span>
+            <button onclick="document.getElementById('sidebar').classList.toggle('-translate-x-full')">
+                <i class="fa-solid fa-bars"></i>
+            </button>
+        </div>
+
+        <div id="section-chat" class="section h-full flex flex-col">
+            <div id="chat-history" class="flex-1 overflow-y-auto p-4 md:p-10 space-y-6 scrollbar-thin">
+                <div class="flex flex-col items-center justify-center h-full text-center opacity-50" id="empty-state">
+                    <div class="w-16 h-16 bg-gray-800 rounded-full flex items-center justify-center mb-4">
+                        <i class="fa-solid fa-robot text-2xl"></i>
+                    </div>
+                    <h2 class="text-2xl font-semibold mb-2">How can I help you today?</h2>
+                    <p class="text-sm max-w-md">I can schedule tasks, read your documents, or just chat.</p>
+                </div>
             </div>
             
-            <div class="bg-white p-4 rounded shadow">
-                <h2>Daily Schedule</h2>
-                <div id="calendar" class="text-xs"></div>
+            <div class="p-4 md:p-6 bg-[#1e1f20]">
+                <div class="max-w-3xl mx-auto relative bg-[#282a2c] rounded-2xl border border-gray-600 focus-within:border-blue-500 transition-colors">
+                    <textarea id="chat-input" rows="1" placeholder="Message Aura..." 
+                        class="w-full bg-transparent text-white px-4 py-4 pr-12 focus:outline-none resize-none overflow-hidden"
+                        oninput="this.style.height = ''; this.style.height = this.scrollHeight + 'px'"
+                        onkeydown="handleChatKey(event)"></textarea>
+                    
+                    <div class="absolute right-2 bottom-2 flex gap-2">
+                        <button id="voice-btn" onclick="toggleVoice()" class="p-2 text-gray-400 hover:text-white rounded-full transition">
+                            <i class="fa-solid fa-microphone"></i>
+                        </button>
+                        <button onclick="sendMessage()" class="p-2 bg-blue-600 hover:bg-blue-500 text-white rounded-full transition shadow-lg">
+                            <i class="fa-solid fa-arrow-up"></i>
+                        </button>
+                    </div>
+                </div>
+                <p class="text-center text-xs text-gray-500 mt-2">Aura can make mistakes. Check important info.</p>
             </div>
-            
-            <div class="bg-white p-4 rounded shadow">
-                <h2>Productivity Stats</h2>
-                <canvas id="stats-chart"></canvas>
+        </div>
+
+        <div id="section-dashboard" class="section hidden h-full overflow-y-auto p-8">
+            <header class="flex justify-between items-end mb-8">
+                <div>
+                    <h2 class="text-3xl font-bold">My Day</h2>
+                    <p class="text-gray-400" id="current-date"></p>
+                </div>
+                <button onclick="addTaskModal()" class="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded-lg flex items-center gap-2 transition">
+                    <i class="fa-solid fa-plus"></i> Add Task
+                </button>
+            </header>
+
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                <div class="lg:col-span-2 space-y-6">
+                    <div class="bg-[#282a2c] rounded-xl p-6 border border-gray-700 shadow-lg">
+                        <h3 class="text-lg font-semibold mb-4 flex items-center gap-2"><i class="fa-solid fa-circle-check text-green-500"></i> Tasks</h3>
+                        <ul id="tasks-list" class="space-y-2">
+                            </ul>
+                    </div>
+                </div>
+
+                <div class="space-y-6">
+                    <div class="bg-[#282a2c] rounded-xl p-6 border border-gray-700">
+                        <h3 class="text-lg font-semibold mb-4">Productivity</h3>
+                        <canvas id="stats-chart"></canvas>
+                    </div>
+                </div>
             </div>
         </div>
-        
-        <div class="fixed bottom-4 right-4 bg-white p-4 rounded shadow w-80 border border-gray-300">
-            <div id="chat-messages" class="h-64 overflow-y-auto mb-2 border-b"></div>
-            <input type="text" id="chat-input" placeholder="Talk to Aura..." class="border p-1 w-full" onkeypress="sendMessage(event)">
-            <button onclick="activateVoice()" class="mt-2 bg-red-500 text-white p-1 rounded text-sm">🎤 Hey Aura</button>
+
+        <div id="section-files" class="section hidden h-full p-8">
+             <h2 class="text-3xl font-bold mb-6">Knowledge Base</h2>
+             <div class="bg-[#282a2c] rounded-xl p-8 border border-gray-700 text-center border-dashed border-2 border-gray-600">
+                 <i class="fa-solid fa-cloud-arrow-up text-4xl text-gray-400 mb-4"></i>
+                 <p class="mb-4">Upload documents (PDF, TXT) for RAG context.</p>
+                 <input type="file" id="file-upload" class="hidden" onchange="handleUpload()">
+                 <button onclick="document.getElementById('file-upload').click()" class="bg-gray-600 hover:bg-gray-500 px-6 py-2 rounded-lg">Select File</button>
+             </div>
         </div>
-        
-        <div class="fixed top-20 right-4 bg-white p-4 rounded shadow w-80 hidden border border-gray-300" id="upload-panel">
-            <input type="file" id="file-upload" class="mb-2" onchange="handleUpload()">
-            <button onclick="toggleUpload()" class="bg-gray-500 text-white p-1 rounded">Close</button>
-        </div>
-        <button onclick="toggleUpload()" class="bg-blue-500 text-white p-2 rounded fixed top-4 right-4">Upload</button>
-        
-        <div id="notifications" class="fixed top-4 left-4 bg-yellow-500 text-white p-2 rounded hidden"></div>
+
+    </main>
+
+    <div id="notification" class="fixed bottom-5 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white px-6 py-3 rounded-full shadow-xl border border-gray-700 hidden transition-opacity">
+        <span id="notif-msg"></span>
     </div>
+
 </body>
 </html>

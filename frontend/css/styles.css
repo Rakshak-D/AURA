@@ -1,3 +1,29 @@
-/* Tailwind base; add custom */
-#stats-chart { height: 200px; }
-.hidden { display: none; }
+.nav-item.active {
+    background-color: #2d2f31;
+    color: #a8c7fa;
+}
+
+/* Custom Scrollbar */
+.scrollbar-thin::-webkit-scrollbar {
+    width: 8px;
+}
+.scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb {
+    background-color: #444746;
+    border-radius: 20px;
+}
+
+/* Markdown Styles */
+.prose h1 { font-size: 1.5em; font-weight: bold; margin-bottom: 0.5em; }
+.prose h2 { font-size: 1.3em; font-weight: bold; margin-bottom: 0.5em; }
+.prose ul { list-style-type: disc; padding-left: 1.5em; margin-bottom: 1em; }
+.prose p { margin-bottom: 0.8em; line-height: 1.6; }
+.prose code { background-color: #3a3d40; padding: 2px 4px; rounded: 4px; font-family: monospace; }
+.prose pre { background-color: #1e1f20; padding: 1em; border-radius: 8px; overflow-x: auto; margin-bottom: 1em; }
+
+/* Task Item Animation */
+.task-item { transition: all 0.2s; }
+.task-item:hover { background-color: #3c4043; }
+.line-through { color: #9ca3af; }
