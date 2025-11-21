@@ -7,6 +7,9 @@ class TaskCreate(BaseModel):
     description: Optional[str] = None
     due_date: Optional[datetime] = None
 
+class TaskUpdate(BaseModel):
+    completed: bool
+
 class TaskResponse(BaseModel):
     id: int
     title: str
@@ -14,13 +17,16 @@ class TaskResponse(BaseModel):
     due_date: Optional[datetime]
     completed: bool
 
+    class Config:
+        from_attributes = True
+
 class ChatMessage(BaseModel):
     message: str
-    context: Optional[str] = None  # RAG context
+    context: Optional[str] = None
 
-class UploadFile(BaseModel):
-    filename: str
-    content: str  # Extracted text
+class ChatResponse(BaseModel):
+    response: str
+    action_taken: Optional[str] = None # e.g., "created_task"
 
 class Reminder(BaseModel):
     task_id: int
