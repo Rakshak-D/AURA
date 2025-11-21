@@ -1,6 +1,6 @@
 # Byte-compiled / optimized / DLL files
 __pycache__/
-*.py[codz]
+*.py[cod]
 *$py.class
 
 # C extensions
@@ -46,7 +46,7 @@ htmlcov/
 nosetests.xml
 coverage.xml
 *.cover
-*.py.cover
+*.py,cover
 .hypothesis/
 .pytest_cache/
 cover/
@@ -206,8 +206,132 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 
-# Ignore large model files
+# ========================================
+# AURA PROJECT SPECIFIC
+# ========================================
+
+# Database files - DON'T COMMIT DATABASES
+data/
+*.sqlite
+*.sqlite3
+*.db
+backend/data/
+frontend/data/
+
+# ChromaDB vector database
+chroma/
+*.chroma
+data/chroma/
+backend/data/chroma/
+
+# AI Models (large files - download separately)
 models/
 *.gguf
 *.pt
 *.bin
+*.safetensors
+*.h5
+*.pkl
+*.pth
+backend/models/
+
+# Uploaded documents (user content)
+uploads/
+documents/
+backend/uploads/
+
+# Logs
+logs/
+*.log
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# OS specific
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+*.swo
+*~
+
+# IDE specific
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Testing
+.coverage
+htmlcov/
+.pytest_cache/
+.tox/
+test-results/
+
+# Local configuration (keep .env.example if you have one)
+.env.local
+.env.*.local
+.env.production
+
+# Node modules (if you add any frontend build tools)
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Build outputs
+*.pyc
+*.pyo
+*.pyd
+.Python
+__pycache__/
+
+# Python virtual environments
+venv/
+ENV/
+env/
+.venv/
+
+# Coverage reports
+.coverage
+htmlcov/
+*.cover
+
+# Backup files
+*.bak
+*.backup
+*.old
+
+# Compiled translations
+*.mo
+
+# Package files
+*.egg
+*.egg-info
+dist/
+build/
+*.tar.gz
+*.whl
+
+# Cache directories
+.cache/
+__pycache__/
+
+# User-specific files
+*.user
+.settings/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Linux
+.directory
+*~
