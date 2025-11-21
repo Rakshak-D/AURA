@@ -1,52 +1,25 @@
-// Core dashboard load
-document.addEventListener('DOMContentLoaded', async () => {
+document.addEventListener('DOMContentLoaded', () => {
+    navigate('chat'); // Default
     loadTasks();
-    loadSchedule();
-    loadStats();
-    connectWebSocket();
+    document.getElementById('current-date').textContent = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
 });
 
-let ws;
-
-function connectWebSocket() {
-    ws = new WebSocket(`ws://localhost:8000/ws`);  // Add WS to FastAPI if needed
-    ws.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        if (data.type === 'reminder') {
-            showNotification(data.message);
-        }
-    };
+function navigate(sectionId) {
+    // Hide all sections
+    document.querySelectorAll('.section').forEach(el => el.classList.add('hidden'));
+    // Show target
+    document.getElementById(`section-${sectionId}`).classList.remove('hidden');
+    
+    // Update Sidebar
+    document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+    // This is a simple check, ideally add IDs to buttons
+    const navIndex = {'chat':0, 'dashboard':1, 'files':2}[sectionId];
+    if(navIndex !== undefined) document.querySelectorAll('.nav-item')[navIndex].classList.add('active');
 }
 
-function showNotification(msg) {
-    const notif = document.getElementById('notifications');
-    notif.textContent = msg;
-    notif.classList.remove('hidden');
-    setTimeout(() => notif.classList.add('hidden'), 5000);
-}
-
-async function loadTasks() {
-    const res = await fetch('/api/tasks');
-    const tasks = await res.json();
-    const list = document.getElementById('tasks-list');
-    list.innerHTML = tasks.map(t => `<li>${t.title} - ${t.completed ? 'Done' : 'Pending'}</li>`).join('');
-}
-
-async function loadSchedule() {
-    const res = await fetch('/api/schedule');
-    const sched = await res.json();
-    document.getElementById('calendar').innerHTML = `<pre>${JSON.stringify(sched, null, 2)}</pre>`;
-}
-
-async function loadStats() {
-    const ctx = document.getElementById('stats-chart').getContext('2d');
-    const res = await fetch('/api/stats');
-    const data = await res.json();
-    new Chart(ctx, {
-        type: 'doughnut',
-        data: {
-            labels: ['Completed', 'Pending'],
-            datasets: [{ data: [data.insights.completion_rate * 100, 100 - data.insights.completion_rate * 100] }]
-        }
-    });
+function showNotification(msg, type='info') {
+    const el = document.getElementById('notification');
+    document.getElementById('notif-msg').textContent = msg;
+    el.classList.remove('hidden');
+    setTimeout(() => el.classList.add('hidden'), 3000);
 }
