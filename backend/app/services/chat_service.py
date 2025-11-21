@@ -1,75 +1,329 @@
 from sqlalchemy.orm import Session
-from ..database import ChatHistory, Task
+from ..database import ChatHistory, Task, User
 from ..models.llm_models import llm
 from .rag_service import query_rag
+from .schedule_service import generate_daily_schedule
+from .intent_service import detect_intent, extract_task_info, extract_date_time
 from datetime import datetime, timedelta
 import json
 import re
 
-def process_chat(user_id: int, message: str, db: Session):
-    # 1. Input Validation
-    if not message or not message.strip():
-        return {"response": "Please say something!", "action_taken": None}
-
-    # 2. Save User Message
-    db.add(ChatHistory(user_id=user_id, role="user", content=message))
-    db.commit()
-
-    # 3. Intent Detection (Simple Rule-based + LLM Extraction for complex tasks)
-    lower_msg = message.lower()
-    if any(x in lower_msg for x in ["remind me", "schedule", "add task", "i have a test", "buy milk"]):
-        # Attempt to extract task details using LLM
+class ChatService:
+    def __init__(self):
+        self.intents = {
+            'task_create': self.handle_task_create,
+            'task_query': self.handle_task_query,
+            'task_update': self.handle_task_update,
+            'task_delete': self.handle_task_delete,
+            'day_summary': self.handle_day_summary,
+            'reminder': self.handle_reminder,
+            'search': self.handle_search,
+            'general_chat': self.handle_general_chat
+        }
+    
+    def process_chat(self, user_id: int, message: str, db: Session):
         try:
-            extraction_prompt = (
-                f"User input: '{message}'\n"
-                f"Current Time: {datetime.now()}\n"
-                "Extract task JSON: {title: str, due_date: YYYY-MM-DD HH:MM:SS (or null)}. "
-                "Return ONLY JSON."
-            )
-            # This is a lightweight call - depending on model intelligence
-            extraction = llm.generate(extraction_prompt, max_tokens=100)
-            # Simple cleanup for JSON
-            extraction = extraction.strip().replace("```json", "").replace("```", "")
-            task_data = json.loads(extraction)
+            if not message or not message.strip():
+                return {"response": "I'm listening. How can I help you today?", "action_taken": None}
+            
+            self.save_message(user_id, "user", message, db)
+            intent = detect_intent(message)
+            handler = self.intents.get(intent, self.handle_general_chat)
+            result = handler(user_id, message, db)
+            self.save_message(user_id, "assistant", result['response'], db, intent=intent)
+            result['suggestions'] = self.generate_suggestions(intent, db, user_id)
+            
+            return result
+            
+        except Exception as e:
+            print(f"Chat processing error: {e}")
+            return {
+                "response": "I encountered an error. Please try again.",
+                "action_taken": "error",
+                "data": {"error": str(e)}
+            }
+    
+    def handle_task_create(self, user_id: int, message: str, db: Session):
+        try:
+            task_info = extract_task_info(message)
+            due_date = extract_date_time(message)
             
             new_task = Task(
-                title=task_data.get("title", "Untitled Task"),
-                user_id=user_id,
-                due_date=datetime.strptime(task_data["due_date"], "%Y-%m-%d %H:%M:%S") if task_data.get("due_date") else None
+                title=task_info.get('title', message[:100]),
+                description=task_info.get('description'),
+                due_date=due_date,
+                priority=task_info.get('priority', 'medium'),
+                tags=json.dumps(task_info.get('tags', [])),
+                recurring=task_info.get('recurring'),
+                user_id=user_id
             )
+            
             db.add(new_task)
             db.commit()
+            db.refresh(new_task)
             
-            response_text = f"I've scheduled: {new_task.title}"
-            if new_task.due_date:
-                response_text += f" for {new_task.due_date}"
+            response = f"✅ Task created: '{new_task.title}'"
+            if due_date:
+                response += f" due {self.format_due_date(due_date)}"
+            if task_info.get('recurring'):
+                response += f" (repeats {task_info.get('recurring')})"
             
-            # Save AI Response
-            db.add(ChatHistory(user_id=user_id, role="assistant", content=response_text))
+            return {
+                "response": response,
+                "action_taken": "task_created",
+                "data": {"task_id": new_task.id, "title": new_task.title}
+            }
+            
+        except Exception as e:
+            print(f"Task creation error: {e}")
+            return {"response": f"I couldn't create the task. Error: {str(e)}", "action_taken": "error"}
+    
+    def handle_task_query(self, user_id: int, message: str, db: Session):
+        try:
+            message_lower = message.lower()
+            
+            if any(word in message_lower for word in ['today', 'due today']):
+                tasks = db.query(Task).filter(
+                    Task.user_id == user_id,
+                    Task.completed == False,
+                    Task.due_date >= datetime.now().replace(hour=0, minute=0, second=0),
+                    Task.due_date < datetime.now().replace(hour=23, minute=59, second=59)
+                ).all()
+                response = f"You have {len(tasks)} tasks due today:\n"
+            elif any(word in message_lower for word in ['tomorrow']):
+                tomorrow = datetime.now() + timedelta(days=1)
+                tasks = db.query(Task).filter(
+                    Task.user_id == user_id,
+                    Task.completed == False,
+                    Task.due_date >= tomorrow.replace(hour=0, minute=0, second=0),
+                    Task.due_date < tomorrow.replace(hour=23, minute=59, second=59)
+                ).all()
+                response = f"You have {len(tasks)} tasks due tomorrow:\n"
+            elif any(word in message_lower for word in ['week', 'this week']):
+                tasks = db.query(Task).filter(
+                    Task.user_id == user_id,
+                    Task.completed == False,
+                    Task.due_date >= datetime.now(),
+                    Task.due_date < datetime.now() + timedelta(days=7)
+                ).all()
+                response = f"You have {len(tasks)} tasks this week:\n"
+            else:
+                tasks = db.query(Task).filter(
+                    Task.user_id == user_id,
+                    Task.completed == False
+                ).order_by(Task.due_date.asc()).limit(10).all()
+                response = f"You have {len(tasks)} pending tasks:\n"
+            
+            for task in tasks:
+                response += f"\n• {task.title}"
+                if task.due_date:
+                    response += f" (due {self.format_due_date(task.due_date)})"
+            
+            return {
+                "response": response,
+                "action_taken": "task_query",
+                "data": {"task_count": len(tasks)}
+            }
+            
+        except Exception as e:
+            print(f"Task query error: {e}")
+            return {"response": "I couldn't retrieve your tasks.", "action_taken": "error"}
+    
+    def handle_task_update(self, user_id: int, message: str, db: Session):
+        try:
+            message_lower = message.lower()
+            
+            if 'complete' in message_lower or 'done' in message_lower:
+                tasks = db.query(Task).filter(
+                    Task.user_id == user_id,
+                    Task.completed == False
+                ).all()
+                
+                for task in tasks:
+                    if task.title.lower() in message_lower:
+                        task.completed = True
+                        task.completed_at = datetime.now()
+                        db.commit()
+                        return {
+                            "response": f"✅ Marked '{task.title}' as complete!",
+                            "action_taken": "task_completed",
+                            "data": {"task_id": task.id}
+                        }
+                
+                return {"response": "I couldn't find that task. Can you be more specific?", "action_taken": None}
+            
+            return {"response": "I'm not sure how to update that task.", "action_taken": None}
+            
+        except Exception as e:
+            print(f"Task update error: {e}")
+            return {"response": "I couldn't update the task.", "action_taken": "error"}
+    
+    def handle_task_delete(self, user_id: int, message: str, db: Session):
+        try:
+            tasks = db.query(Task).filter(Task.user_id == user_id).all()
+            
+            for task in tasks:
+                if task.title.lower() in message.lower():
+                    db.delete(task)
+                    db.commit()
+                    return {
+                        "response": f"🗑️ Deleted task: '{task.title}'",
+                        "action_taken": "task_deleted",
+                        "data": {"task_id": task.id}
+                    }
+            
+            return {"response": "I couldn't find that task to delete.", "action_taken": None}
+            
+        except Exception as e:
+            print(f"Task delete error: {e}")
+            return {"response": "I couldn't delete the task.", "action_taken": "error"}
+    
+    def handle_day_summary(self, user_id: int, message: str, db: Session):
+        try:
+            schedule = generate_daily_schedule(user_id, db)
+            
+            today_start = datetime.now().replace(hour=0, minute=0, second=0)
+            completed_today = db.query(Task).filter(
+                Task.user_id == user_id,
+                Task.completed == True,
+                Task.completed_at >= today_start
+            ).count()
+            
+            prompt = f"""Generate a friendly daily summary for the user:
+            - Total tasks: {schedule['overview']['total']}
+            - Completed: {schedule['overview']['completed']}
+            - Pending: {schedule['overview']['pending']}
+            - Completed today: {completed_today}
+            
+            Keep it encouraging and concise."""
+            
+            summary = llm.generate(prompt, max_tokens=200)
+            
+            return {
+                "response": summary,
+                "action_taken": "day_summary",
+                "data": {
+                    "overview": schedule['overview'],
+                    "completed_today": completed_today
+                }
+            }
+            
+        except Exception as e:
+            print(f"Day summary error: {e}")
+            return {"response": "I couldn't generate your day summary.", "action_taken": "error"}
+    
+    def handle_reminder(self, user_id: int, message: str, db: Session):
+        return {"response": "Reminder feature coming soon!", "action_taken": "reminder"}
+    
+    def handle_search(self, user_id: int, message: str, db: Session):
+        try:
+            search_term = message.lower().replace('search', '').replace('find', '').strip()
+            
+            tasks = db.query(Task).filter(
+                Task.user_id == user_id,
+                (Task.title.ilike(f'%{search_term}%') | Task.description.ilike(f'%{search_term}%'))
+            ).all()
+            
+            if tasks:
+                response = f"Found {len(tasks)} tasks matching '{search_term}':\n"
+                for task in tasks[:5]:
+                    response += f"\n• {task.title}"
+            else:
+                response = f"No tasks found matching '{search_term}'"
+            
+            return {
+                "response": response,
+                "action_taken": "search",
+                "data": {"results_count": len(tasks)}
+            }
+            
+        except Exception as e:
+            print(f"Search error: {e}")
+            return {"response": "I couldn't complete the search.", "action_taken": "error"}
+    
+    def handle_general_chat(self, user_id: int, message: str, db: Session):
+        try:
+            context = query_rag(message) if query_rag else ""
+            
+            history = db.query(ChatHistory).filter_by(user_id=user_id)\
+                .order_by(ChatHistory.timestamp.desc()).limit(5).all()
+            history_text = "\n".join([f"{h.role}: {h.content}" for h in reversed(history)])
+            
+            prompt = f"""You are Aura, a helpful AI personal assistant.
+            
+Context: {context}
+
+Recent conversation:
+{history_text}
+
+User: {message}
+Aura:"""
+            
+            response = llm.generate(prompt, max_tokens=300)
+            
+            return {
+                "response": response,
+                "action_taken": "chat",
+                "data": {}
+            }
+            
+        except Exception as e:
+            print(f"General chat error: {e}")
+            return {"response": "I'm here to help! Can you rephrase that?", "action_taken": "error"}
+    
+    def save_message(self, user_id: int, role: str, content: str, db: Session, intent: str = None):
+        try:
+            msg = ChatHistory(
+                user_id=user_id,
+                role=role,
+                content=content,
+                intent=intent
+            )
+            db.add(msg)
             db.commit()
-            return {"response": response_text, "action_taken": "task_created"}
-        except:
-            # Fallback if extraction fails
-            pass
+        except Exception as e:
+            print(f"Error saving message: {e}")
+            db.rollback()
+    
+    def format_due_date(self, due_date: datetime) -> str:
+        now = datetime.now()
+        diff = due_date - now
+        
+        if diff.days == 0:
+            return "today"
+        elif diff.days == 1:
+            return "tomorrow"
+        elif diff.days < 7:
+            return f"in {diff.days} days"
+        else:
+            return due_date.strftime("%B %d, %Y")
+    
+    def generate_suggestions(self, intent: str, db: Session, user_id: int):
+        suggestions = {
+            'task_create': [
+                "Show my tasks for today",
+                "What's due this week?",
+                "Summarize my day"
+            ],
+            'task_query': [
+                "Create a new task",
+                "Mark task as complete",
+                "Search my tasks"
+            ],
+            'day_summary': [
+                "Show pending tasks",
+                "Create a reminder",
+                "What's next?"
+            ]
+        }
+        
+        return suggestions.get(intent, [
+            "What can I help you with?",
+            "Show my tasks",
+            "Summarize my day"
+        ])
 
-    # 4. Retrieve Context (History + RAG)
-    history = db.query(ChatHistory).filter_by(user_id=user_id).order_by(ChatHistory.timestamp.desc()).limit(5).all()
-    history.reverse()
-    
-    history_text = ""
-    for h in history:
-        history_text += f"{'User' if h.role == 'user' else 'Aura'}: {h.content}\n"
+chat_service = ChatService()
 
-    rag_context = query_rag(message)
-    system_context = "You are Aura, a helpful, witty, and efficient AI assistant. Keep answers concise."
-    
-    prompt = f"{system_context}\n\nRelevant Info: {rag_context}\n\nChat History:\n{history_text}\nUser: {message}\nAura:"
-    
-    # 5. Generate Response
-    response = llm.generate(prompt)
-    
-    # 6. Save AI Response
-    db.add(ChatHistory(user_id=user_id, role="assistant", content=response))
-    db.commit()
-
-    return {"response": response, "action_taken": "chat"}
+def process_chat(user_id: int, message: str, db: Session):
+    return chat_service.process_chat(user_id, message, db)

@@ -1,53 +1,77 @@
-let recognition;
+// Voice input functionality
+let recognition = null;
 let isListening = false;
 
-function toggleVoice() {
-    const btn = document.getElementById('voice-btn');
+function setupVoiceInput() {
+    const voiceBtn = document.getElementById('voice-btn');
     
-    if (!('webkitSpeechRecognition' in window)) {
-        alert("Voice not supported in this browser.");
-        return;
+    // Check if browser supports speech recognition
+    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        recognition = new SpeechRecognition();
+        
+        recognition.continuous = false;
+        recognition.interimResults = false;
+        recognition.lang = 'en-US';
+        
+        recognition.onstart = () => {
+            isListening = true;
+            document.getElementById('voice-indicator').style.display = 'flex';
+            voiceBtn.classList.add('listening');
+        };
+        
+        recognition.onresult = (event) => {
+            const transcript = event.results.transcript;
+            document.getElementById('chat-input').value = transcript;
+            stopVoiceInput();
+            
+            // Auto-send if user said something
+            if (transcript.trim()) {
+                setTimeout(() => sendMessage(), 500);
+            }
+        };
+        
+        recognition.onerror = (event) => {
+            console.error('Speech recognition error:', event.error);
+            stopVoiceInput();
+            
+            if (event.error === 'no-speech') {
+                showToast('No speech detected. Please try again.', 'warning');
+            } else {
+                showToast('Voice input error. Please try again.', 'error');
+            }
+        };
+        
+        recognition.onend = () => {
+            stopVoiceInput();
+        };
+        
+        voiceBtn.addEventListener('click', toggleVoiceInput);
+    } else {
+        voiceBtn.style.display = 'none';
+        console.warn('Speech recognition not supported');
     }
+}
 
+function toggleVoiceInput() {
     if (isListening) {
+        stopVoiceInput();
+    } else {
+        startVoiceInput();
+    }
+}
+
+function startVoiceInput() {
+    if (recognition && !isListening) {
+        recognition.start();
+    }
+}
+
+function stopVoiceInput() {
+    if (recognition && isListening) {
         recognition.stop();
         isListening = false;
-        btn.classList.remove('text-red-500', 'animate-pulse');
-        btn.classList.add('text-gray-400');
-        return;
+        document.getElementById('voice-indicator').style.display = 'none';
+        document.getElementById('voice-btn').classList.remove('listening');
     }
-
-    recognition = new webkitSpeechRecognition();
-    recognition.continuous = false; // Better for commands
-    recognition.interimResults = false;
-    recognition.lang = 'en-US';
-
-    recognition.onstart = () => {
-        isListening = true;
-        btn.classList.remove('text-gray-400');
-        btn.classList.add('text-red-500', 'animate-pulse');
-    };
-
-    recognition.onend = () => {
-        isListening = false;
-        btn.classList.remove('text-red-500', 'animate-pulse');
-        btn.classList.add('text-gray-400');
-    };
-
-    recognition.onresult = (event) => {
-        const transcript = event.results[0][0].transcript.toLowerCase();
-        
-        // Check for wake word OR direct command since button was pressed
-        let command = transcript;
-        if (transcript.includes('hey aura')) {
-            command = transcript.replace('hey aura', '').trim();
-        }
-        
-        if (command) {
-            document.getElementById('chat-input').value = command;
-            sendMessage();
-        }
-    };
-
-    recognition.start();
 }

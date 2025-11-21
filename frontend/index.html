@@ -3,137 +3,308 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Aura | Personal AI</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    
+    <title>AURA - AI Personal Assistant</title>
     <link rel="stylesheet" href="/static/css/styles.css">
-    
-    <script src="/static/js/main.js" defer></script>
-    <script src="/static/js/chat.js" defer></script>
-    <script src="/static/js/tasks.js" defer></script>
-    <script src="/static/js/voice.js" defer></script>
-    <script src="/static/js/upload.js" defer></script>
+    <link rel="icon" href="/static/assets/favicon.ico" type="image/x-icon">
 </head>
-<body class="bg-[#1e1f20] text-gray-100 font-sans h-screen flex overflow-hidden">
-
-    <aside class="w-64 bg-[#131314] flex flex-col border-r border-gray-700 transition-all duration-300" id="sidebar">
-        <div class="p-6 flex items-center gap-3">
-            <div class="w-8 h-8 bg-gradient-to-tr from-blue-500 to-purple-500 rounded-full flex items-center justify-center animate-pulse">
-                <i class="fa-solid fa-sparkles text-white text-sm"></i>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <div class="nav-brand">
+                <h1>🤖 AURA</h1>
+                <span class="tagline">Your AI Personal Assistant</span>
             </div>
-            <h1 class="text-xl font-semibold tracking-wide">Aura</h1>
-        </div>
-
-        <nav class="flex-1 px-3 space-y-2">
-            <button onclick="navigate('chat')" class="nav-item active w-full flex items-center gap-4 px-4 py-3 rounded-full hover:bg-[#282a2c] transition text-sm font-medium">
-                <i class="fa-regular fa-message"></i> Chat
-            </button>
-            <button onclick="navigate('dashboard')" class="nav-item w-full flex items-center gap-4 px-4 py-3 rounded-full hover:bg-[#282a2c] transition text-sm font-medium">
-                <i class="fa-solid fa-list-check"></i> Tasks & Schedule
-            </button>
-            <button onclick="navigate('files')" class="nav-item w-full flex items-center gap-4 px-4 py-3 rounded-full hover:bg-[#282a2c] transition text-sm font-medium">
-                <i class="fa-solid fa-folder-open"></i> Knowledge Base
-            </button>
-        </nav>
-
-        <div class="p-4 border-t border-gray-700">
-             <div class="flex items-center gap-3 p-2 rounded-lg bg-[#282a2c]">
-                <div class="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center text-xs font-bold">U</div>
-                <div class="text-sm">
-                    <p class="font-semibold">User</p>
-                    <p class="text-xs text-gray-400">Pro Account</p>
-                </div>
-             </div>
-        </div>
-    </aside>
-
-    <main class="flex-1 flex flex-col relative">
-        
-        <div class="md:hidden p-4 bg-[#131314] flex justify-between items-center">
-            <span class="font-bold">Aura</span>
-            <button onclick="document.getElementById('sidebar').classList.toggle('-translate-x-full')">
-                <i class="fa-solid fa-bars"></i>
-            </button>
-        </div>
-
-        <div id="section-chat" class="section h-full flex flex-col">
-            <div id="chat-history" class="flex-1 overflow-y-auto p-4 md:p-10 space-y-6 scrollbar-thin">
-                <div class="flex flex-col items-center justify-center h-full text-center opacity-50" id="empty-state">
-                    <div class="w-16 h-16 bg-gray-800 rounded-full flex items-center justify-center mb-4">
-                        <i class="fa-solid fa-robot text-2xl"></i>
-                    </div>
-                    <h2 class="text-2xl font-semibold mb-2">How can I help you today?</h2>
-                    <p class="text-sm max-w-md">I can schedule tasks, read your documents, or just chat.</p>
-                </div>
+            <div class="nav-links">
+                <button class="nav-btn active" data-view="chat">💬 Chat</button>
+                <button class="nav-btn" data-view="tasks">✅ Tasks</button>
+                <button class="nav-btn" data-view="calendar">📅 Calendar</button>
+                <button class="nav-btn" data-view="analytics">📊 Analytics</button>
+                <button class="nav-btn" data-view="upload">📁 Upload</button>
             </div>
-            
-            <div class="p-4 md:p-6 bg-[#1e1f20]">
-                <div class="max-w-3xl mx-auto relative bg-[#282a2c] rounded-2xl border border-gray-600 focus-within:border-blue-500 transition-colors">
-                    <textarea id="chat-input" rows="1" placeholder="Message Aura..." 
-                        class="w-full bg-transparent text-white px-4 py-4 pr-12 focus:outline-none resize-none overflow-hidden"
-                        oninput="this.style.height = ''; this.style.height = this.scrollHeight + 'px'"
-                        onkeydown="handleChatKey(event)"></textarea>
-                    
-                    <div class="absolute right-2 bottom-2 flex gap-2">
-                        <button id="voice-btn" onclick="toggleVoice()" class="p-2 text-gray-400 hover:text-white rounded-full transition">
-                            <i class="fa-solid fa-microphone"></i>
-                        </button>
-                        <button onclick="sendMessage()" class="p-2 bg-blue-600 hover:bg-blue-500 text-white rounded-full transition shadow-lg">
-                            <i class="fa-solid fa-arrow-up"></i>
-                        </button>
-                    </div>
-                </div>
-                <p class="text-center text-xs text-gray-500 mt-2">Aura can make mistakes. Check important info.</p>
-            </div>
-        </div>
-
-        <div id="section-dashboard" class="section hidden h-full overflow-y-auto p-8">
-            <header class="flex justify-between items-end mb-8">
-                <div>
-                    <h2 class="text-3xl font-bold">My Day</h2>
-                    <p class="text-gray-400" id="current-date"></p>
-                </div>
-                <button onclick="addTaskModal()" class="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded-lg flex items-center gap-2 transition">
-                    <i class="fa-solid fa-plus"></i> Add Task
+            <div class="nav-actions">
+                <button id="voice-btn" class="icon-btn" title="Voice Input">
+                    <span class="icon">🎤</span>
                 </button>
-            </header>
+                <button id="theme-toggle" class="icon-btn" title="Toggle Theme">
+                    <span class="icon">🌙</span>
+                </button>
+            </div>
+        </div>
+    </nav>
 
-            <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                <div class="lg:col-span-2 space-y-6">
-                    <div class="bg-[#282a2c] rounded-xl p-6 border border-gray-700 shadow-lg">
-                        <h3 class="text-lg font-semibold mb-4 flex items-center gap-2"><i class="fa-solid fa-circle-check text-green-500"></i> Tasks</h3>
-                        <ul id="tasks-list" class="space-y-2">
-                            </ul>
+    <!-- Main Container -->
+    <main class="container">
+        <!-- Chat View -->
+        <div id="chat-view" class="view active">
+            <div class="chat-container">
+                <div id="chat-history" class="chat-history">
+                    <div id="empty-state" class="empty-state">
+                        <div class="empty-icon">👋</div>
+                        <h2>Hi! I'm AURA</h2>
+                        <p>Your AI-powered personal assistant. I can help you:</p>
+                        <div class="feature-grid">
+                            <div class="feature-card">
+                                <span class="feature-icon">✅</span>
+                                <span>Manage tasks</span>
+                            </div>
+                            <div class="feature-card">
+                                <span class="feature-icon">📅</span>
+                                <span>Schedule events</span>
+                            </div>
+                            <div class="feature-card">
+                                <span class="feature-icon">🔔</span>
+                                <span>Set reminders</span>
+                            </div>
+                            <div class="feature-card">
+                                <span class="feature-icon">📊</span>
+                                <span>Track progress</span>
+                            </div>
+                        </div>
+                        <div class="suggestions">
+                            <p class="suggestions-label">Try saying:</p>
+                            <button class="suggestion-chip" onclick="fillInput('Create a task to buy groceries tomorrow')">
+                                "Create a task to buy groceries tomorrow"
+                            </button>
+                            <button class="suggestion-chip" onclick="fillInput('Show my tasks for today')">
+                                "Show my tasks for today"
+                            </button>
+                            <button class="suggestion-chip" onclick="fillInput('Summarize my day')">
+                                "Summarize my day"
+                            </button>
+                        </div>
                     </div>
                 </div>
-
-                <div class="space-y-6">
-                    <div class="bg-[#282a2c] rounded-xl p-6 border border-gray-700">
-                        <h3 class="text-lg font-semibold mb-4">Productivity</h3>
-                        <canvas id="stats-chart"></canvas>
+                
+                <div class="chat-input-container">
+                    <div class="input-wrapper">
+                        <textarea 
+                            id="chat-input" 
+                            placeholder="Type your message... (Press Enter to send, Shift+Enter for new line)"
+                            rows="1"
+                            onkeydown="handleChatInput(event)"
+                        ></textarea>
+                        <button id="send-btn" class="send-btn" onclick="sendMessage()">
+                            <span class="send-icon">➤</span>
+                        </button>
                     </div>
                 </div>
             </div>
         </div>
 
-        <div id="section-files" class="section hidden h-full p-8">
-             <h2 class="text-3xl font-bold mb-6">Knowledge Base</h2>
-             <div class="bg-[#282a2c] rounded-xl p-8 border border-gray-700 text-center border-dashed border-2 border-gray-600">
-                 <i class="fa-solid fa-cloud-arrow-up text-4xl text-gray-400 mb-4"></i>
-                 <p class="mb-4">Upload documents (PDF, TXT) for RAG context.</p>
-                 <input type="file" id="file-upload" class="hidden" onchange="handleUpload()">
-                 <button onclick="document.getElementById('file-upload').click()" class="bg-gray-600 hover:bg-gray-500 px-6 py-2 rounded-lg">Select File</button>
-             </div>
+        <!-- Tasks View -->
+        <div id="tasks-view" class="view">
+            <div class="tasks-container">
+                <div class="tasks-header">
+                    <h2>My Tasks</h2>
+                    <div class="tasks-actions">
+                        <select id="task-filter" onchange="filterTasks()">
+                            <option value="all">All Tasks</option>
+                            <option value="active">Active</option>
+                            <option value="completed">Completed</option>
+                            <option value="high">High Priority</option>
+                            <option value="urgent">Urgent</option>
+                        </select>
+                        <button class="btn-primary" onclick="openTaskModal()">
+                            <span>➕ Add Task</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="search-bar">
+                    <input 
+                        type="text" 
+                        id="task-search" 
+                        placeholder="Search tasks..." 
+                        oninput="searchTasks()"
+                    >
+                    <span class="search-icon">🔍</span>
+                </div>
+
+                <div id="tasks-list" class="tasks-list">
+                    <!-- Tasks will be loaded here -->
+                    <div class="loading">Loading tasks...</div>
+                </div>
+            </div>
         </div>
 
+        <!-- Calendar View -->
+        <div id="calendar-view" class="view">
+            <div class="calendar-container">
+                <div class="calendar-header">
+                    <h2>Calendar</h2>
+                    <div class="calendar-nav">
+                        <button onclick="previousMonth()" class="btn-secondary">← Prev</button>
+                        <span id="current-month" class="current-month">Loading...</span>
+                        <button onclick="nextMonth()" class="btn-secondary">Next →</button>
+                    </div>
+                </div>
+                <div id="calendar-grid" class="calendar-grid">
+                    <!-- Calendar will be rendered here -->
+                </div>
+                <div class="calendar-legend">
+                    <span class="legend-item"><span class="dot urgent"></span> Urgent</span>
+                    <span class="legend-item"><span class="dot high"></span> High</span>
+                    <span class="legend-item"><span class="dot medium"></span> Medium</span>
+                    <span class="legend-item"><span class="dot low"></span> Low</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Analytics View -->
+        <div id="analytics-view" class="view">
+            <div class="analytics-container">
+                <h2>Analytics & Insights</h2>
+                
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-icon">✅</div>
+                        <div class="stat-content">
+                            <div class="stat-value" id="total-completed">0</div>
+                            <div class="stat-label">Tasks Completed</div>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">📊</div>
+                        <div class="stat-content">
+                            <div class="stat-value" id="completion-rate">0%</div>
+                            <div class="stat-label">Completion Rate</div>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">🔥</div>
+                        <div class="stat-content">
+                            <div class="stat-value" id="daily-average">0</div>
+                            <div class="stat-label">Daily Average</div>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">📈</div>
+                        <div class="stat-content">
+                            <div class="stat-value" id="total-created">0</div>
+                            <div class="stat-label">Tasks Created</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="chart-container">
+                    <h3>Activity Over Time</h3>
+                    <canvas id="activity-chart"></canvas>
+                </div>
+
+                <div class="priority-breakdown">
+                    <h3>Tasks by Priority</h3>
+                    <div id="priority-chart" class="priority-chart">
+                        <!-- Priority bars will be rendered here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Upload View -->
+        <div id="upload-view" class="view">
+            <div class="upload-container">
+                <h2>Upload Documents</h2>
+                <p class="upload-description">Upload documents and I'll remember them for our conversations</p>
+                
+                <div class="upload-area" id="drop-zone">
+                    <div class="upload-icon">📁</div>
+                    <p class="upload-text">Drag & drop your files here</p>
+                    <p class="upload-subtext">or</p>
+                    <label for="file-input" class="btn-primary">
+                        Choose Files
+                    </label>
+                    <input type="file" id="file-input" hidden onchange="handleFileSelect(event)" multiple>
+                    <p class="upload-formats">Supported: PDF, DOCX, TXT, MD</p>
+                </div>
+
+                <div id="uploaded-files" class="uploaded-files">
+                    <h3>Uploaded Documents</h3>
+                    <div id="files-list" class="files-list">
+                        <!-- Uploaded files will appear here -->
+                        <div class="no-files">No documents uploaded yet</div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </main>
 
-    <div id="notification" class="fixed bottom-5 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white px-6 py-3 rounded-full shadow-xl border border-gray-700 hidden transition-opacity">
-        <span id="notif-msg"></span>
+    <!-- Task Modal -->
+    <div id="task-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modal-title">Add New Task</h3>
+                <button class="modal-close" onclick="closeTaskModal()">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="task-title">Title *</label>
+                    <input type="text" id="task-title" placeholder="Task title" required>
+                </div>
+                <div class="form-group">
+                    <label for="task-description">Description</label>
+                    <textarea id="task-description" placeholder="Task description" rows="3"></textarea>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="task-due-date">Due Date</label>
+                        <input type="datetime-local" id="task-due-date">
+                    </div>
+                    <div class="form-group">
+                        <label for="task-priority">Priority</label>
+                        <select id="task-priority">
+                            <option value="low">Low</option>
+                            <option value="medium" selected>Medium</option>
+                            <option value="high">High</option>
+                            <option value="urgent">Urgent</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="task-tags">Tags (comma-separated)</label>
+                        <input type="text" id="task-tags" placeholder="work, personal, shopping">
+                    </div>
+                    <div class="form-group">
+                        <label for="task-recurring">Recurring</label>
+                        <select id="task-recurring">
+                            <option value="">None</option>
+                            <option value="daily">Daily</option>
+                            <option value="weekly">Weekly</option>
+                            <option value="monthly">Monthly</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" onclick="closeTaskModal()">Cancel</button>
+                <button class="btn-primary" onclick="saveTask()">Save Task</button>
+            </div>
+        </div>
     </div>
 
+    <!-- Toast Notification -->
+    <div id="toast" class="toast"></div>
+
+    <!-- Voice Recording Indicator -->
+    <div id="voice-indicator" class="voice-indicator" style="display: none;">
+        <div class="voice-animation">
+            <div class="voice-bar"></div>
+            <div class="voice-bar"></div>
+            <div class="voice-bar"></div>
+            <div class="voice-bar"></div>
+            <div class="voice-bar"></div>
+        </div>
+        <p>Listening...</p>
+        <button onclick="stopVoiceInput()" class="btn-secondary">Stop</button>
+    </div>
+
+    <!-- Scripts -->
+    <script src="/static/js/main.js"></script>
+    <script src="/static/js/chat.js"></script>
+    <script src="/static/js/tasks.js"></script>
+    <script src="/static/js/voice.js"></script>
+    <script src="/static/js/upload.js"></script>
+    <script src="/static/js/search.js"></script>
 </body>
 </html>

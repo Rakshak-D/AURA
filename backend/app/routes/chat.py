@@ -7,5 +7,5 @@ from ..services.chat_service import process_chat
 router = APIRouter()
 
 @router.post("/chat", response_model=ChatResponse)
-def chat(msg: ChatMessage, db: Session = Depends(get_db)):
+def chat_endpoint(msg: ChatMessage, db: Session = Depends(get_db)):
     return process_chat(1, msg.message, db)

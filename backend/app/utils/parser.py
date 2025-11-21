@@ -1,26 +1,40 @@
-import pdfplumber
-import csv
-from .ocr import ocr_image # Relative import
+from typing import BinaryIO
 
-def parse_document(file_path: str, file_type: str) -> str:
-    # (Note: file_path here might be a file-like object from UploadFile in some contexts, 
-    # but pdfplumber.open handles paths. For UploadFile.file, we might need to read bytes.
-    # For simplicity keeping original logic but beware of file types)
+def parse_document(file: BinaryIO, content_type: str) -> str:
     try:
-        if 'pdf' in file_type:
-            with pdfplumber.open(file_path) as pdf:
-                return '\n'.join(page.extract_text() for page in pdf.pages if page.extract_text())
-        elif 'image' in file_type:
-            return ocr_image(file_path)
-        elif 'csv' in file_type:
-            # Handle file-like object wrapper if needed
-            content = file_path.read().decode('utf-8')
-            return content
+        if content_type == 'text/plain':
+            return file.read().decode('utf-8')
+        
+        elif content_type == 'application/pdf':
+            try:
+                import PyPDF2
+                pdf_reader = PyPDF2.PdfReader(file)
+                text = ""
+                for page in pdf_reader.pages:
+                    text += page.extract_text()
+                return text
+            except ImportError:
+                return "PDF parsing requires PyPDF2. Install with: pip install PyPDF2"
+        
+        elif content_type in ['application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/msword']:
+            try:
+                import docx
+                doc = docx.Document(file)
+                text = "\n".join([paragraph.text for paragraph in doc.paragraphs])
+                return text
+            except ImportError:
+                return "DOCX parsing requires python-docx. Install with: pip install python-docx"
+        
+        elif content_type == 'text/markdown':
+            return file.read().decode('utf-8')
+        
+        else:
+            try:
+                return file.read().decode('utf-8')
+            except:
+                return "Unsupported file format"
+    
     except Exception as e:
-        print(f"Error parsing: {e}")
-        return ""
-    return ""
+        print(f"Document parsing error: {e}")
+        return f"Error parsing document: {str(e)}"
 
-def parse_timetable(file_path: str) -> list[dict]:
-    # Stub implementation
-    return []

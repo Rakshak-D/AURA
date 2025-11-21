@@ -5,37 +5,55 @@ import os
 
 class LLM:
     def __init__(self):
-        # Check if model exists
-        if not os.path.exists(config.MODEL_PATH):
-            raise FileNotFoundError(
-                f"Model file not found at: {config.MODEL_PATH}\n"
-                "Please run 'python backend/download_models.py' first."
-            )
-
-        print(f"Loading LLM from: {config.MODEL_PATH}")
-        # Initialize Llama model (llama-cpp-python supports Qwen2)
-        self.llm = Llama(
-            model_path=config.MODEL_PATH,
-            n_ctx=2048,          # Context window size
-            n_gpu_layers=0,      # 0 = CPU only. Change to -1 if you have a GPU installed.
-            verbose=False
-        )
+        self.llm = None
+        self.embedding_model = None
         
-        print("Loading Embedding Model...")
-        self.embedding_model = SentenceTransformer(config.EMBEDDING_MODEL)
+        # Load LLM
+        if not config.MODEL_PATH.exists():
+            print(f"⚠️ CRITICAL: Model not found at {config.MODEL_PATH}")
+            print("   Run 'python backend/download_models.py' to fix this.")
+        else:
+            try:
+                print(f"🚀 Loading LLM from {config.MODEL_PATH}...")
+                self.llm = Llama(
+                    model_path=str(config.MODEL_PATH),
+                    n_ctx=4096,
+                    n_gpu_layers=-1 if config.USE_GPU else 0,
+                    verbose=False
+                )
+                print("✅ LLM Loaded")
+            except Exception as e:
+                print(f"❌ Error loading LLM: {e}")
 
-    def generate(self, prompt: str, max_tokens: int = 200) -> str:
-        # llama_cpp returns a dictionary; we extract the text
-        output = self.llm(
-            prompt, 
-            max_tokens=max_tokens, 
-            stop=["User:", "\nUser", "<|im_end|>"], # Stop tokens to prevent hallucination
-            echo=False
-        )
-        return output['choices'][0]['text'].strip()
+        # Load Embeddings
+        try:
+            print("🧠 Loading Embeddings...")
+            self.embedding_model = SentenceTransformer(config.EMBEDDING_MODEL)
+            print("✅ Embeddings Loaded")
+        except Exception as e:
+            print(f"❌ Error loading Embeddings: {e}")
+
+    def generate(self, prompt: str, max_tokens: int = 500) -> str:
+        if not self.llm:
+            return "Error: AI Model file is missing. Please check server logs."
+        
+        try:
+            output = self.llm(
+                prompt,
+                max_tokens=max_tokens,
+                stop=["User:", "\nUser", "<|im_end|>"],
+                echo=False,
+                temperature=0.7
+            )
+            return output['choices'][0]['text'].strip()
+        except Exception as e:
+            print(f"Generation Error: {e}")
+            return "I encountered an error generating a response."
 
     def embed(self, text: str) -> list[float]:
+        if not self.embedding_model:
+            return [0.0] * 384 # Return dummy vector if failed
         return self.embedding_model.encode(text).tolist()
 
-# Initialize the singleton instance
+# Initialize singleton
 llm = LLM()

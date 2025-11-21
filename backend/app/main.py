@@ -1,29 +1,26 @@
 from fastapi import FastAPI, WebSocket
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
-from apscheduler.schedulers.background import BackgroundScheduler
 import os
-
-# Use relative import for routes
-from .routes import chat, upload, tasks, reminders, dashboard
-from .services.reminder_service import check_adaptive
+from .config import config
 from .database import init_db
-
-# Setup Scheduler
-scheduler = BackgroundScheduler()
+from .routes import chat, tasks, upload, dashboard, reminders
+from .services.reminder_service import start_scheduler, scheduler
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    print("--- 1. Initializing Database ---")
     init_db()
-    scheduler.add_job(lambda: check_adaptive(1), 'interval', hours=1)
-    scheduler.start()
-    print("--- Scheduler Started ---")
+    print("--- 2. Starting Scheduler ---")
+    start_scheduler()
+    print("--- 3. Aura Backend Ready ---")
     yield
-    scheduler.shutdown()
-    print("--- Scheduler Shutdown ---")
+    if scheduler.running:
+        scheduler.shutdown()
 
-app = FastAPI(title="Aura API", lifespan=lifespan)
+app = FastAPI(title="AURA", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -34,32 +31,13 @@ app.add_middleware(
 )
 
 app.include_router(chat.router, prefix="/api")
-app.include_router(upload.router, prefix="/api")
 app.include_router(tasks.router, prefix="/api")
-app.include_router(reminders.router, prefix="/api")
+app.include_router(upload.router, prefix="/api")
 app.include_router(dashboard.router, prefix="/api")
+app.include_router(reminders.router, prefix="/api")
 
-# --- WebSocket Endpoint (Added) ---
-@app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
-    await websocket.accept()
-    try:
-        # Keep the connection open
-        while True:
-            await websocket.receive_text()
-    except Exception:
-        pass
-# ----------------------------------
-
-# Fix static path resolution
-frontend_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../frontend"))
-app.mount("/static", StaticFiles(directory=frontend_path), name="static")
+app.mount("/static", StaticFiles(directory=str(config.FRONTEND_DIR)), name="static")
 
 @app.get("/")
-def root():
-    from fastapi.responses import RedirectResponse
-    return RedirectResponse(url="/static/index.html")
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+async def root():
+    return FileResponse(str(config.FRONTEND_DIR / "index.html"))
