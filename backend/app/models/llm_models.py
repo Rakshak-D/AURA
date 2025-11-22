@@ -42,18 +42,26 @@ class LLM:
             output = self.llm(
                 prompt,
                 max_tokens=max_tokens,
-                stop=["User:", "\nUser", "<|im_end|>"],
+                stop=["User:", "\nUser:", "Human:", "\nHuman:", "<|im_end|>", "\n\n\n"],
                 echo=False,
-                temperature=0.7
+                temperature=0.1,  # Minimal temperature for maximum consistency
+                top_p=0.8,
+                repeat_penalty=1.2  # Strong anti-repetition
             )
-            return output['choices'][0]['text'].strip()
+            response = output['choices'][0]['text'].strip()
+            
+            # Safety check
+            if "User:" in response or "Human:" in response:
+                response = response.split("User:")[0].split("Human:")[0].strip()
+            
+            return response
         except Exception as e:
             print(f"Generation Error: {e}")
-            return "I encountered an error generating a response."
+            return "I encountered an error."
 
     def embed(self, text: str) -> list[float]:
         if not self.embedding_model:
-            return [0.0] * 384 # Return dummy vector if failed
+            return [0.0] * 384
         return self.embedding_model.encode(text).tolist()
 
 # Initialize singleton

@@ -1,310 +1,333 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AURA - AI Personal Assistant</title>
+    <title>AURA - AI Assistant</title>
     <link rel="stylesheet" href="/static/css/styles.css">
-    <link rel="icon" href="/static/assets/favicon.ico" type="image/x-icon">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 </head>
+
 <body>
-    <!-- Navigation -->
-    <nav class="navbar">
-        <div class="nav-container">
-            <div class="nav-brand">
-                <h1>🤖 AURA</h1>
-                <span class="tagline">Your AI Personal Assistant</span>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="brand">
+                <div class="logo-circle">A</div>
+                <h1>AURA</h1>
             </div>
-            <div class="nav-links">
-                <button class="nav-btn active" data-view="chat">💬 Chat</button>
-                <button class="nav-btn" data-view="tasks">✅ Tasks</button>
-                <button class="nav-btn" data-view="calendar">📅 Calendar</button>
-                <button class="nav-btn" data-view="analytics">📊 Analytics</button>
-                <button class="nav-btn" data-view="upload">📁 Upload</button>
-            </div>
-            <div class="nav-actions">
-                <button id="voice-btn" class="icon-btn" title="Voice Input">
-                    <span class="icon">🎤</span>
+
+            <nav class="nav-menu">
+                <button class="nav-item active" data-view="chat">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                    </svg>
+                    <span>Chat</span>
                 </button>
-                <button id="theme-toggle" class="icon-btn" title="Toggle Theme">
-                    <span class="icon">🌙</span>
+                <button class="nav-item" data-view="tasks">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M9 11l3 3L22 4" />
+                        <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+                    </svg>
+                    <span>Tasks</span>
                 </button>
-            </div>
-        </div>
-    </nav>
+                <button class="nav-item" data-view="calendar">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+                        <line x1="16" y1="2" x2="16" y2="6" />
+                        <line x1="8" y1="2" x2="8" y2="6" />
+                        <line x1="3" y1="10" x2="21" y2="10" />
+                    </svg>
+                    <span>Calendar</span>
+                </button>
+                <button class="nav-item" data-view="upload">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" />
+                        <polyline points="13 2 13 9 20 9" />
+                    </svg>
+                    <span>Knowledge</span>
+                </button>
+                <button class="nav-item" data-view="analytics">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="12" y1="20" x2="12" y2="10" />
+                        <line x1="18" y1="20" x2="18" y2="4" />
+                        <line x1="6" y1="20" x2="6" y2="16" />
+                    </svg>
+                    <span>Insights</span>
+                </button>
+            </nav>
 
-    <!-- Main Container -->
-    <main class="container">
-        <!-- Chat View -->
-        <div id="chat-view" class="view active">
-            <div class="chat-container">
-                <div id="chat-history" class="chat-history">
-                    <div id="empty-state" class="empty-state">
-                        <div class="empty-icon">👋</div>
-                        <h2>Hi! I'm AURA</h2>
-                        <p>Your AI-powered personal assistant. I can help you:</p>
-                        <div class="feature-grid">
-                            <div class="feature-card">
-                                <span class="feature-icon">✅</span>
-                                <span>Manage tasks</span>
+            <div class="sidebar-footer">
+                <button class="settings-btn" onclick="openSettings()">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="3" />
+                        <path
+                            d="M12 1v6m0 6v6m5.657-17.657L15.464 8.536m0 6.928l2.193 2.193M23 12h-6m-6 0H1m17.657 5.657l-7.071-7.071m0-6.93l-2.193-2.192M1 12l6 0m-6-5.657l2.193 2.193m0 6.928l-2.193 2.193" />
+                    </svg>
+                    <span>Settings</span>
+                </button>
+                <div class="user-profile">
+                    <div class="avatar">R</div>
+                    <div class="user-info">
+                        <span class="name">Rakshak</span>
+                        <span class="status">Online</span>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Chat View -->
+            <div id="chat-view" class="view active">
+                <div class="chat-interface">
+                    <div id="chat-history" class="chat-history">
+                        <div class="welcome-section">
+                            <div class="aura-avatar">
+                                <div class="avatar-glow"></div>
+                                <svg width="48" height="48" viewBox="0 0 24 24" fill="none">
+                                    <circle cx="12" cy="12" r="10" stroke="url(#grad1)" stroke-width="2" />
+                                    <path d="M12 8v8m-4-4h8" stroke="url(#grad1)" stroke-width="2"
+                                        stroke-linecap="round" />
+                                    <defs>
+                                        <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="100%">
+                                            <stop offset="0%" style="stop-color:#4facfe;stop-opacity:1" />
+                                            <stop offset="100%" style="stop-color:#00f2fe;stop-opacity:1" />
+                                        </linearGradient>
+                                    </defs>
+                                </svg>
                             </div>
-                            <div class="feature-card">
-                                <span class="feature-icon">📅</span>
-                                <span>Schedule events</span>
-                            </div>
-                            <div class="feature-card">
-                                <span class="feature-icon">🔔</span>
-                                <span>Set reminders</span>
-                            </div>
-                            <div class="feature-card">
-                                <span class="feature-icon">📊</span>
-                                <span>Track progress</span>
-                            </div>
+                            <h2>Good evening, Rakshak</h2>
+                            <p class="subtitle">How can I assist you today?</p>
                         </div>
-                        <div class="suggestions">
-                            <p class="suggestions-label">Try saying:</p>
-                            <button class="suggestion-chip" onclick="fillInput('Create a task to buy groceries tomorrow')">
-                                "Create a task to buy groceries tomorrow"
+                    </div>
+
+                    <div class="input-area">
+                        <div class="input-container">
+                            <button id="upload-btn-mini" class="icon-btn" title="Upload file"
+                                onclick="document.getElementById('chat-file-input').click()">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="2">
+                                    <path
+                                        d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+                                </svg>
                             </button>
-                            <button class="suggestion-chip" onclick="fillInput('Show my tasks for today')">
-                                "Show my tasks for today"
+                            <input type="file" id="chat-file-input" hidden accept=".pdf,.txt,.docx"
+                                onchange="handleChatFileUpload(event)">
+                            <textarea id="chat-input" placeholder="Ask me anything..." rows="1"
+                                onkeydown="handleChatInput(event)"></textarea>
+                            <button id="voice-btn" class="icon-btn voice-btn" title="Voice Input">
+                                <div class="mic-icon">
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                        stroke-width="2">
+                                        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                                        <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                                        <line x1="12" y1="19" x2="12" y2="23" />
+                                        <line x1="8" y1="23" x2="16" y2="23" />
+                                    </svg>
+                                </div>
+                                <div class="voice-waves">
+                                    <span></span><span></span><span></span>
+                                </div>
                             </button>
-                            <button class="suggestion-chip" onclick="fillInput('Summarize my day')">
-                                "Summarize my day"
+                            <button id="send-btn" class="send-btn" onclick="sendMessage()">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <line x1="22" y1="2" x2="11" y2="13" />
+                                    <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                                </svg>
                             </button>
                         </div>
                     </div>
                 </div>
-                
-                <div class="chat-input-container">
-                    <div class="input-wrapper">
-                        <textarea 
-                            id="chat-input" 
-                            placeholder="Type your message... (Press Enter to send, Shift+Enter for new line)"
-                            rows="1"
-                            onkeydown="handleChatInput(event)"
-                        ></textarea>
-                        <button id="send-btn" class="send-btn" onclick="sendMessage()">
-                            <span class="send-icon">➤</span>
-                        </button>
-                    </div>
-                </div>
             </div>
-        </div>
 
-        <!-- Tasks View -->
-        <div id="tasks-view" class="view">
-            <div class="tasks-container">
-                <div class="tasks-header">
-                    <h2>My Tasks</h2>
-                    <div class="tasks-actions">
-                        <select id="task-filter" onchange="filterTasks()">
-                            <option value="all">All Tasks</option>
-                            <option value="active">Active</option>
-                            <option value="completed">Completed</option>
-                            <option value="high">High Priority</option>
-                            <option value="urgent">Urgent</option>
-                        </select>
-                        <button class="btn-primary" onclick="openTaskModal()">
-                            <span>➕ Add Task</span>
-                        </button>
+            <!-- Tasks View -->
+            <div id="tasks-view" class="view">
+                <div class="view-header">
+                    <div>
+                        <h2>Tasks</h2>
+                        <p class="subtitle">Manage your mission control</p>
                     </div>
+                    <button class="btn-primary" onclick="openTaskModal()">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <line x1="12" y1="5" x2="12" y2="19" />
+                            <line x1="5" y1="12" x2="19" y2="12" />
+                        </svg>
+                        New Task
+                    </button>
                 </div>
-
-                <div class="search-bar">
-                    <input 
-                        type="text" 
-                        id="task-search" 
-                        placeholder="Search tasks..." 
-                        oninput="searchTasks()"
-                    >
-                    <span class="search-icon">🔍</span>
-                </div>
-
-                <div id="tasks-list" class="tasks-list">
-                    <!-- Tasks will be loaded here -->
-                    <div class="loading">Loading tasks...</div>
-                </div>
+                <div id="tasks-list" class="tasks-container"></div>
             </div>
-        </div>
 
-        <!-- Calendar View -->
-        <div id="calendar-view" class="view">
-            <div class="calendar-container">
-                <div class="calendar-header">
+            <!-- Calendar View -->
+            <div id="calendar-view" class="view">
+                <div class="view-header">
                     <h2>Calendar</h2>
                     <div class="calendar-nav">
-                        <button onclick="previousMonth()" class="btn-secondary">← Prev</button>
-                        <span id="current-month" class="current-month">Loading...</span>
-                        <button onclick="nextMonth()" class="btn-secondary">Next →</button>
+                        <button onclick="previousMonth()" class="icon-btn">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2">
+                                <polyline points="15 18 9 12 15 6" />
+                            </svg>
+                        </button>
+                        <span id="current-month" class="font-semibold"></span>
+                        <button onclick="nextMonth()" class="icon-btn">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2">
+                                <polyline points="9 18 15 12 9 6" />
+                            </svg>
+                        </button>
                     </div>
                 </div>
-                <div id="calendar-grid" class="calendar-grid">
-                    <!-- Calendar will be rendered here -->
+                <div id="calendar-grid" class="calendar-container"></div>
+            </div>
+
+            <!-- Upload/Knowledge View -->
+            <div id="upload-view" class="view">
+                <div class="view-header">
+                    <div>
+                        <h2>Knowledge Base</h2>
+                        <p class="subtitle">Enhance AURA's understanding with your documents</p>
+                    </div>
                 </div>
-                <div class="calendar-legend">
-                    <span class="legend-item"><span class="dot urgent"></span> Urgent</span>
-                    <span class="legend-item"><span class="dot high"></span> High</span>
-                    <span class="legend-item"><span class="dot medium"></span> Medium</span>
-                    <span class="legend-item"><span class="dot low"></span> Low</span>
+                <div class="upload-layout">
+                    <div class="upload-zone" id="drop-zone">
+                        <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="1.5">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                            <polyline points="17 8 12 3 7 8" />
+                            <line x1="12" y1="3" x2="12" y2="15" />
+                        </svg>
+                        <h3>Drop files here or browse</h3>
+                        <p>PDF, TXT, DOCX supported</p>
+                        <input type="file" id="file-input" hidden multiple onchange="handleFileSelect(event)">
+                        <button class="btn-secondary" onclick="document.getElementById('file-input').click()">Browse
+                            Files</button>
+                    </div>
+                    <div class="files-sidebar">
+                        <h3>Learned Documents</h3>
+                        <div id="files-list" class="files-list"></div>
+                    </div>
                 </div>
             </div>
-        </div>
 
-        <!-- Analytics View -->
-        <div id="analytics-view" class="view">
-            <div class="analytics-container">
-                <h2>Analytics & Insights</h2>
-                
+            <!-- Analytics View -->
+            <div id="analytics-view" class="view">
+                <div class="view-header">
+                    <h2>Analytics</h2>
+                    <p class="subtitle">Track your productivity</p>
+                </div>
                 <div class="stats-grid">
                     <div class="stat-card">
                         <div class="stat-icon">✅</div>
-                        <div class="stat-content">
-                            <div class="stat-value" id="total-completed">0</div>
-                            <div class="stat-label">Tasks Completed</div>
-                        </div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-icon">📊</div>
-                        <div class="stat-content">
-                            <div class="stat-value" id="completion-rate">0%</div>
-                            <div class="stat-label">Completion Rate</div>
-                        </div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-icon">🔥</div>
-                        <div class="stat-content">
-                            <div class="stat-value" id="daily-average">0</div>
-                            <div class="stat-label">Daily Average</div>
-                        </div>
+                        <div class="stat-value" id="total-completed">0</div>
+                        <div class="stat-label">Completed</div>
                     </div>
                     <div class="stat-card">
                         <div class="stat-icon">📈</div>
-                        <div class="stat-content">
-                            <div class="stat-value" id="total-created">0</div>
-                            <div class="stat-label">Tasks Created</div>
-                        </div>
+                        <div class="stat-value" id="completion-rate">0%</div>
+                        <div class="stat-label">Success Rate</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">📊</div>
+                        <div class="stat-value" id="daily-average">0</div>
+                        <div class="stat-label">Daily Average</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">🎯</div>
+                        <div class="stat-value" id="total-created">0</div>
+                        <div class="stat-label">Total Created</div>
                     </div>
                 </div>
+            </div>
+        </main>
+    </div>
 
-                <div class="chart-container">
-                    <h3>Activity Over Time</h3>
-                    <canvas id="activity-chart"></canvas>
+    <!-- Settings Modal -->
+    <div id="settings-modal" class="modal">
+        <div class="modal-overlay" onclick="closeSettings()"></div>
+        <div class="modal-content settings-panel">
+            <div class="modal-header">
+                <h2>Settings</h2>
+                <button class="icon-btn" onclick="closeSettings()">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18" />
+                        <line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                </button>
+            </div>
+            <div class="settings-content">
+                <div class="setting-group">
+                    <h3>Appearance</h3>
+                    <div class="setting-item">
+                        <label>Theme</label>
+                        <select id="theme-select" class="settings-select">
+                            <option value="dark">Dark</option>
+                            <option value="light">Light</option>
+                            <option value="auto">Auto</option>
+                        </select>
+                    </div>
                 </div>
-
-                <div class="priority-breakdown">
-                    <h3>Tasks by Priority</h3>
-                    <div id="priority-chart" class="priority-chart">
-                        <!-- Priority bars will be rendered here -->
+                <div class="setting-group">
+                    <h3>AI Model</h3>
+                    <div class="setting-item">
+                        <label>Temperature</label>
+                        <input type="range" min="0" max="100" value="10" id="temperature-slider">
+                        <span id="temp-value">0.1</span>
+                    </div>
+                </div>
+                <div class="setting-group">
+                    <h3>Profile</h3>
+                    <div class="setting-item">
+                        <label>Name</label>
+                        <input type="text" class="settings-input" value="Rakshak" id="user-name">
                     </div>
                 </div>
             </div>
         </div>
-
-        <!-- Upload View -->
-        <div id="upload-view" class="view">
-            <div class="upload-container">
-                <h2>Upload Documents</h2>
-                <p class="upload-description">Upload documents and I'll remember them for our conversations</p>
-                
-                <div class="upload-area" id="drop-zone">
-                    <div class="upload-icon">📁</div>
-                    <p class="upload-text">Drag & drop your files here</p>
-                    <p class="upload-subtext">or</p>
-                    <label for="file-input" class="btn-primary">
-                        Choose Files
-                    </label>
-                    <input type="file" id="file-input" hidden onchange="handleFileSelect(event)" multiple>
-                    <p class="upload-formats">Supported: PDF, DOCX, TXT, MD</p>
-                </div>
-
-                <div id="uploaded-files" class="uploaded-files">
-                    <h3>Uploaded Documents</h3>
-                    <div id="files-list" class="files-list">
-                        <!-- Uploaded files will appear here -->
-                        <div class="no-files">No documents uploaded yet</div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </main>
+    </div>
 
     <!-- Task Modal -->
     <div id="task-modal" class="modal">
-        <div class="modal-content">
+        <div class="modal-overlay" onclick="closeTaskModal()"></div>
+        <div class="modal-content task-panel">
             <div class="modal-header">
-                <h3 id="modal-title">Add New Task</h3>
-                <button class="modal-close" onclick="closeTaskModal()">×</button>
+                <h2>New Task</h2>
+                <button class="icon-btn" onclick="closeTaskModal()">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18" />
+                        <line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                </button>
             </div>
-            <div class="modal-body">
-                <div class="form-group">
-                    <label for="task-title">Title *</label>
-                    <input type="text" id="task-title" placeholder="Task title" required>
-                </div>
-                <div class="form-group">
-                    <label for="task-description">Description</label>
-                    <textarea id="task-description" placeholder="Task description" rows="3"></textarea>
-                </div>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label for="task-due-date">Due Date</label>
-                        <input type="datetime-local" id="task-due-date">
-                    </div>
-                    <div class="form-group">
-                        <label for="task-priority">Priority</label>
-                        <select id="task-priority">
-                            <option value="low">Low</option>
-                            <option value="medium" selected>Medium</option>
-                            <option value="high">High</option>
-                            <option value="urgent">Urgent</option>
-                        </select>
-                    </div>
-                </div>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label for="task-tags">Tags (comma-separated)</label>
-                        <input type="text" id="task-tags" placeholder="work, personal, shopping">
-                    </div>
-                    <div class="form-group">
-                        <label for="task-recurring">Recurring</label>
-                        <select id="task-recurring">
-                            <option value="">None</option>
-                            <option value="daily">Daily</option>
-                            <option value="weekly">Weekly</option>
-                            <option value="monthly">Monthly</option>
-                        </select>
-                    </div>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn-secondary" onclick="closeTaskModal()">Cancel</button>
-                <button class="btn-primary" onclick="saveTask()">Save Task</button>
+            <input type="text" id="task-title" placeholder="What needs to be done?" class="modal-input">
+            <textarea id="task-description" placeholder="Details..." class="modal-input" rows="3"></textarea>
+            <input type="datetime-local" id="task-due-date" class="modal-input">
+            <select id="task-priority" class="modal-input">
+                <option value="low">Low Priority</option>
+                <option value="medium" selected>Medium Priority</option>
+                <option value="high">High Priority</option>
+                <option value="urgent">Urgent</option>
+            </select>
+            <div class="modal-actions">
+                <button onclick="closeTaskModal()" class="btn-secondary">Cancel</button>
+                <button onclick="saveTask()" class="btn-primary">Save Task</button>
             </div>
         </div>
     </div>
 
-    <!-- Toast Notification -->
     <div id="toast" class="toast"></div>
 
-    <!-- Voice Recording Indicator -->
-    <div id="voice-indicator" class="voice-indicator" style="display: none;">
-        <div class="voice-animation">
-            <div class="voice-bar"></div>
-            <div class="voice-bar"></div>
-            <div class="voice-bar"></div>
-            <div class="voice-bar"></div>
-            <div class="voice-bar"></div>
-        </div>
-        <p>Listening...</p>
-        <button onclick="stopVoiceInput()" class="btn-secondary">Stop</button>
-    </div>
-
-    <!-- Scripts -->
+    <!-- Scripts - main.js MUST load first -->
     <script src="/static/js/main.js"></script>
     <script src="/static/js/chat.js"></script>
     <script src="/static/js/tasks.js"></script>
     <script src="/static/js/voice.js"></script>
     <script src="/static/js/upload.js"></script>
-    <script src="/static/js/search.js"></script>
+    <script src="/static/js/settings.js"></script>
 </body>
+
 </html>

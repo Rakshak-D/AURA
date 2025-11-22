@@ -241,50 +241,48 @@ class ChatService:
             print(f"Search error: {e}")
             return {"response": "I couldn't complete the search.", "action_taken": "error"}
     
+    def get_user_context(self, user_id: int, db: Session) -> str:
+        """Get user's tasks for context"""
+        try:
+            today = datetime.now().date()
+            
+            # Today's tasks
+            today_tasks = db.query(Task).filter(
+                Task.user_id == user_id,
+                Task.completed == False,
+                Task.due_date >= datetime.combine(today, datetime.min.time()),
+                Task.due_date < datetime.combine(today + timedelta(days=1), datetime.min.time())
+            ).limit(5).all()
+            
+            # Upcoming tasks
+            upcoming = db.query(Task).filter(
+                Task.user_id == user_id,
+                Task.completed == False,
+                Task.due_date >= datetime.combine(today + timedelta(days=1), datetime.min.time())
+            ).limit(5).all()
+            
+            parts = []
+            if today_tasks:
+                tasks = ", ".join([t.title for t in today_tasks])
+                parts.append(f"Today: {tasks}")
+            if upcoming:
+                parts.append(f"{len(upcoming)} upcoming")
+            
+            return " | ".join(parts) if parts else ""
+        except:
+            return ""
+    
     def handle_general_chat(self, user_id: int, message: str, db: Session):
         try:
-            context = query_rag(message) if query_rag else ""
+            # Get user context
+            context = self.get_user_context(user_id, db)
             
-            history = db.query(ChatHistory).filter_by(user_id=user_id)\
-                .order_by(ChatHistory.timestamp.desc()).limit(5).all()
-            history_text = "\n".join([f"{h.role}: {h.content}" for h in reversed(history)])
-            
-            prompt = f"""You are Aura, a helpful AI personal assistant.
-            
-Context: {context}
-
-Recent conversation:
-{history_text}
-
-User: {message}
-Aura:"""
-            
-            response = llm.generate(prompt, max_tokens=300)
-            
-            return {
-                "response": response,
-                "action_taken": "chat",
-                "data": {}
-            }
-            
-        except Exception as e:
-            print(f"General chat error: {e}")
-            return {"response": "I'm here to help! Can you rephrase that?", "action_taken": "error"}
-    
-    def save_message(self, user_id: int, role: str, content: str, db: Session, intent: str = None):
-        try:
-            msg = ChatHistory(
-                user_id=user_id,
-                role=role,
-                content=content,
-                intent=intent
-            )
-            db.add(msg)
-            db.commit()
-        except Exception as e:
-            print(f"Error saving message: {e}")
-            db.rollback()
-    
+            # Phi-3 prompt format
+            prompt = "<|system|>\nYou are AURA, a helpful AI assistant. Be concise.\n"
+            if context:
+                prompt += f"Context: {context}\n"
+            prompt += "<|end|>\n"
+            prompt += f"
     def format_due_date(self, due_date: datetime) -> str:
         now = datetime.now()
         diff = due_date - now

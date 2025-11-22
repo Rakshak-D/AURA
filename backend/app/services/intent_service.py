@@ -1,41 +1,55 @@
-from datetime import datetime, timedelta
 import re
-from typing import Dict, Optional, List
+from datetime import datetime, timedelta
+from typing import Dict, Optional
 
 def detect_intent(message: str) -> str:
-    """Detect the intent from user message"""
-    message_lower = message.lower()
+    """
+    ULTRA-CONSERVATIVE intent detection.
+    Only classify as task/reminder with EXPLICIT keywords to avoid false positives.
+    DEFAULT: general_chat for anything questionable.
+    """
+    msg_lower = message.lower().strip()
     
-    # Task creation keywords
-    task_create_keywords = ['create', 'add', 'schedule', 'remind me', 'todo', 'task', 'need to', 'have to', 'buy', 'call', 'email', 'meeting']
-    if any(keyword in message_lower for keyword in task_create_keywords):
-        return 'task_create'
+    # EXPLICIT task creation - must have clear command words
+    task_create_patterns = [
+        r'\b(create|add|make|new)\s+(a\s+)?task\b',
+        r'\btask:\s*',
+        r'\bremind\s+me\s+to\b',
+        r'\bset\s+(a\s+)?reminder\b',
+    ]
     
-    # Task query keywords
-    task_query_keywords = ['show', 'list', 'what', 'tasks', 'todo', 'pending', 'upcoming', 'due', 'today', 'tomorrow', 'week']
-    if any(keyword in message_lower for keyword in task_query_keywords) and 'create' not in message_lower:
-        return 'task_query'
+    for pattern in task_create_patterns:
+        if re.search(pattern, msg_lower):
+            return 'task_create'
     
-    # Task completion keywords
-    task_complete_keywords = ['complete', 'done', 'finish', 'mark', 'check']
-    if any(keyword in message_lower for keyword in task_complete_keywords):
+    # Task queries - must explicitly mention tasks
+    task_query_patterns = [
+        r'\b(show|list|display|get|what are)\s+(my\s+)?tasks?\b',
+        r'\bmy\s+tasks?\b',
+        r'\bwhat.s\s+(on\s+)?my\s+schedule\b',
+    ]
+    
+    for pattern in task_query_patterns:
+        if re.search(pattern, msg_lower):
+            return 'task_query'
+    
+    # Task completion - explicit
+    if re.search(r'\b(complete|finish|mark)\s+task\b', msg_lower):
         return 'task_update'
     
-    # Delete keywords
-    delete_keywords = ['delete', 'remove', 'cancel']
-    if any(keyword in message_lower for keyword in delete_keywords):
+    # Task delete - explicit
+    if re.search(r'\b(delete|remove)\s+task\b', msg_lower):
         return 'task_delete'
     
-    # Summary keywords
-    summary_keywords = ['summary', 'summarize', 'overview', 'how am i doing', 'progress', 'today']
-    if any(keyword in message_lower for keyword in summary_keywords) and any(w in message_lower for w in ['my', 'day', 'week']):
+    # Summary - explicit
+    if re.search(r'\b(summarize|summary\s+of)\s+(my\s+)?(day|week)\b', msg_lower):
         return 'day_summary'
     
-    # Search keywords
-    search_keywords = ['search', 'find', 'look for']
-    if any(keyword in message_lower for keyword in search_keywords):
+    # Search - must say "search"
+    if re.search(r'\bsearch\s+(for|in)\b', msg_lower):
         return 'search'
     
+    # DEFAULT: General chat (most questions, explanations, etc.)
     return 'general_chat'
 
 def extract_task_info(message: str) -> Dict:
@@ -53,7 +67,7 @@ def extract_task_info(message: str) -> Dict:
         info['priority'] = 'urgent'
     elif any(word in message.lower() for word in ['high priority', 'high']):
         info['priority'] = 'high'
-    elif any(word in message.lower() for word in ['low priority', 'low', 'sometime']):
+    elif any(word in message.lower() for word in ['low priority', 'low']):
         info['priority'] = 'low'
     
     # Detect recurring
@@ -75,25 +89,12 @@ def extract_task_info(message: str) -> Dict:
     return info
 
 def clean_task_title(message: str) -> str:
-    """Clean task title by removing command words and time expressions"""
-    command_words = ['create', 'add', 'schedule', 'remind me to', 'remind me', 'i need to', 'i have to', 'todo', 'task']
+    """Clean task title by removing command words"""
+    command_words = ['create', 'add', 'schedule', 'remind me to', 'remind me', 'task']
     
     cleaned = message
     for word in command_words:
         cleaned = re.sub(f'\\b{word}\\b', '', cleaned, flags=re.IGNORECASE)
-    
-    # Remove time-related phrases
-    time_patterns = [
-        r'tomorrow', r'today', r'next week', r'next month',
-        r'in \d+ (hour|hours|day|days|week|weeks)',
-        r'at \d+:\d+ (am|pm|AM|PM)',
-        r'on (monday|tuesday|wednesday|thursday|friday|saturday|sunday)',
-        r'(urgent|asap|high priority|low priority)',
-        r'#\w+'
-    ]
-    
-    for pattern in time_patterns:
-        cleaned = re.sub(pattern, '', cleaned, flags=re.IGNORECASE)
     
     return cleaned.strip().capitalize()
 
@@ -102,79 +103,21 @@ def extract_date_time(message: str) -> Optional[datetime]:
     message_lower = message.lower()
     now = datetime.now()
     
-    # Today
     if 'today' in message_lower:
-        time = extract_time(message)
-        if time:
-            return now.replace(hour=time[0], minute=time[1], second=0, microsecond=0)
         return now.replace(hour=18, minute=0, second=0, microsecond=0)
     
-    # Tomorrow
     if 'tomorrow' in message_lower:
         tomorrow = now + timedelta(days=1)
-        time = extract_time(message)
-        if time:
-            return tomorrow.replace(hour=time[0], minute=time[1], second=0, microsecond=0)
         return tomorrow.replace(hour=9, minute=0, second=0, microsecond=0)
     
-    # Next week
     if 'next week' in message_lower:
         next_week = now + timedelta(days=7)
         return next_week.replace(hour=9, minute=0, second=0, microsecond=0)
-    
-    # In X days
-    match = re.search(r'in (\d+) days?', message_lower)
-    if match:
-        days = int(match.group(1))
-        future = now + timedelta(days=days)
-        return future.replace(hour=9, minute=0, second=0, microsecond=0)
-    
-    # In X hours
-    match = re.search(r'in (\d+) hours?', message_lower)
-    if match:
-        hours = int(match.group(1))
-        return now + timedelta(hours=hours)
-    
-    # Specific day of week
-    days_of_week = {
-        'monday': 0, 'tuesday': 1, 'wednesday': 2, 'thursday': 3,
-        'friday': 4, 'saturday': 5, 'sunday': 6
-    }
-    
-    for day_name, day_num in days_of_week.items():
-        if day_name in message_lower:
-            current_day = now.weekday()
-            days_ahead = day_num - current_day
-            if days_ahead <= 0:
-                days_ahead += 7
-            target_date = now + timedelta(days=days_ahead)
-            time = extract_time(message)
-            if time:
-                return target_date.replace(hour=time[0], minute=time[1], second=0, microsecond=0)
-            return target_date.replace(hour=9, minute=0, second=0, microsecond=0)
-    
-    # Date format MM/DD or MM/DD/YYYY
-    match = re.search(r'(\d{1,2})/(\d{1,2})(?:/(\d{2,4}))?', message)
-    if match:
-        month = int(match.group(1))
-        day = int(match.group(2))
-        year = int(match.group(3)) if match.group(3) else now.year
-        if year < 100:
-            year += 2000
-        try:
-            date = datetime(year, month, day)
-            time = extract_time(message)
-            if time:
-                return date.replace(hour=time[0], minute=time[1])
-            return date.replace(hour=9, minute=0)
-        except ValueError:
-            pass
     
     return None
 
 def extract_time(message: str) -> Optional[tuple]:
     """Extract time from message"""
-    # Format: "at 3:30 pm" or "at 3 pm"
     match = re.search(r'at (\d{1,2}):(\d{2})\s*(am|pm)', message.lower())
     if match:
         hour = int(match.group(1))
@@ -187,18 +130,5 @@ def extract_time(message: str) -> Optional[tuple]:
             hour = 0
         
         return (hour, minute)
-    
-    # Format: "at 3 pm"
-    match = re.search(r'at (\d{1,2})\s*(am|pm)', message.lower())
-    if match:
-        hour = int(match.group(1))
-        period = match.group(2)
-        
-        if period == 'pm' and hour != 12:
-            hour += 12
-        elif period == 'am' and hour == 12:
-            hour = 0
-        
-        return (hour, 0)
     
     return None

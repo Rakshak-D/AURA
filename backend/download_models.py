@@ -1,37 +1,80 @@
 import os
+import requests
 from pathlib import Path
-from huggingface_hub import hf_hub_download
+
+# Model configurations
+MODELS = {
+    "llm": {
+        "name": "Phi-3-mini-4k-instruct (Q4)",
+        "url": "https://huggingface.co/microsoft/Phi-3-mini-4k-instruct-gguf/resolve/main/Phi-3-mini-4k-instruct-q4.gguf",
+        "filename": "phi-3-mini-4k-instruct-q4.gguf",
+        "size": "3.8 GB"
+    },
+    "embedding": {
+        "name": "all-MiniLM-L6-v2",
+        "model_id": "sentence-transformers/all-MiniLM-L6-v2",
+        "size": "80 MB"
+    }
+}
+
+def download_file(url, filepath):
+    """Download file with progress bar"""
+    print(f"📥 Downloading from: {url}")
+    print(f"📁 Saving to: {filepath}")
+    
+    response = requests.get(url, stream=True)
+    total_size = int(response.headers.get('content-length', 0))
+    
+    if total_size == 0:
+        print("⚠️  Warning: Could not determine file size")
+    
+    downloaded = 0
+    block_size = 8192
+    
+    with open(filepath, 'wb') as f:
+        for chunk in response.iter_content(chunk_size=block_size):
+            if chunk:
+                f.write(chunk)
+                downloaded += len(chunk)
+                
+                if total_size > 0:
+                    percent = (downloaded / total_size) * 100
+                    mb_downloaded = downloaded / (1024 * 1024)
+                    mb_total = total_size / (1024 * 1024)
+                    print(f"\r  Progress: {percent:.1f}% ({mb_downloaded:.1f}/{mb_total:.1f} MB)", end='')
+    
+    print(f"\n✅ Download complete: {filepath.name}")
 
 def download_models():
-    BASE_DIR = Path(__file__).resolve().parent.parent
-    MODELS_DIR = BASE_DIR / "models"
-    MODELS_DIR.mkdir(parents=True, exist_ok=True)
+    """Download all required models"""
+    models_dir = Path("models")
+    models_dir.mkdir(exist_ok=True)
     
-    MODEL_FILENAME = "tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf"
-    MODEL_PATH = MODELS_DIR / MODEL_FILENAME
+    print("🚀 AURA Model Downloader")
+    print("=" * 50)
     
-    if MODEL_PATH.exists():
-        print(f"✅ Model already exists: {MODEL_PATH}")
-        return
+    # Download LLM
+    llm_config = MODELS["llm"]
+    llm_path = models_dir / llm_config["filename"]
     
-    print("📥 Downloading AI model from Hugging Face...")
-    print("   This may take a few minutes...")
+    if llm_path.exists():
+        print(f"✅ LLM already exists: {llm_path}")
+    else:
+        print(f"\n📦 Downloading {llm_config['name']} ({llm_config['size']})")
+        download_file(llm_config["url"], llm_path)
     
-    try:
-        downloaded_path = hf_hub_download(
-            repo_id="TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF",
-            filename=MODEL_FILENAME,
-            local_dir=MODELS_DIR,
-            local_dir_use_symlinks=False
-        )
-        print(f"✅ Model downloaded successfully: {downloaded_path}")
-        
-    except Exception as e:
-        print(f"❌ Error downloading model: {e}")
-        print("\n📝 Manual Download Instructions:")
-        print("1. Visit: https://huggingface.co/TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF")
-        print(f"2. Download: {MODEL_FILENAME}")
-        print(f"3. Place in: {MODELS_DIR}")
+    # Embedding model info (downloaded automatically by sentence-transformers)
+    emb_config = MODELS["embedding"]
+    print(f"\n📦 Embedding Model: {emb_config['name']} ({emb_config['size']})")
+    print(f"   Will be auto-downloaded on first run by sentence-transformers")
+    
+    print("\n" + "=" * 50)
+    print("🎉 Model setup complete!")
+    print(f"\n📊 Total size: ~{float(llm_config['size'].split()[0]) + 0.08:.1f} GB")
+    print("\n💡 Phi-3 is MUCH smarter than TinyLlama!")
+    print("   - Better reasoning")
+    print("   - More accurate responses")
+    print("   - Better instruction following")
 
 if __name__ == "__main__":
     download_models()

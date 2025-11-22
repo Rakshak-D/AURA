@@ -1,55 +1,65 @@
-// Voice input functionality
+// Voice input functionality with proper error handling
+
 let recognition = null;
 let isListening = false;
 
 function setupVoiceInput() {
     const voiceBtn = document.getElementById('voice-btn');
-    
-    // Check if browser supports speech recognition
+
+    if (!voiceBtn) {
+        console.warn('Voice button not found');
+        return;
+    }
+
     if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         recognition = new SpeechRecognition();
-        
+
         recognition.continuous = false;
         recognition.interimResults = false;
         recognition.lang = 'en-US';
-        
+
         recognition.onstart = () => {
             isListening = true;
-            document.getElementById('voice-indicator').style.display = 'flex';
             voiceBtn.classList.add('listening');
         };
-        
+
         recognition.onresult = (event) => {
-            const transcript = event.results.transcript;
-            document.getElementById('chat-input').value = transcript;
+            const transcript = event.results[0][0].transcript;
+            const chatInput = document.getElementById('chat-input');
+            if (chatInput) {
+                chatInput.value = transcript;
+                chatInput.focus();
+            }
             stopVoiceInput();
-            
-            // Auto-send if user said something
+
+            // Auto-send after a brief delay
             if (transcript.trim()) {
-                setTimeout(() => sendMessage(), 500);
+                setTimeout(() => sendMessage(), 300);
             }
         };
-        
+
         recognition.onerror = (event) => {
             console.error('Speech recognition error:', event.error);
             stopVoiceInput();
-            
+
             if (event.error === 'no-speech') {
-                showToast('No speech detected. Please try again.', 'warning');
+                showToast('No speech detected. Try again.', 'info');
+            } else if (event.error === 'not-allowed') {
+                showToast('Microphone access denied', 'error');
             } else {
-                showToast('Voice input error. Please try again.', 'error');
+                showToast('Voice input error', 'error');
             }
         };
-        
+
         recognition.onend = () => {
             stopVoiceInput();
         };
-        
+
         voiceBtn.addEventListener('click', toggleVoiceInput);
     } else {
         voiceBtn.style.display = 'none';
-        console.warn('Speech recognition not supported');
+        console.warn('Speech recognition not supported in this browser');
     }
 }
 
@@ -63,15 +73,26 @@ function toggleVoiceInput() {
 
 function startVoiceInput() {
     if (recognition && !isListening) {
-        recognition.start();
+        try {
+            recognition.start();
+        } catch (error) {
+            console.error('Failed to start recognition:', error);
+            showToast('Could not start voice input', 'error');
+        }
     }
 }
 
 function stopVoiceInput() {
     if (recognition && isListening) {
-        recognition.stop();
+        try {
+            recognition.stop();
+        } catch (error) {
+            console.error('Error stopping recognition:', error);
+        }
         isListening = false;
-        document.getElementById('voice-indicator').style.display = 'none';
-        document.getElementById('voice-btn').classList.remove('listening');
+        const voiceBtn = document.getElementById('voice-btn');
+        if (voiceBtn) {
+            voiceBtn.classList.remove('listening');
+        }
     }
 }

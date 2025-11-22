@@ -8,12 +8,38 @@ router = APIRouter()
 
 @router.post("/upload")
 async def upload_file(file: UploadFile = File(...), db: Session = Depends(get_db)):
-    content = parse_document(file.file, file.content_type)
-    
-    doc = Document(filename=file.filename, content=content)
-    db.add(doc)
-    db.commit()
-    
-    add_to_rag(file.filename, content)
-    
-    return {"status": "success", "filename": file.filename}
+    try:
+        content = parse_document(file.file, file.content_type)
+        
+        # Check if file already exists to avoid duplicates (optional, but good practice)
+        existing = db.query(Document).filter(Document.filename == file.filename).first()
+        if existing:
+            return {"status": "error", "message": "File already exists"}
+
+        doc = Document(filename=file.filename, content=content, file_type=file.content_type)
+        db.add(doc)
+        db.commit()
+        
+        add_to_rag(file.filename, content)
+        
+        return {"status": "success", "filename": file.filename, "message": "File uploaded and processed"}
+    except Exception as e:
+        print(f"Upload error: {e}")
+        return {"status": "error", "message": str(e)}
+
+@router.get("/upload/files")
+async def list_files(db: Session = Depends(get_db)):
+    try:
+        docs = db.query(Document).all()
+        return {
+            "status": "success",
+            "files": [
+                {
+                    "id": doc.id,
+                    "filename": doc.filename,
+                    "uploaded_at": doc.uploaded_at.isoformat() if doc.uploaded_at else None
+                } for doc in docs
+            ]
+        }
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
