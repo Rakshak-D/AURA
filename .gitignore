@@ -135,7 +135,7 @@ celerybeat.pid
 *.sage.py
 
 # Environments
-.env
+#.env
 .envrc
 .venv
 env/
@@ -234,6 +234,7 @@ models/
 *.pkl
 *.pth
 backend/models/
+!backend/app/models/
 
 # Uploaded documents (user content)
 uploads/

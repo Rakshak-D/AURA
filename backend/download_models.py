@@ -7,7 +7,7 @@ def download_models():
     MODELS_DIR = BASE_DIR / "models"
     MODELS_DIR.mkdir(parents=True, exist_ok=True)
     
-    MODEL_FILENAME = "qwen2-1.5b-instruct-q4_k_m.gguf"
+    MODEL_FILENAME = "tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf"
     MODEL_PATH = MODELS_DIR / MODEL_FILENAME
     
     if MODEL_PATH.exists():
@@ -19,7 +19,7 @@ def download_models():
     
     try:
         downloaded_path = hf_hub_download(
-            repo_id="Qwen/Qwen2-1.5B-Instruct-GGUF",
+            repo_id="TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF",
             filename=MODEL_FILENAME,
             local_dir=MODELS_DIR,
             local_dir_use_symlinks=False
@@ -29,7 +29,7 @@ def download_models():
     except Exception as e:
         print(f"❌ Error downloading model: {e}")
         print("\n📝 Manual Download Instructions:")
-        print("1. Visit: https://huggingface.co/Qwen/Qwen2-1.5B-Instruct-GGUF")
+        print("1. Visit: https://huggingface.co/TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF")
         print(f"2. Download: {MODEL_FILENAME}")
         print(f"3. Place in: {MODELS_DIR}")
 

@@ -21,6 +21,9 @@ def add_to_rag(filename: str, content: str):
     )
 
 def query_rag(query: str, k: int = 3) -> str:
+    if collection is None:
+        return ""
+    
     query_emb = llm.embed(query)
     results = collection.query(query_embeddings=[query_emb], n_results=k)
     

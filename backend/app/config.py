@@ -14,7 +14,7 @@ class Config:
     DB_PATH = DATA_DIR / "db.sqlite"
     CHROMA_PATH = DATA_DIR / "chroma"
     
-    MODEL_FILENAME = os.getenv("MODEL_FILENAME", "qwen2-1.5b.gguf")
+    MODEL_FILENAME = os.getenv("MODEL_FILENAME", "tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf")
     MODEL_PATH = MODELS_DIR / MODEL_FILENAME
     EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
     

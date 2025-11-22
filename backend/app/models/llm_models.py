@@ -9,6 +9,7 @@ class LLM:
         self.embedding_model = None
         
         # Load LLM
+        print(f"🔍 Checking model path: {config.MODEL_PATH.resolve()}")
         if not config.MODEL_PATH.exists():
             print(f"⚠️ CRITICAL: Model not found at {config.MODEL_PATH}")
             print("   Run 'python backend/download_models.py' to fix this.")
