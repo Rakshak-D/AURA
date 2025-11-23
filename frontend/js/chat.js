@@ -32,11 +32,13 @@ async function sendMessage() {
         // Remove Loading
         removeLoadingIndicator(loadingId);
 
-        // Handle Response
-        if (data.response) {
-            // Check for structured data to render cards
+        // Handle Widget Response
+        if (data.type === 'widget') {
+            renderWidget(data);
+        } else if (data.response) {
+            // Fallback to text or legacy task card
             if (data.action_taken === 'task_query' && data.data && data.data.tasks) {
-                addTaskCard(data.response, data.data.tasks);
+                renderWidget({ type: 'widget', widget_type: 'task_list', data: { title: data.response, tasks: data.data.tasks } });
             } else {
                 addMessage(data.response, 'assistant');
             }
@@ -45,11 +47,6 @@ async function sendMessage() {
         // Handle Actions
         if (data.action_taken) {
             handleAction(data.action_taken, data.data);
-        }
-
-        // Update Suggestions
-        if (data.suggestions) {
-            updateSuggestions(data.suggestions);
         }
 
     } catch (error) {
@@ -64,8 +61,6 @@ function addMessage(text, sender, isError = false) {
     const div = document.createElement('div');
     div.className = `message ${sender} ${isError ? 'error' : ''}`;
 
-    // Convert markdown-like links to HTML
-    // Simple regex for [text](url)
     const formattedText = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>')
         .replace(/\n/g, '<br>');
 
@@ -80,28 +75,47 @@ function addMessage(text, sender, isError = false) {
     return div;
 }
 
-function addTaskCard(title, tasks) {
+function renderWidget(widgetData) {
     const history = document.getElementById('chat-history');
     const div = document.createElement('div');
     div.className = 'message assistant';
 
-    let tasksHtml = tasks.map(t => `
-        <div class="task-card-item">
-            <input type="checkbox" ${t.completed ? 'checked' : ''} onclick="toggleTask(${t.id}, this.checked)">
-            <span class="${t.completed ? 'completed' : ''}">${t.title}</span>
-            <span class="task-time">${t.due_date ? new Date(t.due_date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}</span>
-        </div>
-    `).join('');
+    let content = '';
 
-    div.innerHTML = `
-        <div class="message-content task-card">
-            <p>${title}</p>
-            <div class="task-list-card">
+    if (widgetData.widget_type === 'task_list') {
+        const tasks = widgetData.data.tasks || [];
+        const tasksHtml = tasks.map(t => `
+            <div class="task-card-widget">
+                <input type="checkbox" ${t.completed ? 'checked' : ''} onclick="toggleTask(${t.id}, this.checked)">
+                <div style="flex:1">
+                    <div class="${t.completed ? 'completed' : ''}" style="font-weight:500">${t.title}</div>
+                    <div style="font-size:0.8em; color:var(--text-secondary)">
+                        ${t.due_date ? new Date(t.due_date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                        ${t.category ? `• ${t.category}` : ''}
+                    </div>
+                </div>
+            </div>
+        `).join('');
+
+        content = `
+            <div class="message-content">
+                <p style="margin-bottom:10px">${widgetData.data.title || 'Here are your tasks:'}</p>
                 ${tasksHtml}
             </div>
-        </div>
-    `;
+        `;
+    } else if (widgetData.widget_type === 'calendar_snippet') {
+        // Placeholder for calendar snippet
+        content = `
+            <div class="message-content">
+                <p>📅 Calendar View</p>
+                <div style="background:rgba(0,0,0,0.2); padding:10px; border-radius:8px;">
+                    ${widgetData.data.events.map(e => `<div>${e.time} - ${e.title}</div>`).join('')}
+                </div>
+            </div>
+        `;
+    }
 
+    div.innerHTML = content;
     history.appendChild(div);
     scrollToBottom();
 }
@@ -139,7 +153,6 @@ function handleChatInput(e) {
         e.preventDefault();
         sendMessage();
     }
-    // Auto-resize
     e.target.style.height = 'auto';
     e.target.style.height = e.target.scrollHeight + 'px';
 }
@@ -150,8 +163,11 @@ function setChatInput(text) {
     input.focus();
 }
 
-function updateSuggestions(suggestions) {
-    // Optional: Update suggestion chips dynamically
+function handleAction(action, data) {
+    if (action === 'task_create' || action === 'task_update' || action === 'task_delete') {
+        // Refresh tasks if on task view
+        if (window.loadTasks) window.loadTasks();
+    }
 }
 
 // Initialize

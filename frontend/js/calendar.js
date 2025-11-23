@@ -1,197 +1,135 @@
-// Calendar & Routine Logic
+// Calendar Logic: Vertical Timeline View
 let currentCalendarDate = new Date();
 let calendarEvents = [];
 
 async function renderCalendar() {
     const container = document.getElementById('calendar-grid');
-    const timelineContainer = document.getElementById('timeline-container');
-
     if (!container) return;
-
-    const year = currentCalendarDate.getFullYear();
-    const month = currentCalendarDate.getMonth();
 
     // Update Header
     const monthLabel = document.getElementById('current-month');
     if (monthLabel) {
-        monthLabel.textContent = currentCalendarDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+        monthLabel.textContent = currentCalendarDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
     }
 
     // Fetch Routine/Events
     try {
         const routine = await apiCall('/schedule/routine');
         calendarEvents = routine.timeline || [];
-
-        // Render Grid
-        renderGrid(container, year, month, calendarEvents);
-
-        // Render Timeline (Today)
-        if (timelineContainer) {
-            renderTimeline(timelineContainer, calendarEvents);
-        }
-
+        renderTimelineView(container, calendarEvents);
     } catch (error) {
         console.error('Error fetching calendar:', error);
-        showToast('Failed to load calendar', 'error');
+        container.innerHTML = '<div class="error-state">Failed to load schedule</div>';
     }
 }
 
-function renderGrid(container, year, month, events) {
-    const firstDay = new Date(year, month, 1).getDay();
-    const daysInMonth = new Date(year, month + 1, 0).getDate();
+function renderTimelineView(container, events) {
+    const hours = Array.from({ length: 24 }, (_, i) => i);
+    const dateStr = currentCalendarDate.toISOString().split('T')[0];
 
-    let html = '';
+    // Filter events for selected date
+    const dayEvents = events.filter(e => e.start.startsWith(dateStr));
 
-    // Weekday headers
-    ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].forEach(day => {
-        html += `<div class="calendar-weekday">${day}</div>`;
+    let html = '<div class="timeline-wrapper">';
+
+    // Time slots
+    html += '<div class="time-column">';
+    hours.forEach(hour => {
+        html += `<div class="time-slot">${String(hour).padStart(2, '0')}:00</div>`;
+    });
+    html += '</div>';
+
+    // Events column
+    html += '<div class="events-column">';
+
+    // Render background grid
+    hours.forEach(hour => {
+        html += `<div class="grid-line" style="top: ${hour * 60}px"></div>`;
     });
 
-    // Empty cells
-    for (let i = 0; i < firstDay; i++) {
-        html += '<div class="calendar-day empty"></div>';
-    }
+    // Render Events
+    dayEvents.forEach(event => {
+        const start = new Date(event.start);
+        const end = new Date(event.end);
 
-    // Days
-    const today = new Date();
-    for (let day = 1; day <= daysInMonth; day++) {
-        const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-        const isToday = day === today.getDate() && month === today.getMonth() && year === today.getFullYear();
+        const startMinutes = start.getHours() * 60 + start.getMinutes();
+        const duration = (end - start) / 60000;
 
-        // Filter events for this day
-        const dayEvents = events.filter(e => e.start.startsWith(dateStr));
+        let colorClass = 'event-task'; // Purple
+        if (event.type === 'busy') colorClass = 'event-busy'; // Red
+        if (event.type === 'free') colorClass = 'event-free'; // Green
 
-        let eventsHtml = dayEvents.slice(0, 3).map(e => `
-            <div class="event-dot ${e.type === 'class' ? 'event-class' : 'event-task'}" 
-                 draggable="true" 
-                 ondragstart="handleDragStart(event, '${e.id}', '${e.type}')">
-                • ${e.title}
-            </div>
-        `).join('');
-
-        if (dayEvents.length > 3) {
-            eventsHtml += `<div class="event-more">+${dayEvents.length - 3} more</div>`;
-        }
+        // Inline style for positioning
+        const style = `top: ${startMinutes}px; height: ${duration}px;`;
 
         html += `
-            <div class="calendar-day${isToday ? ' today' : ''}" 
-                 ondragover="handleDragOver(event)" 
-                 ondrop="handleDrop(event, '${dateStr}')"
-                 onclick="showDayDetails('${dateStr}')">
-                <div class="day-number">${day}</div>
-                ${eventsHtml}
+            <div class="timeline-event ${colorClass}" style="${style}" onclick="showEventDetails('${event.id}')">
+                <div class="event-title">${event.title}</div>
+                <div class="event-time">${start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - ${end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
             </div>
         `;
-    }
+    });
+
+    html += '</div></div>'; // Close wrapper
+
+    // Add CSS for timeline if not present (injecting here for simplicity, or assume styles.css handles it)
+    // I'll assume styles.css needs to support this structure.
+    // Since I already updated styles.css, I might need to add specific timeline styles there or inline them.
+    // I'll add a style block here to ensure it works immediately.
+    html += `
+        <style>
+            .timeline-wrapper { display: flex; position: relative; height: 1440px; }
+            .time-column { width: 60px; border-right: 1px solid rgba(255,255,255,0.1); }
+            .time-slot { height: 60px; padding: 5px; font-size: 12px; color: var(--text-secondary); }
+            .events-column { flex: 1; position: relative; }
+            .grid-line { position: absolute; width: 100%; height: 1px; background: rgba(255,255,255,0.05); }
+            .timeline-event { 
+                position: absolute; 
+                width: 90%; 
+                left: 5%; 
+                border-radius: 6px; 
+                padding: 5px 10px; 
+                font-size: 12px; 
+                overflow: hidden;
+                cursor: pointer;
+                transition: transform 0.2s;
+                border: 1px solid rgba(255,255,255,0.1);
+            }
+            .timeline-event:hover { transform: scale(1.02); z-index: 10; }
+            .event-task { background: rgba(176, 38, 255, 0.3); border-left: 3px solid var(--neon-purple); }
+            .event-busy { background: rgba(255, 59, 48, 0.3); border-left: 3px solid #ff3b30; }
+            .event-free { background: rgba(52, 199, 89, 0.3); border-left: 3px solid #34c759; }
+        </style>
+    `;
 
     container.innerHTML = html;
-}
-
-function renderTimeline(container, events) {
-    // Filter for today
-    const todayStr = new Date().toISOString().split('T')[0];
-    const todayEvents = events.filter(e => e.start.startsWith(todayStr));
-
-    if (todayEvents.length === 0) {
-        container.innerHTML = '<div class="no-events">No events scheduled for today.</div>';
-        return;
-    }
-
-    let html = '<h3>Today\'s Timeline</h3><div class="timeline-list">';
-
-    html += todayEvents.map(e => `
-        <div class="timeline-item type-${e.type}">
-            <div class="time">
-                <span>${formatTime(e.start)}</span>
-                <span class="duration">${getDuration(e.start, e.end)}m</span>
-            </div>
-            <div class="content">
-                <div class="title">${e.title}</div>
-                <div class="type">${e.type}</div>
-            </div>
-        </div>
-    `).join('');
-
-    html += '</div>';
-    container.innerHTML = html;
-}
-
-// Drag & Drop Handlers
-function handleDragStart(e, id, type) {
-    e.dataTransfer.setData('text/plain', JSON.stringify({ id, type }));
-    e.dataTransfer.effectAllowed = 'move';
-}
-
-function handleDragOver(e) {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    e.currentTarget.classList.add('drag-over');
-}
-
-async function handleDrop(e, dateStr) {
-    e.preventDefault();
-    e.currentTarget.classList.remove('drag-over');
-
-    const data = JSON.parse(e.dataTransfer.getData('text/plain'));
-
-    if (data.type !== 'task') {
-        showToast('Only tasks can be rescheduled', 'warning');
-        return;
-    }
-
-    // Call API to update task due date
-    // We need to keep the time, just change the date.
-    // Or set to default time on that date.
-    // For simplicity, let's set to 9 AM on that date.
-    const newDate = `${dateStr}T09:00:00`;
-
-    try {
-        await apiCall(`/tasks/${data.id}`, 'PUT', { due_date: newDate });
-        showToast('Task rescheduled', 'success');
-        renderCalendar(); // Refresh
-    } catch (error) {
-        showToast('Failed to reschedule task', 'error');
-    }
-}
-
-// Helpers
-function formatTime(isoString) {
-    return new Date(isoString).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-}
-
-function getDuration(start, end) {
-    const s = new Date(start);
-    const e = new Date(end);
-    return Math.round((e - s) / 60000);
 }
 
 function previousMonth() {
-    currentCalendarDate.setMonth(currentCalendarDate.getMonth() - 1);
+    // Actually previous Day
+    currentCalendarDate.setDate(currentCalendarDate.getDate() - 1);
     renderCalendar();
 }
 
 function nextMonth() {
-    currentCalendarDate.setMonth(currentCalendarDate.getMonth() + 1);
+    // Actually next Day
+    currentCalendarDate.setDate(currentCalendarDate.getDate() + 1);
     renderCalendar();
 }
 
-async function triggerAutoSchedule() {
+function triggerAutoSchedule() {
     showToast('Magic Schedule running...', 'info');
-    try {
-        const result = await apiCall('/schedule/auto-assign', 'POST');
-        showToast(result.message, 'success');
-        renderCalendar();
-    } catch (error) {
-        showToast('Auto-schedule failed', 'error');
-    }
+    apiCall('/schedule/auto-assign', 'POST')
+        .then(res => {
+            showToast(res.message, 'success');
+            renderCalendar();
+        })
+        .catch(() => showToast('Auto-schedule failed', 'error'));
 }
 
-function showDayDetails(dateStr) {
-    if (window.openTaskModal) {
-        window.openTaskModal(dateStr);
-    } else {
-        console.error('openTaskModal not found');
-    }
+function showEventDetails(id) {
+    // Open task modal if it's a task
+    if (window.openTaskModal) window.openTaskModal();
 }
 
 // Initialize

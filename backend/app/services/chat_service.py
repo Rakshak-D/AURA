@@ -3,7 +3,7 @@ from ..database import ChatHistory, Task, User
 from ..models.llm_models import llm
 from .rag_service import query_rag
 from .schedule_service import generate_daily_schedule
-from .intent_service import detect_intent, extract_task_info, extract_date_time
+from .intent_service import detect_intent
 from datetime import datetime, timedelta
 import json
 import re
@@ -35,14 +35,18 @@ class ChatService:
                 return {"response": "I'm listening. How can I help you today?", "action_taken": None}
             
             self.save_message(user_id, "user", message, db)
-            intent = detect_intent(message)
+            
+            # Detect Intent (Returns Dict)
+            intent_result = detect_intent(message)
+            intent = intent_result.get('intent', 'general_chat')
             
             # Pass context to handler if needed
             if intent == 'general_chat':
                 result = self.handle_general_chat(user_id, message, db, context)
             else:
                 handler = self.intents.get(intent, self.handle_general_chat)
-                result = handler(user_id, message, db)
+                # Pass intent_result to handler to access entities
+                result = handler(user_id, message, db, intent_result)
                 
             self.save_message(user_id, "assistant", result['response'], db, intent=intent)
             result['suggestions'] = self.generate_suggestions(intent, db, user_id)
@@ -57,20 +61,26 @@ class ChatService:
                 "data": {"error": str(e)}
             }
     
-    def handle_task_create(self, user_id: int, message: str, db: Session):
+    def handle_task_create(self, user_id: int, message: str, db: Session, intent_data: dict):
         try:
-            task_info = extract_task_info(message)
-            due_date = extract_date_time(message)
+            entities = intent_data.get('entities', {})
+            
+            # Parse due date
+            due_date = None
+            if entities.get('time'):
+                try:
+                    due_date = datetime.fromisoformat(entities['time'])
+                except:
+                    pass
             
             new_task = Task(
-                title=task_info.get('title', message[:100]),
-                description=task_info.get('description'),
+                title=entities.get('title', message[:100]),
+                description=message, # Use full message as description if needed
                 due_date=due_date,
-                priority=task_info.get('priority', 'medium'),
-                category=task_info.get('category', 'Personal'),
-                duration_minutes=task_info.get('duration_minutes', 30),
-                tags=json.dumps(task_info.get('tags', [])),
-                recurring=task_info.get('recurring'),
+                priority=entities.get('priority', 'medium'),
+                category=entities.get('category', 'Personal'),
+                duration_minutes=int(entities.get('duration', 30)),
+                tags='[]',
                 user_id=user_id
             )
             
@@ -81,8 +91,6 @@ class ChatService:
             response = f"✅ Task created: '{new_task.title}'"
             if due_date:
                 response += f" due {self.format_due_date(due_date)}"
-            if task_info.get('recurring'):
-                response += f" (repeats {task_info.get('recurring')})"
             
             return {
                 "response": response,
@@ -94,7 +102,7 @@ class ChatService:
             print(f"Task creation error: {e}")
             return {"response": f"I couldn't create the task. Error: {str(e)}", "action_taken": "error"}
     
-    def handle_task_query(self, user_id: int, message: str, db: Session):
+    def handle_task_query(self, user_id: int, message: str, db: Session, intent_data: dict = None):
         try:
             message_lower = message.lower()
             
@@ -142,14 +150,18 @@ class ChatService:
                 "title": t.title,
                 "completed": t.completed,
                 "due_date": t.due_date.isoformat() if t.due_date else None,
-                "priority": t.priority
+                "priority": t.priority,
+                "category": t.category
             } for t in tasks]
             
+            # Return Widget
             return {
                 "response": response,
                 "action_taken": "task_query",
+                "type": "widget",
+                "widget_type": "task_list",
                 "data": {
-                    "task_count": len(tasks),
+                    "title": response,
                     "tasks": task_list
                 }
             }
@@ -158,7 +170,7 @@ class ChatService:
             print(f"Task query error: {e}")
             return {"response": "I couldn't retrieve your tasks.", "action_taken": "error"}
     
-    def handle_task_update(self, user_id: int, message: str, db: Session):
+    def handle_task_update(self, user_id: int, message: str, db: Session, intent_data: dict = None):
         try:
             message_lower = message.lower()
             
@@ -187,7 +199,7 @@ class ChatService:
             print(f"Task update error: {e}")
             return {"response": "I couldn't update the task.", "action_taken": "error"}
     
-    def handle_task_delete(self, user_id: int, message: str, db: Session):
+    def handle_task_delete(self, user_id: int, message: str, db: Session, intent_data: dict = None):
         try:
             tasks = db.query(Task).filter(Task.user_id == user_id).all()
             
@@ -207,7 +219,7 @@ class ChatService:
             print(f"Task delete error: {e}")
             return {"response": "I couldn't delete the task.", "action_taken": "error"}
     
-    def handle_day_summary(self, user_id: int, message: str, db: Session):
+    def handle_day_summary(self, user_id: int, message: str, db: Session, intent_data: dict = None):
         try:
             schedule = generate_daily_schedule(user_id, db)
             
@@ -241,10 +253,10 @@ class ChatService:
             print(f"Day summary error: {e}")
             return {"response": "I couldn't generate your day summary.", "action_taken": "error"}
     
-    def handle_reminder(self, user_id: int, message: str, db: Session):
+    def handle_reminder(self, user_id: int, message: str, db: Session, intent_data: dict = None):
         return {"response": "Reminder feature coming soon!", "action_taken": "reminder"}
     
-    def handle_search(self, user_id: int, message: str, db: Session):
+    def handle_search(self, user_id: int, message: str, db: Session, intent_data: dict = None):
         try:
             search_term = message.lower().replace('search', '').replace('find', '').strip()
             

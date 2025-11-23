@@ -57,7 +57,6 @@ def get_tasks(
 def create_task(task: TaskCreate, db: Session = Depends(get_db)):
     try:
         # Conflict Detection
-        warning = None
         if task.due_date:
             from datetime import timedelta
             start_time = task.due_date
@@ -65,12 +64,11 @@ def create_task(task: TaskCreate, db: Session = Depends(get_db)):
             end_time = start_time + timedelta(minutes=duration)
             
             # Check for overlapping tasks
-            # Fetch tasks that start before the new task ends
             potential_conflicts = db.query(Task).filter(
                 Task.user_id == 1,
                 Task.completed == False,
                 Task.due_date < end_time,
-                Task.due_date > start_time - timedelta(hours=24) # Optimization: only look back 24h
+                Task.due_date > start_time - timedelta(hours=24) 
             ).all()
             
             conflicts = []
@@ -82,8 +80,15 @@ def create_task(task: TaskCreate, db: Session = Depends(get_db)):
                     conflicts.append(t)
             
             if conflicts:
-                conflict_titles = ", ".join([t.title for t in conflicts])
-                warning = f"⚠️ Conflict detected with: {conflict_titles}"
+                # Find next free slot
+                conflicts.sort(key=lambda x: x.due_date)
+                last_conflict_end = conflicts[-1].due_date + timedelta(minutes=conflicts[-1].duration_minutes or 30)
+                next_free_slot = last_conflict_end.strftime("%Y-%m-%d %H:%M")
+                
+                raise HTTPException(
+                    status_code=409, 
+                    detail=f"Conflict detected with '{conflicts[0].title}'. Suggested time: {next_free_slot}"
+                )
 
         new_task = Task(
             title=task.title,
@@ -95,6 +100,8 @@ def create_task(task: TaskCreate, db: Session = Depends(get_db)):
             tags=json.dumps(task.tags) if task.tags else '[]',
             recurring=task.recurring,
             recurring_end_date=task.recurring_end_date,
+            is_flexible=task.is_flexible if hasattr(task, 'is_flexible') else False,
+            conflict_flag=False,
             user_id=1
         )
         
@@ -115,9 +122,11 @@ def create_task(task: TaskCreate, db: Session = Depends(get_db)):
             recurring=new_task.recurring,
             created_at=new_task.created_at,
             completed_at=new_task.completed_at,
-            warning=warning
+            warning=None
         )
     
+    except HTTPException as he:
+        raise he
     except Exception as e:
         db.rollback()
         print(f"Error creating task: {e}")
