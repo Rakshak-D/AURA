@@ -23,6 +23,8 @@ class Task(Base):
     due_date = Column(DateTime, nullable=True)
     completed = Column(Boolean, default=False)
     priority = Column(String(20), default='medium')
+    category = Column(String(50), default='Personal')
+    duration_minutes = Column(Integer, default=30)
     tags = Column(Text, default='[]')
     recurring = Column(String(50), nullable=True)
     recurring_end_date = Column(DateTime, nullable=True)
@@ -54,7 +56,7 @@ class ChatHistory(Base):
     role = Column(String(20))
     content = Column(Text)
     intent = Column(String(50), nullable=True)
-    meta_data = Column(JSON, default={})  # CHANGED FROM 'metadata' to 'meta_data'
+    meta_data = Column(JSON, default={})
     timestamp = Column(DateTime, default=datetime.utcnow)
 
 class Document(Base):

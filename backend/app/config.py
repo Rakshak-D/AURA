@@ -11,7 +11,8 @@ class Config:
     CHROMA_PATH = DATA_DIR / "chroma_db"
     
     # Correct model name: Phi-3-mini-4k-instruct-q4.gguf
-    MODEL_PATH = MODELS_DIR / "Phi-3-mini-4k-instruct-q4.gguf"
+    MODEL_FILENAME = "Phi-3-mini-4k-instruct-q4.gguf"
+    MODEL_PATH = MODELS_DIR / MODEL_FILENAME
     EMBEDDING_MODEL = "all-MiniLM-L6-v2"
     
     LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")

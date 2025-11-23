@@ -38,6 +38,8 @@ def get_tasks(
                 'due_date': task.due_date,
                 'completed': task.completed,
                 'priority': task.priority,
+                'category': task.category,
+                'duration_minutes': task.duration_minutes,
                 'tags': json.loads(task.tags) if task.tags else [],
                 'recurring': task.recurring,
                 'created_at': task.created_at,
@@ -54,11 +56,42 @@ def get_tasks(
 @router.post("/tasks", response_model=TaskResponse)
 def create_task(task: TaskCreate, db: Session = Depends(get_db)):
     try:
+        # Conflict Detection
+        warning = None
+        if task.due_date:
+            from datetime import timedelta
+            start_time = task.due_date
+            duration = task.duration_minutes or 30
+            end_time = start_time + timedelta(minutes=duration)
+            
+            # Check for overlapping tasks
+            # Fetch tasks that start before the new task ends
+            potential_conflicts = db.query(Task).filter(
+                Task.user_id == 1,
+                Task.completed == False,
+                Task.due_date < end_time,
+                Task.due_date > start_time - timedelta(hours=24) # Optimization: only look back 24h
+            ).all()
+            
+            conflicts = []
+            for t in potential_conflicts:
+                t_duration = t.duration_minutes or 30
+                t_end = t.due_date + timedelta(minutes=t_duration)
+                # Overlap: StartA < EndB and EndA > StartB
+                if t.due_date < end_time and t_end > start_time:
+                    conflicts.append(t)
+            
+            if conflicts:
+                conflict_titles = ", ".join([t.title for t in conflicts])
+                warning = f"⚠️ Conflict detected with: {conflict_titles}"
+
         new_task = Task(
             title=task.title,
             description=task.description,
             due_date=task.due_date,
             priority=task.priority or 'medium',
+            category=task.category or 'Personal',
+            duration_minutes=task.duration_minutes or 30,
             tags=json.dumps(task.tags) if task.tags else '[]',
             recurring=task.recurring,
             recurring_end_date=task.recurring_end_date,
@@ -76,10 +109,13 @@ def create_task(task: TaskCreate, db: Session = Depends(get_db)):
             due_date=new_task.due_date,
             completed=new_task.completed,
             priority=new_task.priority,
+            category=new_task.category,
+            duration_minutes=new_task.duration_minutes,
             tags=json.loads(new_task.tags) if new_task.tags else [],
             recurring=new_task.recurring,
             created_at=new_task.created_at,
-            completed_at=new_task.completed_at
+            completed_at=new_task.completed_at,
+            warning=warning
         )
     
     except Exception as e:
@@ -101,6 +137,8 @@ def get_task(task_id: int, db: Session = Depends(get_db)):
         due_date=task.due_date,
         completed=task.completed,
         priority=task.priority,
+        category=task.category,
+        duration_minutes=task.duration_minutes,
         tags=json.loads(task.tags) if task.tags else [],
         recurring=task.recurring,
         created_at=task.created_at,
@@ -129,6 +167,10 @@ def update_task(task_id: int, update: TaskUpdate, db: Session = Depends(get_db))
                 task.completed_at = None
         if update.priority is not None:
             task.priority = update.priority
+        if update.category is not None:
+            task.category = update.category
+        if update.duration_minutes is not None:
+            task.duration_minutes = update.duration_minutes
         if update.tags is not None:
             task.tags = json.dumps(update.tags)
         if update.recurring is not None:
@@ -146,6 +188,8 @@ def update_task(task_id: int, update: TaskUpdate, db: Session = Depends(get_db))
             due_date=task.due_date,
             completed=task.completed,
             priority=task.priority,
+            category=task.category,
+            duration_minutes=task.duration_minutes,
             tags=json.loads(task.tags) if task.tags else [],
             recurring=task.recurring,
             created_at=task.created_at,
@@ -192,6 +236,8 @@ def search_tasks(query: str, db: Session = Depends(get_db)):
                 'due_date': task.due_date,
                 'completed': task.completed,
                 'priority': task.priority,
+                'category': task.category,
+                'duration_minutes': task.duration_minutes,
                 'tags': json.loads(task.tags) if task.tags else [],
                 'recurring': task.recurring,
                 'created_at': task.created_at,

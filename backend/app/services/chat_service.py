@@ -258,11 +258,33 @@ class ChatService:
             return {"response": "I couldn't complete the search.", "action_taken": "error"}
     
     def get_user_context(self, user_id: int, db: Session) -> str:
-        """Get user's tasks for context"""
+        """Get user's tasks and routine for context"""
         try:
-            today = datetime.now().date()
+            now = datetime.now()
+            today = now.date()
             
-            # Today's tasks
+            # 1. Get Current Routine Status
+            schedule = generate_daily_schedule(user_id, db) # Basic stats
+            
+            # We need the detailed timeline to find current activity
+            # Importing here to avoid circular imports if possible, or rely on what we have
+            from .schedule_service import generate_routine
+            routine = generate_routine(user_id, db, now)
+            timeline = routine.get('timeline', [])
+            
+            current_activity = "Free Time"
+            next_activity = None
+            
+            for event in timeline:
+                start = datetime.fromisoformat(event['start'])
+                end = datetime.fromisoformat(event['end'])
+                
+                if start <= now <= end:
+                    current_activity = f"{event['title']} ({event['type']})"
+                elif start > now and not next_activity:
+                    next_activity = f"{event['title']} at {start.strftime('%I:%M %p')}"
+            
+            # 2. Get Tasks
             today_tasks = db.query(Task).filter(
                 Task.user_id == user_id,
                 Task.completed == False,
@@ -270,22 +292,19 @@ class ChatService:
                 Task.due_date < datetime.combine(today + timedelta(days=1), datetime.min.time())
             ).limit(5).all()
             
-            # Upcoming tasks
-            upcoming = db.query(Task).filter(
-                Task.user_id == user_id,
-                Task.completed == False,
-                Task.due_date >= datetime.combine(today + timedelta(days=1), datetime.min.time())
-            ).limit(5).all()
-            
             parts = []
+            parts.append(f"Current Time: {now.strftime('%I:%M %p')}")
+            parts.append(f"Current Activity: {current_activity}")
+            if next_activity:
+                parts.append(f"Next Up: {next_activity}")
+                
             if today_tasks:
                 tasks = ", ".join([t.title for t in today_tasks])
-                parts.append(f"Today: {tasks}")
-            if upcoming:
-                parts.append(f"{len(upcoming)} upcoming")
+                parts.append(f"Tasks Due Today: {tasks}")
             
-            return " | ".join(parts) if parts else ""
-        except:
+            return " | ".join(parts)
+        except Exception as e:
+            print(f"Context Error: {e}")
             return ""
     
     def handle_general_chat(self, user_id: int, message: str, db: Session, context: dict = None):

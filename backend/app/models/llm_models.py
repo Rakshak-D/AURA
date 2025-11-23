@@ -7,12 +7,14 @@ class LLM:
     def __init__(self):
         self.llm = None
         self.embedding_model = None
+        self.fallback_mode = False
         
         # Load LLM
         print(f"🔍 Checking model path: {config.MODEL_PATH.resolve()}")
         if not config.MODEL_PATH.exists():
             print(f"⚠️ CRITICAL: Model not found at {config.MODEL_PATH}")
             print("   Run 'python backend/download_models.py' to fix this.")
+            self.fallback_mode = True
         else:
             try:
                 print(f"🚀 Loading LLM from {config.MODEL_PATH}...")
@@ -25,6 +27,7 @@ class LLM:
                 print("✅ LLM Loaded")
             except Exception as e:
                 print(f"❌ Error loading LLM: {e}")
+                self.fallback_mode = True
 
         # Load Embeddings
         try:
@@ -33,10 +36,11 @@ class LLM:
             print("✅ Embeddings Loaded")
         except Exception as e:
             print(f"❌ Error loading Embeddings: {e}")
+            # We can survive without embeddings for basic chat, but search will suffer
 
     def generate(self, prompt: str, max_tokens: int = 500) -> str:
-        if not self.llm:
-            return "Error: AI Model file is missing. Please check server logs."
+        if self.fallback_mode or not self.llm:
+            return "⚠️ AURA is running in offline mode (Model missing or failed to load). I can only perform basic tasks."
         
         try:
             output = self.llm(

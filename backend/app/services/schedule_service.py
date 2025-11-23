@@ -67,6 +67,167 @@ def generate_daily_schedule(user_id: int, db: Session) -> Dict:
             "upcoming": []
         }
 
+def generate_routine(user_id: int, db: Session, date: datetime = None) -> Dict:
+    """
+    Generate a daily routine based on fixed schedule + tasks.
+    Returns a timeline of events and free blocks.
+    """
+    if not date:
+        date = datetime.now()
+    
+    # 1. Define Fixed Schedule (Hardcoded for now - Phase 2)
+    # Format: (Start Hour, Start Min, Duration Mins, Title, Type)
+    fixed_schedule = [
+        (9, 0, 60, "Physics Class", "class"),
+        (10, 0, 60, "Math Class", "class"),
+        (11, 0, 15, "Break", "break"),
+        (11, 15, 60, "Chemistry Class", "class"),
+        (13, 0, 60, "Lunch", "meal"),
+        (14, 0, 120, "Lab Session", "class"),
+        (20, 0, 60, "Dinner", "meal"),
+    ]
+    
+    timeline = []
+    base_date = date.replace(hour=0, minute=0, second=0, microsecond=0)
+    
+    # 2. Process Fixed Events & Add Prep Time
+    for start_h, start_m, duration, title, type_ in fixed_schedule:
+        start_time = base_date.replace(hour=start_h, minute=start_m)
+        end_time = start_time + timedelta(minutes=duration)
+        
+        # Add Prep Time (30 mins before classes)
+        if type_ == "class":
+            prep_start = start_time - timedelta(minutes=30)
+            timeline.append({
+                "start": prep_start.isoformat(),
+                "end": start_time.isoformat(),
+                "title": f"Prep for {title}",
+                "type": "prep",
+                "fixed": True
+            })
+            
+        timeline.append({
+            "start": start_time.isoformat(),
+            "end": end_time.isoformat(),
+            "title": title,
+            "type": type_,
+            "fixed": True
+        })
+        
+    # 3. Add Existing Scheduled Tasks
+    scheduled_tasks = db.query(Task).filter(
+        Task.user_id == user_id,
+        Task.due_date >= base_date,
+        Task.due_date < base_date + timedelta(days=1),
+        Task.completed == False
+    ).all()
+    
+    for task in scheduled_tasks:
+        duration = task.duration_minutes or 30
+        end_time = task.due_date + timedelta(minutes=duration)
+        timeline.append({
+            "start": task.due_date.isoformat(),
+            "end": end_time.isoformat(),
+            "title": task.title,
+            "type": "task",
+            "fixed": False,
+            "id": task.id,
+            "priority": task.priority
+        })
+        
+    # 4. Sort Timeline
+    timeline.sort(key=lambda x: x["start"])
+    
+    # 5. Identify Free Blocks
+    # Start checking from 8 AM to 11 PM
+    day_start = base_date.replace(hour=8, minute=0)
+    day_end = base_date.replace(hour=23, minute=0)
+    
+    final_timeline = []
+    current_time = day_start
+    
+    for event in timeline:
+        event_start = datetime.fromisoformat(event["start"])
+        event_end = datetime.fromisoformat(event["end"])
+        
+        # If there is a gap > 15 mins, mark as Free Block
+        if event_start > current_time + timedelta(minutes=15):
+            final_timeline.append({
+                "start": current_time.isoformat(),
+                "end": event_start.isoformat(),
+                "title": "Free Block",
+                "type": "free",
+                "duration": (event_start - current_time).seconds // 60
+            })
+            
+        final_timeline.append(event)
+        if event_end > current_time:
+            current_time = event_end
+            
+    # Check for final free block until day end
+    if current_time < day_end:
+        final_timeline.append({
+            "start": current_time.isoformat(),
+            "end": day_end.isoformat(),
+            "title": "Free Block",
+            "type": "free",
+            "duration": (day_end - current_time).seconds // 60
+        })
+        
+    return {"date": base_date.strftime("%Y-%m-%d"), "timeline": final_timeline}
+
+def auto_schedule_tasks(user_id: int, db: Session) -> Dict:
+    """
+    Automatically assign unscheduled tasks to free blocks.
+    """
+    # 1. Get Unscheduled Tasks (High priority first)
+    unscheduled = db.query(Task).filter(
+        Task.user_id == user_id,
+        Task.due_date == None,
+        Task.completed == False
+    ).order_by(
+        # Custom sort: Urgent > High > Medium > Low
+        Task.priority == 'urgent',
+        Task.priority == 'high',
+        Task.priority == 'medium',
+        Task.priority == 'low'
+    ).all()
+    
+    if not unscheduled:
+        return {"status": "no_tasks", "message": "No unscheduled tasks found."}
+    
+    # 2. Get Today's Routine (to find free blocks)
+    routine = generate_routine(user_id, db)
+    free_blocks = [b for b in routine["timeline"] if b["type"] == "free"]
+    
+    scheduled_count = 0
+    
+    for task in unscheduled:
+        task_duration = task.duration_minutes or 30
+        
+        # Find a suitable block
+        for block in free_blocks:
+            block_duration = block["duration"]
+            
+            if block_duration >= task_duration:
+                # Assign Task
+                start_time = datetime.fromisoformat(block["start"])
+                task.due_date = start_time
+                
+                # Update Block (reduce duration)
+                block["start"] = (start_time + timedelta(minutes=task_duration)).isoformat()
+                block["duration"] -= task_duration
+                
+                scheduled_count += 1
+                break
+    
+    db.commit()
+    return {
+        "status": "success", 
+        "scheduled": scheduled_count, 
+        "message": f"Successfully auto-scheduled {scheduled_count} tasks."
+    }
+
 def get_analytics(user_id: int, db: Session, days: int = 30) -> Dict:
     """Get user analytics for the specified number of days"""
     try:

@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 import os
 from .config import config
 from .database import init_db
-from .routes import chat, tasks, upload, dashboard, reminders, search, export
+from .routes import chat, tasks, upload, dashboard, reminders, search, export, schedule
 from .services.reminder_service import start_scheduler, scheduler
 
 @asynccontextmanager
@@ -37,6 +37,7 @@ app.include_router(dashboard.router, prefix="/api")
 app.include_router(reminders.router, prefix="/api")
 app.include_router(search.router, prefix="/api")
 app.include_router(export.router, prefix="/api")
+app.include_router(schedule.router, prefix="/api")
 
 app.mount("/static", StaticFiles(directory=str(config.FRONTEND_DIR)), name="static")
 
