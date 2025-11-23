@@ -42,8 +42,6 @@ class ChatService:
                 result = self.handle_general_chat(user_id, message, db, context)
             else:
                 handler = self.intents.get(intent, self.handle_general_chat)
-                # Most handlers don't need context yet, but we can update them if needed
-                # For now, just pass the standard args
                 result = handler(user_id, message, db)
                 
             self.save_message(user_id, "assistant", result['response'], db, intent=intent)
@@ -69,6 +67,8 @@ class ChatService:
                 description=task_info.get('description'),
                 due_date=due_date,
                 priority=task_info.get('priority', 'medium'),
+                category=task_info.get('category', 'Personal'),
+                duration_minutes=task_info.get('duration_minutes', 30),
                 tags=json.dumps(task_info.get('tags', [])),
                 recurring=task_info.get('recurring'),
                 user_id=user_id
@@ -105,7 +105,7 @@ class ChatService:
                     Task.due_date >= datetime.now().replace(hour=0, minute=0, second=0),
                     Task.due_date < datetime.now().replace(hour=23, minute=59, second=59)
                 ).all()
-                response = f"You have {len(tasks)} tasks due today:\n"
+                response = f"You have {len(tasks)} tasks due today:"
             elif any(word in message_lower for word in ['tomorrow']):
                 tomorrow = datetime.now() + timedelta(days=1)
                 tasks = db.query(Task).filter(
@@ -114,7 +114,7 @@ class ChatService:
                     Task.due_date >= tomorrow.replace(hour=0, minute=0, second=0),
                     Task.due_date < tomorrow.replace(hour=23, minute=59, second=59)
                 ).all()
-                response = f"You have {len(tasks)} tasks due tomorrow:\n"
+                response = f"You have {len(tasks)} tasks due tomorrow:"
             elif any(word in message_lower for word in ['week', 'this week']):
                 tasks = db.query(Task).filter(
                     Task.user_id == user_id,
@@ -122,23 +122,36 @@ class ChatService:
                     Task.due_date >= datetime.now(),
                     Task.due_date < datetime.now() + timedelta(days=7)
                 ).all()
-                response = f"You have {len(tasks)} tasks this week:\n"
+                response = f"You have {len(tasks)} tasks this week:"
             else:
                 tasks = db.query(Task).filter(
                     Task.user_id == user_id,
                     Task.completed == False
                 ).order_by(Task.due_date.asc()).limit(10).all()
-                response = f"You have {len(tasks)} pending tasks:\n"
+                response = f"You have {len(tasks)} pending tasks:"
             
+            # Format for text response
             for task in tasks:
                 response += f"\n• {task.title}"
                 if task.due_date:
                     response += f" (due {self.format_due_date(task.due_date)})"
             
+            # Format for frontend cards
+            task_list = [{
+                "id": t.id,
+                "title": t.title,
+                "completed": t.completed,
+                "due_date": t.due_date.isoformat() if t.due_date else None,
+                "priority": t.priority
+            } for t in tasks]
+            
             return {
                 "response": response,
                 "action_taken": "task_query",
-                "data": {"task_count": len(tasks)}
+                "data": {
+                    "task_count": len(tasks),
+                    "tasks": task_list
+                }
             }
             
         except Exception as e:
@@ -241,7 +254,7 @@ class ChatService:
             ).all()
             
             if tasks:
-                response = f"Found {len(tasks)} tasks matching '{search_term}':\n"
+                response = f"Found {len(tasks)} tasks matching '{search_term}':"
                 for task in tasks[:5]:
                     response += f"\n• {task.title}"
             else:
@@ -267,7 +280,6 @@ class ChatService:
             schedule = generate_daily_schedule(user_id, db) # Basic stats
             
             # We need the detailed timeline to find current activity
-            # Importing here to avoid circular imports if possible, or rely on what we have
             from .schedule_service import generate_routine
             routine = generate_routine(user_id, db, now)
             timeline = routine.get('timeline', [])

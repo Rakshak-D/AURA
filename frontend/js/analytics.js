@@ -1,171 +1,100 @@
-// Analytics & Charts Logic
+// Analytics Logic
+let activityChart = null;
+let distributionChart = null;
 
 async function loadAnalytics() {
     try {
-        const analytics = await apiCall('/analytics?days=30');
+        // 1. Fetch Focus Score
+        const scoreRes = await fetch('/api/insights/focus-score');
+        const scoreData = await scoreRes.json();
 
-        // Update Stats Cards
-        animateValue('total-completed', analytics.total_completed || 0);
-        document.getElementById('completion-rate').textContent = `${analytics.completion_rate || 0}%`;
-        document.getElementById('daily-average').textContent = analytics.average_per_day?.toFixed(1) || 0;
-        animateValue('total-created', analytics.total_created || 0);
+        renderFocusScore(scoreData);
 
-        // Render Charts
-        renderActivityChart(analytics.tasks_by_day);
-        renderPriorityChart(analytics.priority_breakdown);
+        // 2. Fetch Trends
+        const trendsRes = await fetch('/api/insights/trends');
+        const trendsData = await trendsRes.json();
+
+        renderCharts(trendsData);
 
     } catch (error) {
         console.error('Error loading analytics:', error);
-        showToast('Failed to load insights', 'error');
+        showToast('Failed to load analytics', 'error');
     }
 }
 
-function animateValue(id, end) {
-    const obj = document.getElementById(id);
-    if (!obj) return;
+function renderFocusScore(data) {
+    const scoreEl = document.getElementById('daily-average'); // Using existing ID for score
+    const labelEl = document.getElementById('completion-rate'); // Using existing ID for label
 
-    const start = 0;
-    const duration = 1000;
-    let startTimestamp = null;
+    if (scoreEl) scoreEl.textContent = data.score;
+    if (labelEl) labelEl.textContent = data.label;
 
-    const step = (timestamp) => {
-        if (!startTimestamp) startTimestamp = timestamp;
-        const progress = Math.min((timestamp - startTimestamp) / duration, 1);
-        obj.innerHTML = Math.floor(progress * (end - start) + start);
-        if (progress < 1) {
-            window.requestAnimationFrame(step);
-        }
-    };
-    window.requestAnimationFrame(step);
+    // Update other stats if available
+    const totalCompleted = document.getElementById('total-completed');
+    if (totalCompleted) totalCompleted.textContent = data.details.total_completed;
 }
 
-function renderActivityChart(data) {
-    const container = document.getElementById('activity-chart');
-    if (!container) return;
+function renderCharts(data) {
+    // Activity Chart (Line)
+    const activityCtx = document.getElementById('activity-chart');
+    if (activityCtx) {
+        if (activityChart) activityChart.destroy();
 
-    // Convert data object to array and sort by date
-    const days = Object.keys(data).sort().slice(-7); // Last 7 days
-    const values = days.map(day => data[day]);
-    const maxVal = Math.max(...values, 5); // Min max is 5
-
-    const height = 200;
-    const width = container.clientWidth || 600;
-    const barWidth = 40;
-    const gap = (width - (barWidth * days.length)) / (days.length + 1);
-
-    let svgHtml = `<svg width="100%" height="${height}" viewBox="0 0 ${width} ${height}">`;
-
-    // Bars
-    days.forEach((day, index) => {
-        const val = data[day];
-        const barHeight = (val / maxVal) * (height - 40);
-        const x = gap + (index * (barWidth + gap));
-        const y = height - barHeight - 20;
-
-        // Bar
-        svgHtml += `
-            <rect x="${x}" y="${y}" width="${barWidth}" height="${barHeight}" rx="4" fill="url(#barGradient)" opacity="0.8">
-                <animate attributeName="height" from="0" to="${barHeight}" dur="0.5s" fill="freeze" />
-                <animate attributeName="y" from="${height - 20}" to="${y}" dur="0.5s" fill="freeze" />
-            </rect>
-        `;
-
-        // Value Label
-        if (val > 0) {
-            svgHtml += `<text x="${x + barWidth / 2}" y="${y - 5}" text-anchor="middle" fill="var(--text-secondary)" font-size="12">${val}</text>`;
-        }
-
-        // Date Label
-        const dateLabel = new Date(day).toLocaleDateString('en-US', { weekday: 'short' });
-        svgHtml += `<text x="${x + barWidth / 2}" y="${height - 5}" text-anchor="middle" fill="var(--text-tertiary)" font-size="12">${dateLabel}</text>`;
-    });
-
-    // Gradient Definition
-    svgHtml += `
-        <defs>
-            <linearGradient id="barGradient" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stop-color="var(--accent-primary)" />
-                <stop offset="100%" stop-color="var(--accent-secondary)" />
-            </linearGradient>
-        </defs>
-    `;
-
-    svgHtml += '</svg>';
-    container.innerHTML = svgHtml;
-}
-
-function renderPriorityChart(data) {
-    const container = document.getElementById('priority-chart');
-    if (!container) return;
-
-    const total = Object.values(data).reduce((a, b) => a + b, 0);
-    if (total === 0) {
-        container.innerHTML = '<p style="text-align:center; color:var(--text-tertiary); padding-top: 80px;">No data available</p>';
-        return;
+        activityChart = new Chart(activityCtx, {
+            type: 'line',
+            data: data.activity,
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false }
+                },
+                scales: {
+                    y: { beginAtZero: true, grid: { color: 'rgba(255, 255, 255, 0.1)' } },
+                    x: { grid: { display: false } }
+                }
+            }
+        });
     }
 
-    const colors = {
-        'urgent': '#ef4444',
-        'high': '#f97316',
-        'medium': '#3b82f6',
-        'low': '#10b981'
-    };
+    // Distribution Chart (Doughnut)
+    const priorityCtx = document.getElementById('priority-chart');
+    if (priorityCtx) {
+        if (distributionChart) distributionChart.destroy();
 
-    let startAngle = 0;
-    const radius = 80;
-    const cx = 150;
-    const cy = 100;
+        distributionChart = new Chart(priorityCtx, {
+            type: 'doughnut',
+            data: data.distribution,
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'right', labels: { color: '#fff' } }
+                },
+                cutout: '70%'
+            }
+        });
+    }
+}
 
-    let svgHtml = `<svg width="300" height="200" viewBox="0 0 300 200">`;
-    let legendHtml = '<div style="display:flex; flex-direction:column; gap:8px; justify-content:center;">';
+// Initialize when view is active
+document.addEventListener('DOMContentLoaded', () => {
+    // If analytics view is active by default
+    if (document.getElementById('analytics-view').classList.contains('active')) {
+        loadAnalytics();
+    }
+});
 
-    Object.entries(data).forEach(([priority, count]) => {
-        if (count === 0) return;
-
-        const percentage = count / total;
-        const angle = percentage * 2 * Math.PI;
-        const endAngle = startAngle + angle;
-
-        // Calculate path
-        const x1 = cx + radius * Math.cos(startAngle);
-        const y1 = cy + radius * Math.sin(startAngle);
-        const x2 = cx + radius * Math.cos(endAngle);
-        const y2 = cy + radius * Math.sin(endAngle);
-
-        const largeArcFlag = percentage > 0.5 ? 1 : 0;
-
-        // Donut slice
-        const pathData = [
-            `M ${cx} ${cy}`,
-            `L ${x1} ${y1}`,
-            `A ${radius} ${radius} 0 ${largeArcFlag} 1 ${x2} ${y2}`,
-            `Z`
-        ].join(' ');
-
-        svgHtml += `<path d="${pathData}" fill="${colors[priority]}" stroke="var(--bg-secondary)" stroke-width="2" opacity="0.9"></path>`;
-
-        startAngle = endAngle;
-
-        // Legend
-        legendHtml += `
-            <div style="display:flex; align-items:center; gap:8px; font-size:12px; color:var(--text-secondary);">
-                <span style="width:8px; height:8px; border-radius:50%; background:${colors[priority]}"></span>
-                <span style="text-transform:capitalize;">${priority} (${count})</span>
-            </div>
-        `;
+// Listen for view changes
+const observer = new MutationObserver((mutations) => {
+    mutations.forEach((mutation) => {
+        if (mutation.target.id === 'analytics-view' && mutation.target.classList.contains('active')) {
+            loadAnalytics();
+        }
     });
+});
 
-    // Inner circle for donut
-    svgHtml += `<circle cx="${cx}" cy="${cy}" r="${radius * 0.6}" fill="var(--bg-secondary)" />`;
-
-    // Center Text
-    svgHtml += `
-        <text x="${cx}" y="${cy}" text-anchor="middle" dominant-baseline="middle" fill="var(--text-primary)" font-weight="bold" font-size="24">${total}</text>
-        <text x="${cx}" y="${cy + 15}" text-anchor="middle" fill="var(--text-tertiary)" font-size="10">Tasks</text>
-    `;
-
-    svgHtml += '</svg>';
-    legendHtml += '</div>';
-
-    container.innerHTML = `<div style="display:flex; align-items:center; justify-content:center;">${svgHtml}${legendHtml}</div>`;
+const analyticsView = document.getElementById('analytics-view');
+if (analyticsView) {
+    observer.observe(analyticsView, { attributes: true });
 }

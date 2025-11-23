@@ -20,3 +20,9 @@ def auto_assign_tasks(db: Session = Depends(get_db)):
     except Exception as e:
         print(f"Error auto-scheduling: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/schedule/conflicts")
+def check_conflicts(start_time: str, end_time: str, db: Session = Depends(get_db)):
+    """Check for conflicts in a specific time range"""
+    # Implementation pending - for now return empty list
+    return {"conflicts": []}

@@ -17,20 +17,6 @@ class User(Base):
 
 class Task(Base):
     __tablename__ = 'tasks'
-    id = Column(Integer, primary_key=True)
-    title = Column(String(200), nullable=False)
-    description = Column(Text, nullable=True)
-    due_date = Column(DateTime, nullable=True)
-    completed = Column(Boolean, default=False)
-    priority = Column(String(20), default='medium')
-    category = Column(String(50), default='Personal')
-    duration_minutes = Column(Integer, default=30)
-    tags = Column(Text, default='[]')
-    recurring = Column(String(50), nullable=True)
-    recurring_end_date = Column(DateTime, nullable=True)
-    parent_task_id = Column(Integer, ForeignKey('tasks.id'), nullable=True)
-    user_id = Column(Integer, ForeignKey('users.id'))
-    created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     completed_at = Column(DateTime, nullable=True)
     

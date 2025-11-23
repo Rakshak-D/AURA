@@ -1,14 +1,5 @@
-// Chat Logic
-
-function setChatInput(text) {
-    const input = document.getElementById('chat-input');
-    if (input) {
-        input.value = text;
-        input.focus();
-        // Optional: Auto-send
-        // sendMessage(); 
-    }
-}
+// Chat Functionality
+let currentChatContext = {};
 
 async function sendMessage() {
     const input = document.getElementById('chat-input');
@@ -18,108 +9,158 @@ async function sendMessage() {
 
     // Clear input
     input.value = '';
+    input.style.height = 'auto';
 
     // Add User Message
-    addMessage('user', message);
+    addMessage(message, 'user');
 
-    // Show Typing Indicator
-    const typingId = showTypingIndicator();
+    // Show Loading
+    const loadingId = addLoadingIndicator();
 
     try {
-        const response = await apiCall('/chat', 'POST', { message: message });
+        const response = await fetch('/api/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                message: message,
+                context: currentChatContext
+            })
+        });
 
-        // Remove Typing Indicator
-        removeMessage(typingId);
+        const data = await response.json();
 
-        // Add Assistant Message
-        if (response.response) {
-            addMessage('assistant', response.response);
+        // Remove Loading
+        removeLoadingIndicator(loadingId);
+
+        // Handle Response
+        if (data.response) {
+            // Check for structured data to render cards
+            if (data.action_taken === 'task_query' && data.data && data.data.tasks) {
+                addTaskCard(data.response, data.data.tasks);
+            } else {
+                addMessage(data.response, 'assistant');
+            }
         }
 
         // Handle Actions
-        if (response.action_taken) {
-            handleAction(response.action_taken, response.data);
+        if (data.action_taken) {
+            handleAction(data.action_taken, data.data);
+        }
+
+        // Update Suggestions
+        if (data.suggestions) {
+            updateSuggestions(data.suggestions);
         }
 
     } catch (error) {
+        removeLoadingIndicator(loadingId);
+        addMessage('I encountered an error. Please check your connection.', 'assistant', true);
         console.error('Chat Error:', error);
-        removeMessage(typingId);
-        addMessage('assistant', 'I encountered an error. Please try again.');
     }
 }
 
-function addMessage(role, text) {
+function addMessage(text, sender, isError = false) {
     const history = document.getElementById('chat-history');
-    const msgDiv = document.createElement('div');
-    msgDiv.className = `message ${role}`;
+    const div = document.createElement('div');
+    div.className = `message ${sender} ${isError ? 'error' : ''}`;
 
-    // Format text (Markdown support could go here)
-    // For now, simple text
+    // Convert markdown-like links to HTML
+    // Simple regex for [text](url)
+    const formattedText = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>')
+        .replace(/\n/g, '<br>');
 
-    msgDiv.innerHTML = `
+    div.innerHTML = `
         <div class="message-content">
-            ${formatMessageText(text)}
+            ${formattedText}
         </div>
     `;
 
-    history.appendChild(msgDiv);
-    history.scrollTop = history.scrollHeight;
-
-    return msgDiv.id = 'msg-' + Date.now();
+    history.appendChild(div);
+    scrollToBottom();
+    return div;
 }
 
-function formatMessageText(text) {
-    // Basic formatting: newlines to <br>
-    return text.replace(/\n/g, '<br>');
-}
-
-function showTypingIndicator() {
+function addTaskCard(title, tasks) {
     const history = document.getElementById('chat-history');
-    const msgDiv = document.createElement('div');
-    msgDiv.className = 'message assistant typing';
-    msgDiv.id = 'typing-' + Date.now();
+    const div = document.createElement('div');
+    div.className = 'message assistant';
 
-    msgDiv.innerHTML = `
-        <div class="message-content">
-            <div class="typing-dots">
-                <span></span><span></span><span></span>
+    let tasksHtml = tasks.map(t => `
+        <div class="task-card-item">
+            <input type="checkbox" ${t.completed ? 'checked' : ''} onclick="toggleTask(${t.id}, this.checked)">
+            <span class="${t.completed ? 'completed' : ''}">${t.title}</span>
+            <span class="task-time">${t.due_date ? new Date(t.due_date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}</span>
+        </div>
+    `).join('');
+
+    div.innerHTML = `
+        <div class="message-content task-card">
+            <p>${title}</p>
+            <div class="task-list-card">
+                ${tasksHtml}
             </div>
         </div>
     `;
 
-    history.appendChild(msgDiv);
-    history.scrollTop = history.scrollHeight;
-    return msgDiv.id;
+    history.appendChild(div);
+    scrollToBottom();
 }
 
-function removeMessage(id) {
+function addLoadingIndicator() {
+    const history = document.getElementById('chat-history');
+    const id = 'loading-' + Date.now();
+    const div = document.createElement('div');
+    div.id = id;
+    div.className = 'message assistant loading';
+    div.innerHTML = `
+        <div class="message-content">
+            <div class="typing-indicator">
+                <span></span><span></span><span></span>
+            </div>
+        </div>
+    `;
+    history.appendChild(div);
+    scrollToBottom();
+    return id;
+}
+
+function removeLoadingIndicator(id) {
     const el = document.getElementById(id);
     if (el) el.remove();
 }
 
-function handleAction(action, data) {
-    console.log('Action:', action, data);
-
-    if (action === 'task_created' || action === 'task_completed') {
-        // Refresh tasks if on task view
-        if (typeof loadTasks === 'function') loadTasks();
-        showToast(action === 'task_created' ? 'Task Created' : 'Task Completed', 'success');
-    }
+function scrollToBottom() {
+    const history = document.getElementById('chat-history');
+    history.scrollTop = history.scrollHeight;
 }
 
-// Handle Enter key
 function handleChatInput(e) {
     if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
         sendMessage();
     }
+    // Auto-resize
+    e.target.style.height = 'auto';
+    e.target.style.height = e.target.scrollHeight + 'px';
 }
 
-function handleChatFileUpload(event) {
-    const file = event.target.files[0];
-    if (file) {
-        // Implement file upload logic here
-        console.log('File selected:', file.name);
-        showToast(`Selected: ${file.name}`, 'info');
-    }
+function setChatInput(text) {
+    const input = document.getElementById('chat-input');
+    input.value = text;
+    input.focus();
 }
+
+function updateSuggestions(suggestions) {
+    // Optional: Update suggestion chips dynamically
+}
+
+// Initialize
+document.addEventListener('DOMContentLoaded', () => {
+    const input = document.getElementById('chat-input');
+    if (input) {
+        input.addEventListener('input', function () {
+            this.style.height = 'auto';
+            this.style.height = (this.scrollHeight) + 'px';
+        });
+    }
+});

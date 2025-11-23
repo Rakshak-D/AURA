@@ -1,12 +1,14 @@
 from fastapi import FastAPI, WebSocket
 from fastapi.staticfiles import StaticFiles
+from fastapi import FastAPI, WebSocket
+from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import os
 from .config import config
 from .database import init_db
-from .routes import chat, tasks, upload, dashboard, reminders, search, export, schedule
+from .routes import chat, tasks, upload, dashboard, reminders, search, export, schedule, insights
 from .services.reminder_service import start_scheduler, scheduler
 
 @asynccontextmanager
@@ -38,6 +40,7 @@ app.include_router(reminders.router, prefix="/api")
 app.include_router(search.router, prefix="/api")
 app.include_router(export.router, prefix="/api")
 app.include_router(schedule.router, prefix="/api")
+app.include_router(insights.router, prefix="/api/insights")
 
 app.mount("/static", StaticFiles(directory=str(config.FRONTEND_DIR)), name="static")
 
