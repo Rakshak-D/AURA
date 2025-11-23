@@ -80,9 +80,48 @@ let sidebarCollapsed = false;
 document.addEventListener('DOMContentLoaded', () => {
     console.log('🚀 AURA Initializing...');
 
-    setupNavigation();
-    setupVoiceInput();
-    loadSettings();
+    try {
+        if (typeof setupNavigation === 'function') {
+            setupNavigation();
+        } else {
+            console.warn('setupNavigation not found');
+        }
+    } catch (e) {
+        console.error('Error setting up navigation:', e);
+    }
+
+    try {
+        if (typeof setupVoiceInput === 'function') {
+            setupVoiceInput();
+        } else {
+            console.warn('setupVoiceInput not found');
+        }
+    } catch (e) {
+        console.error('Error setting up voice input:', e);
+    }
+
+    try {
+        if (typeof setupFileUpload === 'function') {
+            setupFileUpload();
+        } else {
+            console.warn('setupFileUpload not found');
+        }
+    } catch (e) {
+        console.error('Error setting up file upload:', e);
+    }
+
+    try {
+        if (typeof loadSettings === 'function') {
+            loadSettings();
+        } else {
+            console.warn('loadSettings function not found');
+        }
+    } catch (e) {
+        console.error('Error loading settings:', e);
+    }
+
+    // Force initial view to ensure UI is visible
+    switchView('chat');
 
     console.log('✅ AURA Ready!');
 });

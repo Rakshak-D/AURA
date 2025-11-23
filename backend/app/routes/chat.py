@@ -8,4 +8,4 @@ router = APIRouter()
 
 @router.post("/chat", response_model=ChatResponse)
 def chat_endpoint(msg: ChatMessage, db: Session = Depends(get_db)):
-    return process_chat(1, msg.message, db)
+    return process_chat(1, msg, db)

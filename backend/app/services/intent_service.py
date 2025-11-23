@@ -17,22 +17,6 @@ def detect_intent(message: str) -> str:
         r'\bremind\s+me\s+to\b',
         r'\bset\s+(a\s+)?reminder\b',
     ]
-    
-    for pattern in task_create_patterns:
-        if re.search(pattern, msg_lower):
-            return 'task_create'
-    
-    # Task queries - must explicitly mention tasks
-    task_query_patterns = [
-        r'\b(show|list|display|get|what are)\s+(my\s+)?tasks?\b',
-        r'\bmy\s+tasks?\b',
-        r'\bwhat.s\s+(on\s+)?my\s+schedule\b',
-    ]
-    
-    for pattern in task_query_patterns:
-        if re.search(pattern, msg_lower):
-            return 'task_query'
-    
     # Task completion - explicit
     if re.search(r'\b(complete|finish|mark)\s+task\b', msg_lower):
         return 'task_update'

@@ -21,15 +21,31 @@ class ChatService:
             'general_chat': self.handle_general_chat
         }
     
-    def process_chat(self, user_id: int, message: str, db: Session):
+    def process_chat(self, user_id: int, message_data: any, db: Session):
         try:
+            # Handle both string (legacy) and object input
+            if isinstance(message_data, str):
+                message = message_data
+                context = {}
+            else:
+                message = message_data.message
+                context = message_data.context or {}
+
             if not message or not message.strip():
                 return {"response": "I'm listening. How can I help you today?", "action_taken": None}
             
             self.save_message(user_id, "user", message, db)
             intent = detect_intent(message)
-            handler = self.intents.get(intent, self.handle_general_chat)
-            result = handler(user_id, message, db)
+            
+            # Pass context to handler if needed
+            if intent == 'general_chat':
+                result = self.handle_general_chat(user_id, message, db, context)
+            else:
+                handler = self.intents.get(intent, self.handle_general_chat)
+                # Most handlers don't need context yet, but we can update them if needed
+                # For now, just pass the standard args
+                result = handler(user_id, message, db)
+                
             self.save_message(user_id, "assistant", result['response'], db, intent=intent)
             result['suggestions'] = self.generate_suggestions(intent, db, user_id)
             
@@ -272,17 +288,45 @@ class ChatService:
         except:
             return ""
     
-    def handle_general_chat(self, user_id: int, message: str, db: Session):
+    def handle_general_chat(self, user_id: int, message: str, db: Session, context: dict = None):
         try:
-            # Get user context
-            context = self.get_user_context(user_id, db)
+            # Get user context (tasks)
+            task_context = self.get_user_context(user_id, db)
+            user_name = context.get('user_name', 'User') if context else 'User'
             
             # Phi-3 prompt format
-            prompt = "<|system|>\nYou are AURA, a helpful AI assistant. Be concise.\n"
-            if context:
-                prompt += f"Context: {context}\n"
+            prompt = f"<|system|>\nYou are AURA, a helpful AI assistant. You are talking to {user_name}. Be concise and direct.\n"
+            if task_context:
+                prompt += f"Task Context: {task_context}\n"
             prompt += "<|end|>\n"
-            prompt += f"
+            prompt += f"<|user|>\n{message}<|end|>\n<|assistant|>"
+            
+            response = llm.generate(prompt, max_tokens=500)
+            
+            return {
+                "response": response,
+                "action_taken": "general_chat",
+                "data": {}
+            }
+            
+        except Exception as e:
+            print(f"General chat error: {e}")
+            return {"response": "I'm having trouble thinking right now.", "action_taken": "error"}
+
+    def save_message(self, user_id: int, role: str, content: str, db: Session, intent: str = None):
+        try:
+            history = ChatHistory(
+                user_id=user_id,
+                role=role,
+                content=content,
+                intent=intent,
+                timestamp=datetime.utcnow()
+            )
+            db.add(history)
+            db.commit()
+        except Exception as e:
+            print(f"Error saving message: {e}")
+
     def format_due_date(self, due_date: datetime) -> str:
         now = datetime.now()
         diff = due_date - now

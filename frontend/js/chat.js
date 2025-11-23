@@ -31,11 +31,37 @@ async function sendMessage() {
 
     addMessage('user', text);
 
+    // Add typing indicator manually to avoid escaping issues
     const loadingId = 'loading-' + Date.now();
-    addMessage('assistant', '<div class="typing-indicator"><span></span><span></span><span></span></div>', loadingId);
+    const loadingDiv = document.createElement('div');
+    loadingDiv.className = 'message assistant';
+    loadingDiv.id = loadingId;
+    loadingDiv.innerHTML = `
+        <div class="avatar">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                <circle cx="12" cy="12" r="10" stroke="url(#grad1)" stroke-width="2"/>
+                <path d="M12 8v8m-4-4h8" stroke="url(#grad1)" stroke-width="2" stroke-linecap="round"/>
+                <defs>
+                    <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" style="stop-color:#667eea;stop-opacity:1" />
+                        <stop offset="100%" style="stop-color:#764ba2;stop-opacity:1" />
+                    </linearGradient>
+                </defs>
+            </svg>
+        </div>
+        <div class="message-content">
+            <div class="typing-indicator"><span></span><span></span><span></span></div>
+        </div>
+    `;
+    chatHistory.appendChild(loadingDiv);
+    chatHistory.scrollTop = chatHistory.scrollHeight;
 
     try {
-        const response = await apiCall('/chat', 'POST', { message: text });
+        const userName = localStorage.getItem('aura-username') || 'Rakshak';
+        const response = await apiCall('/chat', 'POST', {
+            message: text,
+            context: { user_name: userName }
+        });
 
         const loadingMsg = document.getElementById(loadingId);
         if (loadingMsg) {
@@ -91,7 +117,23 @@ function addMessage(role, content, id = null) {
 
     const contentDiv = document.createElement('div');
     contentDiv.className = 'message-content';
-    contentDiv.innerHTML = content;
+
+    // Parse Markdown if it's from assistant
+    if (role === 'assistant') {
+        if (typeof marked !== 'undefined') {
+            contentDiv.innerHTML = marked.parse(content);
+            // Apply syntax highlighting
+            if (typeof hljs !== 'undefined') {
+                contentDiv.querySelectorAll('pre code').forEach((block) => {
+                    hljs.highlightElement(block);
+                });
+            }
+        } else {
+            contentDiv.textContent = content; // Fallback
+        }
+    } else {
+        contentDiv.textContent = content;
+    }
 
     messageDiv.appendChild(avatarDiv);
     messageDiv.appendChild(contentDiv);

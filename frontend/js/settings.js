@@ -35,6 +35,12 @@ function updateUserNameInUI(name) {
         el.textContent = name;
     });
 
+    // Update welcome message
+    const welcomeName = document.getElementById('welcome-name');
+    if (welcomeName) {
+        welcomeName.textContent = name;
+    }
+
     // Update all avatars
     const initial = name.charAt(0).toUpperCase();
     document.querySelectorAll('.user-profile .avatar').forEach(el => {
@@ -91,7 +97,31 @@ function closeSettings() {
     }
 }
 
-// Temperature slider live update
+async function exportData() {
+    try {
+        showToast('Preparing data export...', 'info');
+
+        const response = await fetch('/api/export');
+        if (!response.ok) throw new Error('Export failed');
+
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `aura-export-${new Date().toISOString().split('T')[0]}.json`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+
+        showToast('✅ Data exported successfully!');
+    } catch (error) {
+        console.error('Export error:', error);
+        showToast('Failed to export data', 'error');
+    }
+}
+
+// Event Listeners
 document.addEventListener('DOMContentLoaded', () => {
     const tempSlider = document.getElementById('temperature-slider');
     const tempValue = document.getElementById('temp-value');

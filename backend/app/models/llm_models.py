@@ -18,7 +18,7 @@ class LLM:
                 print(f"🚀 Loading LLM from {config.MODEL_PATH}...")
                 self.llm = Llama(
                     model_path=str(config.MODEL_PATH),
-                    n_ctx=4096,
+                    n_ctx=2048,  # Reduced for stability
                     n_gpu_layers=-1 if config.USE_GPU else 0,
                     verbose=False
                 )
@@ -42,7 +42,7 @@ class LLM:
             output = self.llm(
                 prompt,
                 max_tokens=max_tokens,
-                stop=["User:", "\nUser:", "Human:", "\nHuman:", "<|im_end|>", "\n\n\n"],
+                stop=["<|end|>", "<|user|>", "<|assistant|>"], # Phi-3 stop tokens
                 echo=False,
                 temperature=0.1,  # Minimal temperature for maximum consistency
                 top_p=0.8,
@@ -51,8 +51,8 @@ class LLM:
             response = output['choices'][0]['text'].strip()
             
             # Safety check
-            if "User:" in response or "Human:" in response:
-                response = response.split("User:")[0].split("Human:")[0].strip()
+            if "<|user|>" in response or "<|assistant|>" in response:
+                response = response.split("<|user|>")[0].split("<|assistant|>")[0].strip()
             
             return response
         except Exception as e:

@@ -1,10 +1,11 @@
-from ..database import Task
 from sqlalchemy.orm import Session
+from ..database import Task
 from datetime import datetime, timedelta
-from typing import Dict, List
+from typing import Dict
 import json
 
 def generate_daily_schedule(user_id: int, db: Session) -> Dict:
+    """Generate a daily schedule summary for the user"""
     try:
         tasks = db.query(Task).filter_by(user_id=user_id).all()
         
@@ -67,6 +68,7 @@ def generate_daily_schedule(user_id: int, db: Session) -> Dict:
         }
 
 def get_analytics(user_id: int, db: Session, days: int = 30) -> Dict:
+    """Get user analytics for the specified number of days"""
     try:
         start_date = datetime.now() - timedelta(days=days)
         
