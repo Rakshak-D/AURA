@@ -7,7 +7,13 @@ class Config:
     BASE_DIR = Path(__file__).resolve().parent.parent
     DATA_DIR = BASE_DIR / "data"
     MODELS_DIR = BASE_DIR / "models"
+    
+    # Validate frontend existence
     FRONTEND_DIR = BASE_DIR.parent / "frontend"
+    if not FRONTEND_DIR.exists():
+        # Fallback for different directory structures
+        FRONTEND_DIR = BASE_DIR / "frontend"
+        
     UPLOADS_DIR = DATA_DIR / "uploads"
     LOGS_DIR = DATA_DIR / "logs"
     

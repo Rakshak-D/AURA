@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from ..database import get_db
 from ..services.schedule_service import generate_routine, auto_schedule_tasks
+from datetime import datetime
 
 router = APIRouter()
 
@@ -24,5 +25,28 @@ def auto_assign_tasks(db: Session = Depends(get_db)):
 @router.get("/schedule/conflicts")
 def check_conflicts(start_time: str, end_time: str, db: Session = Depends(get_db)):
     """Check for conflicts in a specific time range"""
-    # Implementation pending - for now return empty list
-    return {"conflicts": []}
+    try:
+        start = datetime.fromisoformat(start_time)
+        end = datetime.fromisoformat(end_time)
+        
+        # Get routine for the day
+        routine = generate_routine(1, db, start)
+        timeline = routine.get("timeline", [])
+        
+        conflicts = []
+        for event in timeline:
+            # Skip free blocks
+            if event.get("type") == "free":
+                continue
+            
+            event_start = datetime.fromisoformat(event["start"])
+            event_end = datetime.fromisoformat(event["end"])
+            
+            # Overlap: StartA < EndB and EndA > StartB
+            if event_start < end and event_end > start:
+                conflicts.append(event)
+                
+        return {"conflicts": conflicts}
+    except Exception as e:
+        print(f"Error checking conflicts: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

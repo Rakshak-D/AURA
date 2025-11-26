@@ -27,14 +27,14 @@ def detect_intent(message: str) -> Dict:
     base_prompt = f"""<|system|>
 You are an intent classification engine. Output ONLY valid JSON.
 Extract:
-- intent: create_task, query_schedule, generate_routine, search, general_chat
+- intent: task_create, task_query, day_summary, search, general_chat
 - entities: title, time (YYYY-MM-DD HH:MM), duration (minutes), category (Personal, Work, College, Health)
 - sentiment: positive, neutral, negative
 
 Current Time: {current_time}
 
 Example Input: "Schedule a gym session for 1 hour at 5pm"
-Example Output: {{"intent": "create_task", "entities": {{"title": "Gym session", "time": "2025-11-23 17:00", "duration": 60, "category": "Health"}}, "sentiment": "neutral"}}
+Example Output: {{"intent": "task_create", "entities": {{"title": "Gym session", "time": "2025-11-23 17:00", "duration": 60, "category": "Health"}}, "sentiment": "neutral"}}
 <|end|>
 <|user|>
 {message}

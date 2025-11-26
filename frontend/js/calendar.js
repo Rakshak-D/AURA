@@ -25,7 +25,11 @@ async function renderCalendar() {
 
 function renderTimelineView(container, events) {
     const hours = Array.from({ length: 24 }, (_, i) => i);
-    const dateStr = currentCalendarDate.toISOString().split('T')[0];
+    // Use local date string to match backend which likely uses local time
+    const year = currentCalendarDate.getFullYear();
+    const month = String(currentCalendarDate.getMonth() + 1).padStart(2, '0');
+    const day = String(currentCalendarDate.getDate()).padStart(2, '0');
+    const dateStr = `${year}-${month}-${day}`;
 
     // Filter events for selected date
     const dayEvents = events.filter(e => e.start.startsWith(dateStr));

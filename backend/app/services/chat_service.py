@@ -69,9 +69,14 @@ class ChatService:
             due_date = None
             if entities.get('time'):
                 try:
+                    # Try ISO format first
                     due_date = datetime.fromisoformat(entities['time'])
                 except:
-                    pass
+                    try:
+                        # Try simple format YYYY-MM-DD HH:MM
+                        due_date = datetime.strptime(entities['time'], "%Y-%m-%d %H:%M")
+                    except:
+                        pass
             
             new_task = Task(
                 title=entities.get('title', message[:100]),
@@ -253,8 +258,34 @@ class ChatService:
             print(f"Day summary error: {e}")
             return {"response": "I couldn't generate your day summary.", "action_taken": "error"}
     
-    def handle_reminder(self, user_id: int, message: str, db: Session, intent_data: dict = None):
-        return {"response": "Reminder feature coming soon!", "action_taken": "reminder"}
+    def handle_reminder(self, user_id: int, message: str, db: Session, intent_data: dict):
+        from .reminder_service import schedule_reminder
+        entities = intent_data.get('entities', {})
+        time_str = entities.get('time')
+        title = entities.get('title', 'Untitled Reminder')
+        
+        if time_str:
+            try:
+                reminder_time = datetime.fromisoformat(time_str)
+                # Create a dummy task for the reminder
+                task = Task(
+                    title=title, 
+                    due_date=reminder_time, 
+                    user_id=user_id, 
+                    category="Reminder",
+                    priority="high"
+                )
+                db.add(task)
+                db.commit()
+                db.refresh(task)
+                
+                schedule_reminder(task.id, reminder_time)
+                return {"response": f"⏰ Reminder set for '{title}' at {reminder_time.strftime('%I:%M %p')}", "action_taken": "reminder_set"}
+            except Exception as e:
+                print(f"Reminder error: {e}")
+                return {"response": "I couldn't set that reminder. Please check the time format.", "action_taken": "error"}
+        
+        return {"response": "When should I remind you?", "action_taken": "ask_slot"}
     
     def handle_search(self, user_id: int, message: str, db: Session, intent_data: dict = None):
         try:

@@ -1,77 +1,80 @@
 // Settings functionality - WITH PERSISTENCE
 
-function loadSettings() {
-    // Load and APPLY theme
-    const theme = localStorage.getItem('aura-theme') || 'dark';
-    const themeSelect = document.getElementById('theme-select');
-    if (themeSelect) {
-        themeSelect.value = theme;
-    }
-    applyTheme(theme);
+async function loadSettings() {
+    try {
+        // Fetch from backend
+        const response = await fetch('/api/settings');
+        if (response.ok) {
+            const settings = await response.json();
 
-    // Load temperature
-    const temp = localStorage.getItem('aura-temperature') || '10';
-    const tempSlider = document.getElementById('temperature-slider');
-    const tempValue = document.getElementById('temp-value');
-    if (tempSlider && tempValue) {
-        tempSlider.value = temp;
-        tempValue.textContent = (parseInt(temp) / 100).toFixed(1);
-    }
+            // Apply Theme
+            const theme = settings.theme || 'dark';
+            const themeSelect = document.getElementById('theme-select');
+            if (themeSelect) themeSelect.value = theme;
+            applyTheme(theme);
 
-    // Load and APPLY user name
-    const userName = localStorage.getItem('aura-username') || 'Rakshak';
-    const userNameInput = document.getElementById('user-name');
-    if (userNameInput) {
-        userNameInput.value = userName;
-    }
+            // Apply Username
+            const userName = settings.username || 'User';
+            const userNameInput = document.getElementById('user-name');
+            if (userNameInput) userNameInput.value = userName;
+            updateUserNameInUI(userName);
 
-    // Apply username to UI elements NOW
-    updateUserNameInUI(userName);
-}
+            // Apply Temperature
+            const temp = settings.ai_temperature || 0.7; // Backend uses 0-1 float
+            const tempSlider = document.getElementById('temperature-slider');
+            const tempValue = document.getElementById('temp-value');
+            if (tempSlider && tempValue) {
+                tempSlider.value = temp;
+                tempValue.textContent = temp;
+            }
 
-function updateUserNameInUI(name) {
-    // Update all name displays
-    document.querySelectorAll('.user-info .name').forEach(el => {
-        el.textContent = name;
-    });
-
-    // Update welcome message
-    const welcomeName = document.getElementById('welcome-name');
-    if (welcomeName) {
-        welcomeName.textContent = name;
-    }
-
-    // Update all avatars
-    const initial = name.charAt(0).toUpperCase();
-    document.querySelectorAll('.user-profile .avatar').forEach(el => {
-        el.textContent = initial;
-    });
-}
-
-function saveSettings() {
-    // Save theme
-    const themeSelect = document.getElementById('theme-select');
-    if (themeSelect) {
-        const theme = themeSelect.value;
-        localStorage.setItem('aura-theme', theme);
+            // Save to local storage as backup/cache
+            localStorage.setItem('aura-theme', theme);
+            localStorage.setItem('aura-username', userName);
+        }
+    } catch (error) {
+        console.error('Failed to load settings from backend:', error);
+        // Fallback to local storage
+        const theme = localStorage.getItem('aura-theme') || 'dark';
         applyTheme(theme);
     }
+}
 
-    // Save temperature
-    const tempSlider = document.getElementById('temperature-slider');
-    if (tempSlider) {
-        localStorage.setItem('aura-temperature', tempSlider.value);
+async function saveSettings() {
+    const theme = document.getElementById('theme-select')?.value || 'dark';
+    const username = document.getElementById('user-name')?.value || 'User';
+    const temp = parseFloat(document.getElementById('temperature-slider')?.value || 0.7);
+
+    const data = {
+        theme,
+        username,
+        ai_temperature: temp
+    };
+
+    try {
+        const response = await fetch('/api/settings', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+
+        if (response.ok) {
+            showToast('Settings saved!');
+
+            // Update UI immediately
+            applyTheme(theme);
+            updateUserNameInUI(username);
+
+            // Update Local Storage
+            localStorage.setItem('aura-theme', theme);
+            localStorage.setItem('aura-username', username);
+        } else {
+            showToast('Failed to save settings', 'error');
+        }
+    } catch (error) {
+        console.error('Error saving settings:', error);
+        showToast('Error saving settings', 'error');
     }
-
-    // Save and apply username
-    const userNameInput = document.getElementById('user-name');
-    if (userNameInput) {
-        const newName = userNameInput.value.trim() || 'User';
-        localStorage.setItem('aura-username', newName);
-        updateUserNameInUI(newName);
-    }
-
-    showToast('Settings saved!');
 }
 
 function applyTheme(theme) {
