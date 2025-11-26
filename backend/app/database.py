@@ -70,6 +70,17 @@ class Document(Base):
     file_type = Column(String(50))
     uploaded_at = Column(DateTime, default=datetime.utcnow)
 
+class RoutineEvent(Base):
+    __tablename__ = 'routine_events'
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey('users.id'))
+    title = Column(String(200), nullable=False)
+    start_time = Column(String(5), nullable=False) # HH:MM format
+    duration_minutes = Column(Integer, nullable=False)
+    event_type = Column(String(50), default='personal') # class, work, meal, break, sleep
+    days_of_week = Column(String(50), default='0,1,2,3,4,5,6') # Comma separated 0=Mon, 6=Sun
+    created_at = Column(DateTime, default=datetime.utcnow)
+
 # Database Connection
 engine = create_engine(
     f'sqlite:///{config.DB_PATH}',

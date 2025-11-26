@@ -71,3 +71,9 @@ class SearchQuery(BaseModel):
 
 class DaySummaryRequest(BaseModel):
     date: Optional[datetime] = None
+
+class SettingsUpdate(BaseModel):
+    theme: Optional[str] = None
+    notifications_enabled: Optional[bool] = None
+    default_reminder_time: Optional[str] = None
+    username: Optional[str] = None

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, UploadFile, File, Form, Depends
+from fastapi import APIRouter, UploadFile, File, Form, Depends, BackgroundTasks
 from sqlalchemy.orm import Session
 from ..database import get_db, Document
 from ..services.rag_service import add_to_rag
@@ -7,7 +7,11 @@ from ..utils.parser import parse_document
 router = APIRouter()
 
 @router.post("/upload")
-async def upload_file(file: UploadFile = File(...), db: Session = Depends(get_db)):
+async def upload_file(
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...), 
+    db: Session = Depends(get_db)
+):
     try:
         content = parse_document(file.file, file.content_type)
         
@@ -20,9 +24,10 @@ async def upload_file(file: UploadFile = File(...), db: Session = Depends(get_db
         db.add(doc)
         db.commit()
         
-        add_to_rag(file.filename, content)
+        # Process RAG in background
+        background_tasks.add_task(add_to_rag, file.filename, content)
         
-        return {"status": "success", "filename": file.filename, "message": "File uploaded and processed"}
+        return {"status": "success", "filename": file.filename, "message": "File uploaded. Processing for search in background."}
     except Exception as e:
         print(f"Upload error: {e}")
         return {"status": "error", "message": str(e)}

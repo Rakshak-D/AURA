@@ -76,9 +76,53 @@ let currentMonth = new Date().getMonth();
 let currentYear = new Date().getFullYear();
 let sidebarCollapsed = false;
 
+// WebSocket Connection
+let socket;
+
+function connectWebSocket() {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${window.location.host}/ws/notifications`;
+
+    socket = new WebSocket(wsUrl);
+
+    socket.onopen = () => {
+        console.log('✅ WebSocket Connected');
+    };
+
+    socket.onmessage = (event) => {
+        try {
+            const data = JSON.parse(event.data);
+            if (data.type === 'notification') {
+                showToast(data.message, 'info');
+                // Refresh tasks if related
+                if (data.message.toLowerCase().includes('task') || data.message.toLowerCase().includes('reminder')) {
+                    if (window.loadTasks) window.loadTasks();
+                }
+            } else if (data.type === 'refresh_tasks') {
+                if (window.loadTasks) window.loadTasks();
+            }
+        } catch (e) {
+            console.error('WebSocket message error:', e);
+        }
+    };
+
+    socket.onclose = () => {
+        console.log('⚠️ WebSocket Disconnected. Reconnecting in 5s...');
+        setTimeout(connectWebSocket, 5000);
+    };
+
+    socket.onerror = (error) => {
+        console.error('WebSocket Error:', error);
+        socket.close();
+    };
+}
+
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
     console.log('🚀 AURA Initializing...');
+
+    // Connect WebSocket
+    connectWebSocket();
 
     try {
         if (typeof setupNavigation === 'function') {
@@ -89,6 +133,7 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch (e) {
         console.error('Error setting up navigation:', e);
     }
+
 
     try {
         if (typeof setupVoiceInput === 'function') {

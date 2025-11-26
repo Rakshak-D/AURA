@@ -69,29 +69,6 @@ def generate_daily_schedule(user_id: int, db: Session) -> Dict:
 
 def generate_routine(user_id: int, db: Session, date: datetime = None) -> Dict:
     """
-    Generate a daily routine based on fixed schedule + tasks.
-    Returns a timeline of events and free blocks.
-    """
-    if not date:
-        date = datetime.now()
-    
-    # 1. Define Fixed Schedule (Hardcoded for now - Phase 2)
-    # Format: (Start Hour, Start Min, Duration Mins, Title, Type)
-    fixed_schedule = [
-        (9, 0, 60, "Physics Class", "class"),
-        (10, 0, 60, "Math Class", "class"),
-        (11, 0, 15, "Break", "break"),
-        (11, 15, 60, "Chemistry Class", "class"),
-        (13, 0, 60, "Lunch", "meal"),
-        (14, 0, 120, "Lab Session", "class"),
-        (20, 0, 60, "Dinner", "meal"),
-    ]
-    
-    timeline = []
-    base_date = date.replace(hour=0, minute=0, second=0, microsecond=0)
-    
-    # 2. Process Fixed Events & Add Prep Time
-    for start_h, start_m, duration, title, type_ in fixed_schedule:
         start_time = base_date.replace(hour=start_h, minute=start_m)
         end_time = start_time + timedelta(minutes=duration)
         

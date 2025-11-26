@@ -2,6 +2,7 @@ import json
 from datetime import datetime
 from typing import Dict
 from ..models.llm_models import llm
+import re
 
 def detect_intent(message: str) -> Dict:
     """
@@ -30,13 +31,20 @@ Example Output: {{"intent": "create_task", "entities": {{"title": "Gym session",
         response = llm.generate(prompt, max_tokens=200)
         
         # Clean response to ensure JSON
-        response = response.strip()
-        if "```json" in response:
-            response = response.split("```json")[1].split("```")[0].strip()
-        elif "```" in response:
-            response = response.split("```")[1].split("```")[0].strip()
-            
-        data = json.loads(response)
+        json_match = re.search(r'\{.*\}', response, re.DOTALL)
+        if json_match:
+            response = json_match.group(0)
+        
+        try:
+            data = json.loads(response)
+        except json.JSONDecodeError:
+            # Fallback if JSON is still invalid
+            print(f"LLM returned invalid JSON: {response}")
+            return {
+                "intent": "general_chat",
+                "entities": {},
+                "sentiment": "neutral"
+            }
         
         # Normalize keys
         if 'due_date' in data.get('entities', {}):

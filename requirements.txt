@@ -1,15 +1,54 @@
+# FastAPI & Web Server
 fastapi==0.104.1
-uvicorn==0.24.0
-sqlalchemy==2.0.23
-python-dotenv==1.0.0
-chromadb==0.4.18
-sentence-transformers==2.2.2
-llama-cpp-python==0.2.20
-apscheduler==3.10.4
+uvicorn[standard]==0.24.0
 python-multipart==0.0.6
 pydantic==2.5.0
+pydantic-settings==2.1.0
+
+# Database
+sqlalchemy==2.0.23
+python-dotenv==1.0.0
+
+# Vector Database & Embeddings
+chromadb==0.4.18
+sentence-transformers==2.2.2
+
+# LLM Inference
+llama-cpp-python==0.2.20
+
+# Scheduling & Background Tasks
+apscheduler==3.10.4
+
+# Model Management
 huggingface-hub==0.19.4
+
+# Document Processing
 PyPDF2==3.0.1
 python-docx==1.1.0
 pytesseract==0.3.10
 Pillow==10.1.0
+
+# Optional: OCR (uncomment if needed)
+# pytesseract requires tesseract-ocr system package
+
+# Optional: Speech Processing (uncomment for full TTS/STT)
+# openai-whisper==20230314
+# TTS==0.22.0
+
+# Logging
+python-json-logger==2.0.7
+
+# Security (for production)
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+python-multipart==0.0.6
+
+# Performance
+redis==5.0.0  # Optional: for caching
+
+# Development (optional)
+pytest==7.4.3
+pytest-asyncio==0.21.1
+black==23.12.0
+pylint==3.0.3
+slowapi==0.1.9

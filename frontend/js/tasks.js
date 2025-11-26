@@ -67,7 +67,12 @@ async function loadTasks() {
 
     } catch (error) {
         console.error('Error loading tasks:', error);
-        list.innerHTML = '<div class="error">Failed to load tasks.</div>';
+        list.innerHTML = `
+            <div class="error-state">
+                <p>Failed to load tasks.</p>
+                <button class="btn-secondary" onclick="loadTasks()">Retry</button>
+            </div>
+        `;
     }
 }
 

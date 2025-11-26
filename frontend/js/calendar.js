@@ -72,36 +72,6 @@ function renderTimelineView(container, events) {
 
     html += '</div></div>'; // Close wrapper
 
-    // Add CSS for timeline if not present (injecting here for simplicity, or assume styles.css handles it)
-    // I'll assume styles.css needs to support this structure.
-    // Since I already updated styles.css, I might need to add specific timeline styles there or inline them.
-    // I'll add a style block here to ensure it works immediately.
-    html += `
-        <style>
-            .timeline-wrapper { display: flex; position: relative; height: 1440px; }
-            .time-column { width: 60px; border-right: 1px solid rgba(255,255,255,0.1); }
-            .time-slot { height: 60px; padding: 5px; font-size: 12px; color: var(--text-secondary); }
-            .events-column { flex: 1; position: relative; }
-            .grid-line { position: absolute; width: 100%; height: 1px; background: rgba(255,255,255,0.05); }
-            .timeline-event { 
-                position: absolute; 
-                width: 90%; 
-                left: 5%; 
-                border-radius: 6px; 
-                padding: 5px 10px; 
-                font-size: 12px; 
-                overflow: hidden;
-                cursor: pointer;
-                transition: transform 0.2s;
-                border: 1px solid rgba(255,255,255,0.1);
-            }
-            .timeline-event:hover { transform: scale(1.02); z-index: 10; }
-            .event-task { background: rgba(176, 38, 255, 0.3); border-left: 3px solid var(--neon-purple); }
-            .event-busy { background: rgba(255, 59, 48, 0.3); border-left: 3px solid #ff3b30; }
-            .event-free { background: rgba(52, 199, 89, 0.3); border-left: 3px solid #34c759; }
-        </style>
-    `;
-
     container.innerHTML = html;
 }
 

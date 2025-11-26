@@ -61,12 +61,12 @@ function addMessage(text, sender, isError = false) {
     const div = document.createElement('div');
     div.className = `message ${sender} ${isError ? 'error' : ''}`;
 
-    const formattedText = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>')
-        .replace(/\n/g, '<br>');
+    // Use marked.js if available, otherwise fallback to text
+    const content = typeof marked !== 'undefined' ? marked.parse(text) : text.replace(/\n/g, '<br>');
 
     div.innerHTML = `
         <div class="message-content">
-            ${formattedText}
+            ${content}
         </div>
     `;
 

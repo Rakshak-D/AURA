@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from typing import List, Optional
 from ..database import get_db, Task
 from ..models.pydantic_models import TaskCreate, TaskResponse, TaskUpdate
+from ..services.schedule_service import generate_routine
 from datetime import datetime
 import json
 
@@ -63,31 +64,34 @@ def create_task(task: TaskCreate, db: Session = Depends(get_db)):
             duration = task.duration_minutes or 30
             end_time = start_time + timedelta(minutes=duration)
             
-            # Check for overlapping tasks
-            potential_conflicts = db.query(Task).filter(
-                Task.user_id == 1,
-                Task.completed == False,
-                Task.due_date < end_time,
-                Task.due_date > start_time - timedelta(hours=24) 
-            ).all()
+            # Check for overlapping tasks using unified schedule
+            routine = generate_routine(1, db, start_time)
+            timeline = routine.get("timeline", [])
             
             conflicts = []
-            for t in potential_conflicts:
-                t_duration = t.duration_minutes or 30
-                t_end = t.due_date + timedelta(minutes=t_duration)
+            for event in timeline:
+                # Skip free blocks and the task itself (if updating)
+                if event.get("type") == "free":
+                    continue
+                
+                event_start = datetime.fromisoformat(event["start"])
+                event_end = datetime.fromisoformat(event["end"])
+                
                 # Overlap: StartA < EndB and EndA > StartB
-                if t.due_date < end_time and t_end > start_time:
-                    conflicts.append(t)
+                if event_start < end_time and event_end > start_time:
+                    conflicts.append(event)
             
             if conflicts:
                 # Find next free slot
-                conflicts.sort(key=lambda x: x.due_date)
-                last_conflict_end = conflicts[-1].due_date + timedelta(minutes=conflicts[-1].duration_minutes or 30)
+                # Simple suggestion: end of the last conflict
+                last_conflict_end = datetime.fromisoformat(conflicts[-1]["end"])
                 next_free_slot = last_conflict_end.strftime("%Y-%m-%d %H:%M")
+                
+                conflict_title = conflicts[0].get("title", "Unknown Event")
                 
                 raise HTTPException(
                     status_code=409, 
-                    detail=f"Conflict detected with '{conflicts[0].title}'. Suggested time: {next_free_slot}"
+                    detail=f"Conflict detected with '{conflict_title}'. Suggested time: {next_free_slot}"
                 )
 
         new_task = Task(

@@ -1,15 +1,3 @@
-import whisper
-import os
-from TTS.api import TTS
-# Fixed relative imports below
-from ..models.llm_models import llm  
-from ..config import config
-
-print("Loading Whisper...")
-whisper_model = whisper.load_model("./models/whisper-tiny")
-
-print("Loading Coqui TTS...")
-# Using CPU by default. If you have a GPU, change .to("cpu") to .to("cuda")
 tts_model = TTS(model_name="tts_models/en/ljspeech/tacotron2-DDC", progress_bar=False).to("cpu")
 
 def stt(audio_file: str) -> str:

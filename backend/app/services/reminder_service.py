@@ -1,27 +1,10 @@
 from apscheduler.schedulers.background import BackgroundScheduler
 from ..database import SessionLocal, Task
 from datetime import datetime
-
-scheduler = BackgroundScheduler()
-
-def send_notification(task_id: int):
-    """
-    The actual function that triggers when the timer goes off.
-    """
-    db = SessionLocal()
-    try:
-        task = db.query(Task).get(task_id)
-        if task:
-            print(f"🔔 REMINDER: Time to do '{task.title}'!")
-    except Exception as e:
-        print(f"Notification Error: {e}")
-    finally:
-        db.close()
-
-def schedule_reminder(task_id: int, reminder_time: datetime):
-    """
-    Adds a specific one-time job to the scheduler.
-    """
+import asyncio
+# We need a way to send messages. Since scheduler runs in a thread, we need to be careful.
+# Ideally, we'd use a queue or similar, but for now let's try to import the manager if possible, 
+# or better: move manager to a separate file.
     if not scheduler.running:
         start_scheduler()
         
