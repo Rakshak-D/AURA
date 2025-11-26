@@ -1,18 +1,32 @@
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+from .config import config
+from .websocket_manager import manager
+from .routes import (
+    chat, tasks, upload, dashboard, reminders, search, 
+    export, schedule, insights, settings, routine
+)
+
+app = FastAPI(title="AURA API", version="1.0.0")
+
+# CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
     allow_headers=["*"],
 )
 
-app.include_router(chat.router, prefix="/api")
-# Apply rate limit to chat router (needs to be done on the router or endpoints)
-# Since we imported the router, we can't easily decorate it here without modifying chat.py
-# or wrapping it.
-# Let's modify chat.py to accept the limiter, or better, just add it to the app state and use it in chat.py?
-# Actually, slowapi works best with decorators on endpoints.
-# I will modify chat.py to use the limiter.
-# But I need to pass the limiter instance.
-# A common pattern is to define limiter in a separate file (e.g. extensions.py or security.py) and import it.
-# Let's put limiter in security.py or a new file.
-# For now, I'll put it in security.py to avoid circular imports if I import it in main.
+@app.on_event("startup")
+async def startup_event():
+    import asyncio
+    manager.set_loop(asyncio.get_running_loop())
 
+# Routers
+app.include_router(chat.router, prefix="/api")
 app.include_router(tasks.router, prefix="/api")
 app.include_router(upload.router, prefix="/api")
 app.include_router(dashboard.router, prefix="/api")
@@ -24,8 +38,10 @@ app.include_router(insights.router, prefix="/api/insights")
 app.include_router(settings.router, prefix="/api")
 app.include_router(routine.router, prefix="/api")
 
+# Static Files
 app.mount("/static", StaticFiles(directory=str(config.FRONTEND_DIR)), name="static")
 
+# WebSocket
 @app.websocket("/ws/notifications")
 async def websocket_endpoint(websocket: WebSocket):
     await manager.connect(websocket)

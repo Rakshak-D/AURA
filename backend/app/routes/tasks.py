@@ -176,6 +176,32 @@ def update_task(task_id: int, update: TaskUpdate, db: Session = Depends(get_db))
             task.completed = update.completed
             if update.completed:
                 task.completed_at = datetime.now()
+                
+                # Handle Recurrence
+                if task.recurring:
+                    from datetime import timedelta
+                    next_due = None
+                    if task.recurring == 'daily':
+                        next_due = task.due_date + timedelta(days=1)
+                    elif task.recurring == 'weekly':
+                        next_due = task.due_date + timedelta(weeks=1)
+                    elif task.recurring == 'monthly':
+                        next_due = task.due_date + timedelta(days=30) # Simple approx
+                        
+                    if next_due:
+                        new_task = Task(
+                            title=task.title,
+                            description=task.description,
+                            due_date=next_due,
+                            priority=task.priority,
+                            category=task.category,
+                            duration_minutes=task.duration_minutes,
+                            tags=task.tags,
+                            recurring=task.recurring,
+                            user_id=task.user_id
+                        )
+                        db.add(new_task)
+                        print(f"🔄 Created recurring task: {task.title} for {next_due}")
             else:
                 task.completed_at = None
         if update.priority is not None:

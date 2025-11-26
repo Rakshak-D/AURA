@@ -1,10 +1,29 @@
 from apscheduler.schedulers.background import BackgroundScheduler
 from ..database import SessionLocal, Task
+from ..websocket_manager import manager
 from datetime import datetime
-import asyncio
-# We need a way to send messages. Since scheduler runs in a thread, we need to be careful.
-# Ideally, we'd use a queue or similar, but for now let's try to import the manager if possible, 
-# or better: move manager to a separate file.
+import json
+
+scheduler = BackgroundScheduler()
+
+def send_notification(task_id: int):
+    db = SessionLocal()
+    try:
+        task = db.query(Task).filter(Task.id == task_id).first()
+        if task:
+            message = json.dumps({
+                "type": "reminder",
+                "task": task.title,
+                "task_id": task.id
+            })
+            print(f"🔔 REMINDER SENT: {task.title}")
+            manager.broadcast_sync(message)
+    except Exception as e:
+        print(f"Error sending notification: {e}")
+    finally:
+        db.close()
+
+def schedule_reminder(task_id: int, reminder_time: datetime):
     if not scheduler.running:
         start_scheduler()
         
@@ -23,14 +42,14 @@ def check_reminders():
     db = SessionLocal()
     try:
         now = datetime.now()
+        # Find tasks due within the last minute that haven't been completed
+        # This is a bit simplistic, but serves as a backup
         tasks = db.query(Task).filter(
             Task.due_date <= now, 
             Task.completed == False
         ).all()
         
-        for task in tasks:
-            # This is a simple console log; in a real app, you'd check if you already notified
-            print(f"🔔 OVERDUE: {task.title}")
+        # Logic to avoid spamming would go here
     except Exception as e:
         print(f"Scheduler error: {e}")
     finally:
@@ -38,7 +57,6 @@ def check_reminders():
 
 def start_scheduler():
     if not scheduler.running:
-        # Add the polling job
         scheduler.add_job(check_reminders, 'interval', minutes=15)
         scheduler.start()
         print("--- Scheduler Started ---")

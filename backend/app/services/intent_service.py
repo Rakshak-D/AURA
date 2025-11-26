@@ -4,14 +4,27 @@ from typing import Dict
 from ..models.llm_models import llm
 import re
 
+def extract_json_from_text(text: str) -> Dict:
+    """Extract JSON object from text using regex"""
+    try:
+        # Find the first { and the last }
+        match = re.search(r'\{.*\}', text, re.DOTALL)
+        if match:
+            json_str = match.group(0)
+            return json.loads(json_str)
+        return None
+    except Exception:
+        return None
+
 def detect_intent(message: str) -> Dict:
     """
     Detect intent using LLM exclusively.
     Returns a dictionary with 'intent', 'entities', and 'sentiment'.
     """
-    try:
-        current_time = datetime.now().strftime("%Y-%m-%d %H:%M")
-        prompt = f"""<|system|>
+    max_retries = 2
+    current_time = datetime.now().strftime("%Y-%m-%d %H:%M")
+    
+    base_prompt = f"""<|system|>
 You are an intent classification engine. Output ONLY valid JSON.
 Extract:
 - intent: create_task, query_schedule, generate_routine, search, general_chat
@@ -28,35 +41,28 @@ Example Output: {{"intent": "create_task", "entities": {{"title": "Gym session",
 <|end|>
 <|assistant|>"""
 
-        response = llm.generate(prompt, max_tokens=200)
-        
-        # Clean response to ensure JSON
-        json_match = re.search(r'\{.*\}', response, re.DOTALL)
-        if json_match:
-            response = json_match.group(0)
-        
+    for attempt in range(max_retries):
         try:
-            data = json.loads(response)
-        except json.JSONDecodeError:
-            # Fallback if JSON is still invalid
-            print(f"LLM returned invalid JSON: {response}")
-            return {
-                "intent": "general_chat",
-                "entities": {},
-                "sentiment": "neutral"
-            }
-        
-        # Normalize keys
-        if 'due_date' in data.get('entities', {}):
-            data['entities']['time'] = data['entities']['due_date']
+            response = llm.generate(base_prompt, max_tokens=200)
             
-        return data
-        
-    except Exception as e:
-        print(f"LLM Intent Detection Failed: {e}")
-        # Minimal fallback to prevent crash
-        return {
-            "intent": "general_chat",
-            "entities": {},
-            "sentiment": "neutral"
-        }
+            # Try to extract and parse JSON
+            data = extract_json_from_text(response)
+            
+            if data:
+                # Normalize keys
+                if 'due_date' in data.get('entities', {}):
+                    data['entities']['time'] = data['entities']['due_date']
+                return data
+            
+            print(f"Attempt {attempt + 1}: Invalid JSON from LLM. Retrying...")
+            
+        except Exception as e:
+            print(f"Attempt {attempt + 1}: Error - {e}")
+
+    # Fallback if all retries fail
+    print("All intent detection attempts failed. Defaulting to general_chat.")
+    return {
+        "intent": "general_chat",
+        "entities": {},
+        "sentiment": "neutral"
+    }

@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session
-from ..database import Task
+from ..database import Task, RoutineEvent
 from datetime import datetime, timedelta
 from typing import Dict
 import json
@@ -69,16 +69,37 @@ def generate_daily_schedule(user_id: int, db: Session) -> Dict:
 
 def generate_routine(user_id: int, db: Session, date: datetime = None) -> Dict:
     """
+    Generate a daily routine combining fixed events (classes, work) and tasks.
+    """
+    if date is None:
+        date = datetime.now()
+        
+    base_date = date.replace(hour=0, minute=0, second=0, microsecond=0)
+    day_of_week = base_date.weekday() # 0=Mon, 6=Sun
+    
+    timeline = []
+    
+    # 1. Get Fixed Routine Events from DB
+    routine_events = db.query(RoutineEvent).filter_by(user_id=user_id).all()
+    
+    for event in routine_events:
+        # Check if event occurs on this day
+        days = [int(d) for d in event.days_of_week.split(',')]
+        if day_of_week not in days:
+            continue
+            
+        # Parse start time (HH:MM)
+        start_h, start_m = map(int, event.start_time.split(':'))
         start_time = base_date.replace(hour=start_h, minute=start_m)
-        end_time = start_time + timedelta(minutes=duration)
+        end_time = start_time + timedelta(minutes=event.duration_minutes)
         
         # Add Prep Time (30 mins before classes)
-        if type_ == "class":
+        if event.event_type == "class":
             prep_start = start_time - timedelta(minutes=30)
             timeline.append({
                 "start": prep_start.isoformat(),
                 "end": start_time.isoformat(),
-                "title": f"Prep for {title}",
+                "title": f"Prep for {event.title}",
                 "type": "prep",
                 "fixed": True
             })
@@ -86,12 +107,12 @@ def generate_routine(user_id: int, db: Session, date: datetime = None) -> Dict:
         timeline.append({
             "start": start_time.isoformat(),
             "end": end_time.isoformat(),
-            "title": title,
-            "type": type_,
+            "title": event.title,
+            "type": event.event_type,
             "fixed": True
         })
         
-    # 3. Add Existing Scheduled Tasks
+    # 2. Add Existing Scheduled Tasks
     scheduled_tasks = db.query(Task).filter(
         Task.user_id == user_id,
         Task.due_date >= base_date,
@@ -112,10 +133,10 @@ def generate_routine(user_id: int, db: Session, date: datetime = None) -> Dict:
             "priority": task.priority
         })
         
-    # 4. Sort Timeline
+    # 3. Sort Timeline
     timeline.sort(key=lambda x: x["start"])
     
-    # 5. Identify Free Blocks
+    # 4. Identify Free Blocks
     # Start checking from 8 AM to 11 PM
     day_start = base_date.replace(hour=8, minute=0)
     day_end = base_date.replace(hour=23, minute=0)
@@ -127,6 +148,14 @@ def generate_routine(user_id: int, db: Session, date: datetime = None) -> Dict:
         event_start = datetime.fromisoformat(event["start"])
         event_end = datetime.fromisoformat(event["end"])
         
+        # If event ends before current time, skip (overlap handled by sort)
+        if event_end <= current_time:
+            continue
+            
+        # If event starts before current time, adjust start (overlap)
+        if event_start < current_time:
+            event_start = current_time
+            
         # If there is a gap > 15 mins, mark as Free Block
         if event_start > current_time + timedelta(minutes=15):
             final_timeline.append({
