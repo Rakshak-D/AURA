@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session
-from ..database import Task, RoutineEvent
+from ..models.sql_models import Task, RoutineEvent
 from datetime import datetime, timedelta
 from typing import Dict
 import json

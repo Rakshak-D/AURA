@@ -1,4 +1,4 @@
-from ..database import User
+from ..models.sql_models import User
 from ..models.llm_models import llm
 from sqlalchemy.orm import Session
 import json

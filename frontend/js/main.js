@@ -124,48 +124,13 @@ document.addEventListener('DOMContentLoaded', () => {
     // Connect WebSocket
     connectWebSocket();
 
-    try {
-        if (typeof setupNavigation === 'function') {
-            setupNavigation();
-        } else {
-            console.warn('setupNavigation not found');
-        }
-    } catch (e) {
-        console.error('Error setting up navigation:', e);
-    }
+    // Initialize Modules
+    if (typeof setupNavigation === 'function') setupNavigation();
+    if (typeof setupVoiceInput === 'function') setupVoiceInput();
+    if (typeof setupFileUpload === 'function') setupFileUpload();
+    if (typeof loadSettings === 'function') loadSettings();
 
-
-    try {
-        if (typeof setupVoiceInput === 'function') {
-            setupVoiceInput();
-        } else {
-            console.warn('setupVoiceInput not found');
-        }
-    } catch (e) {
-        console.error('Error setting up voice input:', e);
-    }
-
-    try {
-        if (typeof setupFileUpload === 'function') {
-            setupFileUpload();
-        } else {
-            console.warn('setupFileUpload not found');
-        }
-    } catch (e) {
-        console.error('Error setting up file upload:', e);
-    }
-
-    try {
-        if (typeof loadSettings === 'function') {
-            loadSettings();
-        } else {
-            console.warn('loadSettings function not found');
-        }
-    } catch (e) {
-        console.error('Error loading settings:', e);
-    }
-
-    // Force initial view to ensure UI is visible
+    // Force initial view
     switchView('chat');
 
     console.log('✅ AURA Ready!');

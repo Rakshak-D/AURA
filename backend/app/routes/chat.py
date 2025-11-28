@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
-from ..database import get_db, ChatHistory
+from ..database import get_db
+from ..models.sql_models import ChatHistory
 from ..models.pydantic_models import ChatMessage, ChatResponse
 from ..services.chat_service import process_chat
 from ..utils.security import sanitize_input, limiter
@@ -10,7 +11,7 @@ router = APIRouter()
 
 @router.post("/chat", response_model=ChatResponse)
 @limiter.limit("5/minute")
-def chat_endpoint(request: Request, msg: ChatMessage, db: Session = Depends(get_db)):
+async def chat_endpoint(request: Request, msg: ChatMessage, db: Session = Depends(get_db)):
     # Note: Request object is needed for slowapi
     try:
         # Sanitize input
@@ -30,7 +31,7 @@ def chat_endpoint(request: Request, msg: ChatMessage, db: Session = Depends(get_
         # We pass the original message object as process_chat expects it (or we can adapt process_chat)
         # Based on chat_service.py, process_chat takes (user_id, message_data, db)
         # message_data can be str or object. We pass the msg object.
-        result = process_chat(1, msg, db)
+        result = await process_chat(1, msg, db)
         
         return result
 

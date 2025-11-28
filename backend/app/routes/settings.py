@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from ..database import get_db, User
+from ..database import get_db
+from ..models.sql_models import User
 from ..models.pydantic_models import SettingsUpdate
 import json
 

@@ -1,6 +1,7 @@
 from fastapi import APIRouter, UploadFile, File, Form, Depends, BackgroundTasks
 from sqlalchemy.orm import Session
-from ..database import get_db, Document
+from ..database import get_db
+from ..models.sql_models import Document
 from ..services.rag_service import add_to_rag
 from ..utils.parser import parse_document
 

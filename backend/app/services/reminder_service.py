@@ -1,5 +1,6 @@
 from apscheduler.schedulers.background import BackgroundScheduler
-from ..database import SessionLocal, Task
+from ..database import SessionLocal
+from ..models.sql_models import Task
 from ..websocket_manager import manager
 from datetime import datetime
 import json

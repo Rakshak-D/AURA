@@ -1,7 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
-from ..database import get_db, Task
+from ..database import get_db
+from ..models.sql_models import Task
 from ..models.pydantic_models import TaskCreate, TaskResponse, TaskUpdate
 from ..services.schedule_service import generate_routine
 from datetime import datetime

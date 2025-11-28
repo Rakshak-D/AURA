@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session
-from ..database import ChatHistory, Task, User
+from ..models.sql_models import ChatHistory, Task, User
 from ..models.llm_models import llm
 from .rag_service import query_rag
 from .schedule_service import generate_daily_schedule
@@ -7,6 +7,7 @@ from .intent_service import detect_intent
 from datetime import datetime, timedelta
 import json
 import re
+import asyncio
 
 class ChatService:
     def __init__(self):
@@ -21,7 +22,7 @@ class ChatService:
             'general_chat': self.handle_general_chat
         }
     
-    def process_chat(self, user_id: int, message_data: any, db: Session):
+    async def process_chat(self, user_id: int, message_data: any, db: Session):
         try:
             # Handle both string (legacy) and object input
             if isinstance(message_data, str):
@@ -37,16 +38,20 @@ class ChatService:
             self.save_message(user_id, "user", message, db)
             
             # Detect Intent (Returns Dict)
+            # Assuming detect_intent is fast/sync. If slow, wrap in to_thread.
             intent_result = detect_intent(message)
             intent = intent_result.get('intent', 'general_chat')
             
             # Pass context to handler if needed
             if intent == 'general_chat':
-                result = self.handle_general_chat(user_id, message, db, context)
+                result = await self.handle_general_chat(user_id, message, db, context)
             else:
                 handler = self.intents.get(intent, self.handle_general_chat)
                 # Pass intent_result to handler to access entities
-                result = handler(user_id, message, db, intent_result)
+                if asyncio.iscoroutinefunction(handler):
+                    result = await handler(user_id, message, db, intent_result)
+                else:
+                    result = handler(user_id, message, db, intent_result)
                 
             self.save_message(user_id, "assistant", result['response'], db, intent=intent)
             result['suggestions'] = self.generate_suggestions(intent, db, user_id)
@@ -61,7 +66,7 @@ class ChatService:
                 "data": {"error": str(e)}
             }
     
-    def handle_task_create(self, user_id: int, message: str, db: Session, intent_data: dict):
+    async def handle_task_create(self, user_id: int, message: str, db: Session, intent_data: dict):
         try:
             entities = intent_data.get('entities', {})
             
@@ -107,7 +112,7 @@ class ChatService:
             print(f"Task creation error: {e}")
             return {"response": f"I couldn't create the task. Error: {str(e)}", "action_taken": "error"}
     
-    def handle_task_query(self, user_id: int, message: str, db: Session, intent_data: dict = None):
+    async def handle_task_query(self, user_id: int, message: str, db: Session, intent_data: dict = None):
         try:
             message_lower = message.lower()
             
@@ -175,7 +180,7 @@ class ChatService:
             print(f"Task query error: {e}")
             return {"response": "I couldn't retrieve your tasks.", "action_taken": "error"}
     
-    def handle_task_update(self, user_id: int, message: str, db: Session, intent_data: dict = None):
+    async def handle_task_update(self, user_id: int, message: str, db: Session, intent_data: dict = None):
         try:
             message_lower = message.lower()
             
@@ -204,7 +209,7 @@ class ChatService:
             print(f"Task update error: {e}")
             return {"response": "I couldn't update the task.", "action_taken": "error"}
     
-    def handle_task_delete(self, user_id: int, message: str, db: Session, intent_data: dict = None):
+    async def handle_task_delete(self, user_id: int, message: str, db: Session, intent_data: dict = None):
         try:
             tasks = db.query(Task).filter(Task.user_id == user_id).all()
             
@@ -224,7 +229,7 @@ class ChatService:
             print(f"Task delete error: {e}")
             return {"response": "I couldn't delete the task.", "action_taken": "error"}
     
-    def handle_day_summary(self, user_id: int, message: str, db: Session, intent_data: dict = None):
+    async def handle_day_summary(self, user_id: int, message: str, db: Session, intent_data: dict = None):
         try:
             schedule = generate_daily_schedule(user_id, db)
             
@@ -243,7 +248,8 @@ class ChatService:
             
             Keep it encouraging and concise."""
             
-            summary = llm.generate(prompt, max_tokens=200)
+            # Run LLM in thread
+            summary = await asyncio.to_thread(llm.generate, prompt, max_tokens=200)
             
             return {
                 "response": summary,
@@ -258,7 +264,7 @@ class ChatService:
             print(f"Day summary error: {e}")
             return {"response": "I couldn't generate your day summary.", "action_taken": "error"}
     
-    def handle_reminder(self, user_id: int, message: str, db: Session, intent_data: dict):
+    async def handle_reminder(self, user_id: int, message: str, db: Session, intent_data: dict):
         from .reminder_service import schedule_reminder
         entities = intent_data.get('entities', {})
         time_str = entities.get('time')
@@ -287,7 +293,7 @@ class ChatService:
         
         return {"response": "When should I remind you?", "action_taken": "ask_slot"}
     
-    def handle_search(self, user_id: int, message: str, db: Session, intent_data: dict = None):
+    async def handle_search(self, user_id: int, message: str, db: Session, intent_data: dict = None):
         try:
             search_term = message.lower().replace('search', '').replace('find', '').strip()
             
@@ -362,7 +368,7 @@ class ChatService:
             print(f"Context Error: {e}")
             return ""
     
-    def handle_general_chat(self, user_id: int, message: str, db: Session, context: dict = None):
+    async def handle_general_chat(self, user_id: int, message: str, db: Session, context: dict = None):
         try:
             # Get user context (tasks)
             task_context = self.get_user_context(user_id, db)
@@ -375,7 +381,8 @@ class ChatService:
             prompt += "<|end|>\n"
             prompt += f"<|user|>\n{message}<|end|>\n<|assistant|>"
             
-            response = llm.generate(prompt, max_tokens=500)
+            # Run LLM in thread
+            response = await asyncio.to_thread(llm.generate, prompt, max_tokens=500)
             
             return {
                 "response": response,
@@ -441,5 +448,5 @@ class ChatService:
 
 chat_service = ChatService()
 
-def process_chat(user_id: int, message: str, db: Session):
-    return chat_service.process_chat(user_id, message, db)
+async def process_chat(user_id: int, message: str, db: Session):
+    return await chat_service.process_chat(user_id, message, db)

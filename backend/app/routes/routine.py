@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from ..database import get_db, RoutineEvent
+from ..database import get_db
+from ..models.sql_models import RoutineEvent
 from pydantic import BaseModel
 from typing import List, Optional
 

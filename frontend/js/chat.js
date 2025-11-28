@@ -129,7 +129,9 @@ function addLoadingIndicator() {
     div.innerHTML = `
         <div class="message-content">
             <div class="typing-indicator">
-                <span></span><span></span><span></span>
+                <div class="typing-dot"></div>
+                <div class="typing-dot"></div>
+                <div class="typing-dot"></div>
             </div>
         </div>
     `;

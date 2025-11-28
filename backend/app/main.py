@@ -1,15 +1,25 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from .config import config
 from .websocket_manager import manager
+from .database import init_db
 from .routes import (
     chat, tasks, upload, dashboard, reminders, search, 
     export, schedule, insights, settings, routine
 )
 
 app = FastAPI(title="AURA API", version="1.0.0")
+
+# Global Exception Handler
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    print(f"Global Error: {exc}")
+    return JSONResponse(
+        status_code=500,
+        content={"message": "Internal Server Error", "details": str(exc)},
+    )
 
 # CORS
 app.add_middleware(
@@ -22,6 +32,9 @@ app.add_middleware(
 
 @app.on_event("startup")
 async def startup_event():
+    # Initialize DB
+    init_db()
+    
     import asyncio
     manager.set_loop(asyncio.get_running_loop())
 

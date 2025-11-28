@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-from ..database import get_db, Task, ChatHistory, User, Document
+from ..database import get_db
+from ..models.sql_models import Task, ChatHistory, User, Document
 import json
 from datetime import datetime
 
