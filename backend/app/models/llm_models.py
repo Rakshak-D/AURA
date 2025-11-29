@@ -18,32 +18,32 @@ class LLM:
         self.fallback_mode = False
         
         # Load LLM
-        logger.info(f"🔍 Checking model path: {config.MODEL_PATH.resolve()}")
+        logger.info(f"[INFO] Checking model path: {config.MODEL_PATH.resolve()}")
         
         # 1. RAM Check
         try:
             import psutil
             total_ram = psutil.virtual_memory().total / (1024 ** 3) # GB
-            logger.info(f"🖥️  System RAM: {total_ram:.2f} GB")
+            logger.info(f"[INFO] System RAM: {total_ram:.2f} GB")
             if total_ram < 8:
-                logger.warning("⚠️  Low RAM detected (< 8GB). Model loading might fail or be slow.")
+                logger.warning("[WARNING] Low RAM detected (< 8GB). Model loading might fail or be slow.")
         except ImportError:
-            logger.warning("⚠️  psutil not installed. Skipping RAM check.")
+            logger.warning("[WARNING] psutil not installed. Skipping RAM check.")
         
         if not config.MODEL_PATH.exists():
-            logger.error(f"⚠️ CRITICAL: Model not found at {config.MODEL_PATH}")
+            logger.error(f"[CRITICAL] Model not found at {config.MODEL_PATH}")
             logger.error("   Run 'python backend/download_models.py' to download the model")
             self.fallback_mode = True
         else:
             # 2. Quantization Check
             model_name = config.MODEL_PATH.name.lower()
             if "q4" in model_name or "quantized" in model_name:
-                logger.info(f"✅ Quantized model detected: {model_name}")
+                logger.info(f"[OK] Quantized model detected: {model_name}")
             else:
-                logger.warning(f"⚠️  Model might not be quantized: {model_name}. Ensure it fits in RAM.")
+                logger.warning(f"[WARNING] Model might not be quantized: {model_name}. Ensure it fits in RAM.")
 
             try:
-                logger.info(f"🚀 Loading LLM from {config.MODEL_PATH}...")
+                logger.info(f"[INFO] Loading LLM from {config.MODEL_PATH}...")
                 self.llm = Llama(
                     model_path=str(config.MODEL_PATH),
                     n_ctx=config.LLM_CONTEXT_WINDOW,
@@ -51,22 +51,22 @@ class LLM:
                     verbose=False,
                     n_threads=4  # CPU threads
                 )
-                logger.info("✅ LLM Loaded successfully")
+                logger.info("[OK] LLM Loaded successfully")
             except Exception as e:
-                logger.exception(f"❌ Error loading LLM: {e}")
+                logger.exception(f"[ERROR] Error loading LLM: {e}")
                 self.fallback_mode = True
 
         # Load Embeddings
         try:
-            logger.info("🧠 Loading Embeddings model...")
+            logger.info("[INFO] Loading Embeddings model...")
             self.embedding_model = SentenceTransformer(
                 config.EMBEDDING_MODEL,
                 device='cuda' if config.USE_GPU else 'cpu'
             )
-            logger.info("✅ Embeddings Loaded successfully")
+            logger.info("[OK] Embeddings Loaded successfully")
         except Exception as e:
-            logger.exception(f"❌ Error loading Embeddings: {e}")
-            logger.warning("⚠️ System will work without semantic search")
+            logger.exception(f"[ERROR] Error loading Embeddings: {e}")
+            logger.warning("[WARNING] System will work without semantic search")
 
     def generate(self, prompt: str, max_tokens: int = None) -> str:
         """Generate text using LLM with error handling"""
@@ -74,8 +74,8 @@ class LLM:
             max_tokens = config.LLM_MAX_TOKENS
             
         if self.fallback_mode or not self.llm:
-            logger.warning("⚠️ Running in offline mode - model not available")
-            return ("⚠️ AURA is running in offline mode. "
+            logger.warning("[WARNING] Running in offline mode - model not available")
+            return ("[WARNING] AURA is running in offline mode. "
                    "Please download the model using: python backend/download_models.py")
         
         try:

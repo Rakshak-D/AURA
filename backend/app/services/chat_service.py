@@ -83,13 +83,23 @@ class ChatService:
                     except:
                         pass
             
+            # Safe integer casting
+            duration_val = entities.get('duration')
+            if duration_val is None:
+                duration_minutes = 30
+            else:
+                try:
+                    duration_minutes = int(duration_val)
+                except (ValueError, TypeError):
+                    duration_minutes = 30
+
             new_task = Task(
                 title=entities.get('title', message[:100]),
                 description=message, # Use full message as description if needed
                 due_date=due_date,
                 priority=entities.get('priority', 'medium'),
                 category=entities.get('category', 'Personal'),
-                duration_minutes=int(entities.get('duration', 30)),
+                duration_minutes=duration_minutes,
                 tags='[]',
                 user_id=user_id
             )
@@ -374,15 +384,27 @@ class ChatService:
             task_context = self.get_user_context(user_id, db)
             user_name = context.get('user_name', 'User') if context else 'User'
             
+            # Get RAG Context
+            rag_context = query_rag(message)
+            
             # Phi-3 prompt format
             prompt = f"<|system|>\nYou are AURA, a helpful AI assistant. You are talking to {user_name}. Be concise and direct.\n"
+            prompt += "Do NOT output internal tokens like BEGININPUT or ENDINPUT.\n"
+            
             if task_context:
                 prompt += f"Task Context: {task_context}\n"
+            
+            if rag_context:
+                prompt += f"Knowledge Base Context: {rag_context}\n"
+                
             prompt += "<|end|>\n"
             prompt += f"<|user|>\n{message}<|end|>\n<|assistant|>"
             
             # Run LLM in thread
             response = await asyncio.to_thread(llm.generate, prompt, max_tokens=500)
+            
+            # Post-processing: Strip tags
+            response = response.replace("<|end|>", "").replace("<|user|>", "").replace("<|assistant|>", "").strip()
             
             return {
                 "response": response,

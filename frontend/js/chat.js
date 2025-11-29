@@ -18,7 +18,7 @@ async function sendMessage() {
     const loadingId = addLoadingIndicator();
 
     try {
-        const response = await fetch('/api/chat', {
+        const response = await fetch(`${API_URL}/chat`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({

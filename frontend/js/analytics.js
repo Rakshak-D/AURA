@@ -80,7 +80,8 @@ function renderCharts(data) {
 // Initialize when view is active
 document.addEventListener('DOMContentLoaded', () => {
     // If analytics view is active by default
-    if (document.getElementById('analytics-view').classList.contains('active')) {
+    const view = document.getElementById('view-insights');
+    if (view && view.classList.contains('active')) {
         loadAnalytics();
     }
 });
@@ -88,13 +89,13 @@ document.addEventListener('DOMContentLoaded', () => {
 // Listen for view changes
 const observer = new MutationObserver((mutations) => {
     mutations.forEach((mutation) => {
-        if (mutation.target.id === 'analytics-view' && mutation.target.classList.contains('active')) {
+        if (mutation.target.id === 'view-insights' && mutation.target.classList.contains('active')) {
             loadAnalytics();
         }
     });
 });
 
-const analyticsView = document.getElementById('analytics-view');
+const analyticsView = document.getElementById('view-insights');
 if (analyticsView) {
     observer.observe(analyticsView, { attributes: true });
 }

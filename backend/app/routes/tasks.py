@@ -55,54 +55,67 @@ def get_tasks(
         print(f"Error getting tasks: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+def check_conflict(db: Session, user_id: int, start_time: datetime, duration_minutes: int, exclude_task_id: int = None):
+    from datetime import timedelta
+    end_time = start_time + timedelta(minutes=duration_minutes)
+    
+    # Check for overlapping tasks using unified schedule
+    routine = generate_routine(user_id, db, start_time)
+    timeline = routine.get("timeline", [])
+    
+    conflicts = []
+    for event in timeline:
+        # Skip free blocks
+        if event.get("type") == "free":
+            continue
+            
+        # Skip the task itself if we are updating it
+        if exclude_task_id and str(event.get("id")) == str(exclude_task_id) and event.get("type") == "task":
+            continue
+        
+        event_start = datetime.fromisoformat(event["start"])
+        event_end = datetime.fromisoformat(event["end"])
+        
+        # Overlap: StartA < EndB and EndA > StartB
+        if event_start < end_time and event_end > start_time:
+            conflicts.append(event)
+            
+    if conflicts:
+        # Find next free slot
+        last_conflict_end = datetime.fromisoformat(conflicts[-1]["end"])
+        next_free_slot = last_conflict_end.strftime("%Y-%m-%d %H:%M")
+        
+        conflict_title = conflicts[0].get("title", "Unknown Event")
+        
+        raise HTTPException(
+            status_code=409, 
+            detail=f"Conflict detected with '{conflict_title}'. Suggested time: {next_free_slot}"
+        )
+
 @router.post("/tasks", response_model=TaskResponse)
 def create_task(task: TaskCreate, db: Session = Depends(get_db)):
     try:
+        # Safely handle None values with defaults
+        duration_minutes = int(task.duration_minutes) if task.duration_minutes is not None else 30
+        priority = task.priority if task.priority else 'medium'
+        category = task.category if task.category else 'Personal'
+        
+        # Ensure tags is a list and serialize to JSON
+        tags_list = task.tags if isinstance(task.tags, list) else (task.tags if task.tags else [])
+        tags_json = json.dumps(tags_list) if tags_list else '[]'
+        
         # Conflict Detection
         if task.due_date:
-            from datetime import timedelta
-            start_time = task.due_date
-            duration = task.duration_minutes or 30
-            end_time = start_time + timedelta(minutes=duration)
-            
-            # Check for overlapping tasks using unified schedule
-            routine = generate_routine(1, db, start_time)
-            timeline = routine.get("timeline", [])
-            
-            conflicts = []
-            for event in timeline:
-                # Skip free blocks and the task itself (if updating)
-                if event.get("type") == "free":
-                    continue
-                
-                event_start = datetime.fromisoformat(event["start"])
-                event_end = datetime.fromisoformat(event["end"])
-                
-                # Overlap: StartA < EndB and EndA > StartB
-                if event_start < end_time and event_end > start_time:
-                    conflicts.append(event)
-            
-            if conflicts:
-                # Find next free slot
-                # Simple suggestion: end of the last conflict
-                last_conflict_end = datetime.fromisoformat(conflicts[-1]["end"])
-                next_free_slot = last_conflict_end.strftime("%Y-%m-%d %H:%M")
-                
-                conflict_title = conflicts[0].get("title", "Unknown Event")
-                
-                raise HTTPException(
-                    status_code=409, 
-                    detail=f"Conflict detected with '{conflict_title}'. Suggested time: {next_free_slot}"
-                )
+            check_conflict(db, 1, task.due_date, duration_minutes)
 
         new_task = Task(
             title=task.title,
             description=task.description,
             due_date=task.due_date,
-            priority=task.priority or 'medium',
-            category=task.category or 'Personal',
-            duration_minutes=task.duration_minutes or 30,
-            tags=json.dumps(task.tags) if task.tags else '[]',
+            priority=priority,
+            category=category,
+            duration_minutes=duration_minutes,
+            tags=tags_json,
             recurring=task.recurring,
             recurring_end_date=task.recurring_end_date,
             is_flexible=task.is_flexible if hasattr(task, 'is_flexible') else False,
@@ -167,6 +180,16 @@ def update_task(task_id: int, update: TaskUpdate, db: Session = Depends(get_db))
         if not task:
             raise HTTPException(status_code=404, detail="Task not found")
         
+        # Check for conflicts if time or duration changes
+        new_due_date = update.due_date if update.due_date is not None else task.due_date
+        new_duration = int(update.duration_minutes) if update.duration_minutes is not None else (task.duration_minutes if task.duration_minutes is not None else 30)
+        
+        # Only check if due_date is set (it might be None for backlog tasks)
+        # And if either date or duration changed, OR if we are just verifying current state (optional, but good for UX)
+        # Let's check if the new state would conflict
+        if new_due_date and (update.due_date is not None or update.duration_minutes is not None):
+             check_conflict(db, 1, new_due_date, new_duration, exclude_task_id=task_id)
+
         if update.title is not None:
             task.title = update.title
         if update.description is not None:
@@ -210,9 +233,10 @@ def update_task(task_id: int, update: TaskUpdate, db: Session = Depends(get_db))
         if update.category is not None:
             task.category = update.category
         if update.duration_minutes is not None:
-            task.duration_minutes = update.duration_minutes
+            task.duration_minutes = int(update.duration_minutes)
         if update.tags is not None:
-            task.tags = json.dumps(update.tags)
+            tags_list = update.tags if isinstance(update.tags, list) else []
+            task.tags = json.dumps(tags_list) if tags_list else '[]'
         if update.recurring is not None:
             task.recurring = update.recurring
         
@@ -236,6 +260,8 @@ def update_task(task_id: int, update: TaskUpdate, db: Session = Depends(get_db))
             completed_at=task.completed_at
         )
     
+    except HTTPException as he:
+        raise he
     except Exception as e:
         db.rollback()
         print(f"Error updating task: {e}")

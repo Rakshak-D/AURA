@@ -10,7 +10,7 @@ async function performGlobalSearch(query) {
     resultsContainer.innerHTML = '<div class="loading">Searching...</div>';
 
     try {
-        const response = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+        const response = await fetch(`${API_URL}/search?q=${encodeURIComponent(query)}`);
         const data = await response.json();
 
         if (data.results && data.results.length > 0) {

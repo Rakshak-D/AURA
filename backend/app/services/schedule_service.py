@@ -99,17 +99,33 @@ def generate_routine(user_id: int, db: Session, date: datetime = None) -> Dict:
             timeline.append({
                 "start": prep_start.isoformat(),
                 "end": start_time.isoformat(),
+                "start_time": prep_start.isoformat(),
+                "end_time": start_time.isoformat(),
                 "title": f"Prep for {event.title}",
                 "type": "prep",
-                "fixed": True
+                "fixed": True,
+                "color": "#6366F1"  # Indigo
             })
             
+        # Determine color based on event type
+        color_map = {
+            "class": "#10B981",  # Green
+            "work": "#3B82F6",  # Blue
+            "meal": "#F59E0B",  # Orange
+            "break": "#6B7280", # Gray
+            "routine": "#8B5CF6", # Purple
+            "prep": "#6366F1"   # Indigo
+        }
+        
         timeline.append({
             "start": start_time.isoformat(),
             "end": end_time.isoformat(),
+            "start_time": start_time.isoformat(),
+            "end_time": end_time.isoformat(),
             "title": event.title,
             "type": event.event_type,
-            "fixed": True
+            "fixed": True,
+            "color": color_map.get(event.event_type, "#3B82F6")
         })
         
     # 2. Add Existing Scheduled Tasks
@@ -123,14 +139,27 @@ def generate_routine(user_id: int, db: Session, date: datetime = None) -> Dict:
     for task in scheduled_tasks:
         duration = task.duration_minutes or 30
         end_time = task.due_date + timedelta(minutes=duration)
+        
+        # Determine color based on priority
+        priority_colors = {
+            "urgent": "#EF4444",  # Red
+            "high": "#F59E0B",    # Orange
+            "medium": "#3B82F6",  # Blue
+            "low": "#6B7280"      # Gray
+        }
+        
         timeline.append({
             "start": task.due_date.isoformat(),
             "end": end_time.isoformat(),
+            "start_time": task.due_date.isoformat(),
+            "end_time": end_time.isoformat(),
             "title": task.title,
+            "description": task.description,
             "type": "task",
             "fixed": False,
             "id": task.id,
-            "priority": task.priority
+            "priority": task.priority,
+            "color": priority_colors.get(task.priority, "#3B82F6")
         })
         
     # 3. Sort Timeline
@@ -161,9 +190,12 @@ def generate_routine(user_id: int, db: Session, date: datetime = None) -> Dict:
             final_timeline.append({
                 "start": current_time.isoformat(),
                 "end": event_start.isoformat(),
+                "start_time": current_time.isoformat(),
+                "end_time": event_start.isoformat(),
                 "title": "Free Block",
                 "type": "free",
-                "duration": (event_start - current_time).seconds // 60
+                "duration": (event_start - current_time).seconds // 60,
+                "color": "#1F2937"  # Dark gray for free blocks
             })
             
         final_timeline.append(event)
@@ -175,14 +207,17 @@ def generate_routine(user_id: int, db: Session, date: datetime = None) -> Dict:
         final_timeline.append({
             "start": current_time.isoformat(),
             "end": day_end.isoformat(),
+            "start_time": current_time.isoformat(),
+            "end_time": day_end.isoformat(),
             "title": "Free Block",
             "type": "free",
-            "duration": (day_end - current_time).seconds // 60
+            "duration": (day_end - current_time).seconds // 60,
+            "color": "#1F2937"
         })
         
     return {"date": base_date.strftime("%Y-%m-%d"), "timeline": final_timeline}
 
-def auto_schedule_tasks(user_id: int, db: Session) -> Dict:
+def auto_schedule_tasks(user_id: int, db: Session, date: datetime = None) -> Dict:
     """
     Automatically assign unscheduled tasks to free blocks.
     """
@@ -203,7 +238,7 @@ def auto_schedule_tasks(user_id: int, db: Session) -> Dict:
         return {"status": "no_tasks", "message": "No unscheduled tasks found."}
     
     # 2. Get Today's Routine (to find free blocks)
-    routine = generate_routine(user_id, db)
+    routine = generate_routine(user_id, db, date)
     free_blocks = [b for b in routine["timeline"] if b["type"] == "free"]
     
     scheduled_count = 0
@@ -228,10 +263,15 @@ def auto_schedule_tasks(user_id: int, db: Session) -> Dict:
                 break
     
     db.commit()
+    
+    # Return updated routine so frontend can refresh
+    updated_routine = generate_routine(user_id, db, date)
+    
     return {
         "status": "success", 
         "scheduled": scheduled_count, 
-        "message": f"Successfully auto-scheduled {scheduled_count} tasks."
+        "message": f"Successfully auto-scheduled {scheduled_count} tasks.",
+        "routine": updated_routine
     }
 
 def get_analytics(user_id: int, db: Session, days: int = 30) -> Dict:

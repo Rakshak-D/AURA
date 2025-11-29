@@ -35,6 +35,8 @@ async def startup_event():
     # Initialize DB
     init_db()
     
+    print(f"📂 Serving static files from: {config.FRONTEND_DIR}")
+    
     import asyncio
     manager.set_loop(asyncio.get_running_loop())
 

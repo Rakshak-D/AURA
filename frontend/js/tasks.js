@@ -1,267 +1,318 @@
-// Tasks Management
-let editingTaskId = null;
+// Task Management Logic
+
+let allTasks = [];
+let currentEditId = null;
+
+document.addEventListener('DOMContentLoaded', loadTasks);
 
 async function loadTasks() {
-    const container = document.getElementById('tasks-list');
-    // If we are not on tasks view, we might not have this container, but check if we should
-    if (!container && document.getElementById('tasks-view').classList.contains('active')) {
-        // Maybe it's dynamically created? No, it should be in HTML.
-        // Wait, index.html didn't show tasks-list container in the snippet I saw.
-        // I should check if I need to create it or if it exists.
-        // Assuming it exists or I should target 'tasks-view'.
+    try {
+        const response = await fetch(`${API_URL}/tasks`);
+        if (response.ok) {
+            allTasks = await response.json();
+            renderKanban(allTasks);
+        } else {
+            console.error("Failed to load tasks");
+        }
+    } catch (error) {
+        console.error("Error loading tasks:", error);
+    }
+}
+
+function renderKanban(tasks) {
+    const todoList = document.getElementById('list-todo');
+    const progressList = document.getElementById('list-inprogress');
+    const doneList = document.getElementById('list-done');
+
+    // Clear lists
+    todoList.innerHTML = '';
+    progressList.innerHTML = '';
+    doneList.innerHTML = '';
+
+    let counts = { todo: 0, inprogress: 0, done: 0 };
+
+    tasks.forEach(task => {
+        const card = createTaskCard(task);
+
+        // Use completed boolean to determine column
+        if (task.completed === true) {
+            doneList.appendChild(card);
+            counts.done++;
+        } else {
+            // All non-completed tasks go to "To Do"
+            todoList.appendChild(card);
+            counts.todo++;
+        }
+    });
+
+    // Update counts
+    document.getElementById('count-todo').textContent = counts.todo;
+    document.getElementById('count-inprogress').textContent = counts.inprogress;
+    document.getElementById('count-done').textContent = counts.done;
+
+    // Re-initialize icons
+    lucide.createIcons();
+}
+
+function createTaskCard(task) {
+    const div = document.createElement('div');
+    div.className = 'task-card';
+    div.draggable = true;
+    div.dataset.taskId = task.id;
+    div.dataset.priority = task.priority;
+    div.ondragstart = (e) => drag(e, task.id);
+
+    // Truncate title if too long
+    const title = task.title.length > 50 ? task.title.substring(0, 47) + '...' : task.title;
+    
+    // Truncate description if too long
+    const description = task.description ? (task.description.length > 100 ? task.description.substring(0, 97) + '...' : task.description) : '';
+
+    // Date Formatting with color coding
+    let dateHtml = '';
+    if (task.due_date) {
+        const date = new Date(task.due_date);
+        const now = new Date();
+        const isOverdue = date < now && !task.completed;
+        const isFuture = date > now;
+        const dateStr = date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+        const dateClass = isOverdue ? 'overdue' : (isFuture ? 'future' : 'today');
+        dateHtml = `<span class="task-date ${dateClass}">
+                        <i data-lucide="calendar" style="width: 14px; height: 14px;"></i> ${dateStr}
+                    </span>`;
     }
 
-    // Actually, looking at index.html snippet, I didn't see #tasks-list. 
-    // I saw <div id="tasks-view" class="view">...</div> but the content was truncated or not fully visible.
-    // I'll assume there is a container or I'll append to tasks-view.
+    // Priority badge with proper capitalization
+    const priorityLabel = task.priority ? task.priority.charAt(0).toUpperCase() + task.priority.slice(1) : 'Medium';
 
-    const view = document.getElementById('tasks-view');
-    if (!view) return;
+    // Complete button - show different icon/text based on status
+    const completeIcon = task.completed ? 'rotate-ccw' : 'check-circle';
+    const completeTitle = task.completed ? 'Mark as Incomplete' : 'Mark as Complete';
+    const completeClass = task.completed ? 'complete active' : 'complete';
 
-    // Clear or find list container
-    let list = document.getElementById('tasks-list');
-    if (!list) {
-        view.innerHTML = `
-            <div class="view-header">
-                <h2>Tasks</h2>
-                <button class="btn-primary" onclick="openTaskModal()">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <line x1="12" y1="5" x2="12" y2="19"></line>
-                        <line x1="5" y1="12" x2="19" y2="12"></line>
-                    </svg>
-                    New Task
+    div.innerHTML = `
+        <div class="task-header">
+            <div class="task-title-wrapper">
+                <button class="task-checkbox ${task.completed ? 'checked' : ''}" onclick="toggleComplete(${task.id}, ${!task.completed})" title="${completeTitle}">
+                    <i data-lucide="${task.completed ? 'check-circle-2' : 'circle'}" style="width: 20px; height: 20px;"></i>
+                </button>
+                <span class="task-title ${task.completed ? 'completed' : ''}">${escapeHtml(title)}</span>
+            </div>
+            <div class="task-actions">
+                <button class="action-btn" onclick="openEditModal(${task.id})" title="Edit">
+                    <i data-lucide="edit-2" style="width: 14px; height: 14px;"></i>
+                </button>
+                <button class="action-btn delete" onclick="deleteTask(${task.id})" title="Delete">
+                    <i data-lucide="trash-2" style="width: 14px; height: 14px;"></i>
                 </button>
             </div>
-            <div id="tasks-list" class="tasks-container"></div>
-        `;
-        list = document.getElementById('tasks-list');
-    }
-
-    list.innerHTML = '<div class="loading">Loading tasks...</div>';
-
-    try {
-        const response = await fetch('/api/tasks');
-        const data = await response.json();
-        const tasks = data.tasks || [];
-
-        if (tasks.length === 0) {
-            list.innerHTML = '<div class="empty-state">No tasks yet. Create one to get started!</div>';
-            return;
-        }
-
-        // Group tasks
-        const today = new Date();
-        const overdue = tasks.filter(t => !t.completed && t.due_date && new Date(t.due_date) < today);
-        const todayTasks = tasks.filter(t => !t.completed && t.due_date && isToday(new Date(t.due_date)));
-        const upcoming = tasks.filter(t => !t.completed && !overdue.includes(t) && !todayTasks.includes(t));
-        const completed = tasks.filter(t => t.completed);
-
-        let html = '';
-
-        if (overdue.length > 0) html += createTaskGroup('⚠️ Overdue', overdue);
-        if (todayTasks.length > 0) html += createTaskGroup('📅 Today', todayTasks);
-        if (upcoming.length > 0) html += createTaskGroup('📋 Upcoming', upcoming);
-        if (completed.length > 0) html += createTaskGroup('✅ Completed', completed);
-
-        list.innerHTML = html;
-
-    } catch (error) {
-        console.error('Error loading tasks:', error);
-        list.innerHTML = `
-            <div class="error-state">
-                <p>Failed to load tasks.</p>
-                <button class="btn-secondary" onclick="loadTasks()">Retry</button>
-            </div>
-        `;
-    }
-}
-
-function createTaskGroup(title, tasks) {
-    return `
-        <div class="task-group">
-            <h3 class="group-title">${title} <span class="count">(${tasks.length})</span></h3>
-            <div class="task-items">
-                ${tasks.map(t => createTaskItem(t)).join('')}
+        </div>
+        
+        <div class="task-body">
+            <p class="${task.completed ? 'completed' : ''}">${escapeHtml(description)}</p>
+        </div>
+        
+        <div class="task-footer">
+            <div class="task-footer-left">
+                ${dateHtml}
+                <span class="task-badge priority-${task.priority || 'medium'}">${priorityLabel}</span>
             </div>
         </div>
     `;
+
+    return div;
 }
 
-function createTaskItem(task) {
-    const priorityClass = `priority-${task.priority}`;
-    const dueText = task.due_date ? new Date(task.due_date).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
-
-    return `
-        <div class="task-item ${task.completed ? 'completed' : ''}" onclick="viewTask(${task.id})">
-            <div class="checkbox-wrapper" onclick="event.stopPropagation(); toggleTask(${task.id}, ${task.completed})">
-                <div class="checkbox ${task.completed ? 'checked' : ''}">
-                    ${task.completed ? '✓' : ''}
-                </div>
-            </div>
-            <div class="task-content">
-                <div class="task-title">${task.title}</div>
-                ${task.description ? `<div class="task-desc">${task.description}</div>` : ''}
-                <div class="task-meta">
-                    <span class="badge ${priorityClass}">${task.priority}</span>
-                    ${dueText ? `<span class="due-date">🕒 ${dueText}</span>` : ''}
-                </div>
-            </div>
-        </div>
-    `;
+// Helper function to escape HTML
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
 }
 
-function isToday(date) {
-    const today = new Date();
-    return date.getDate() === today.getDate() &&
-        date.getMonth() === today.getMonth() &&
-        date.getFullYear() === today.getFullYear();
-}
+// --- Modal Functions ---
 
-async function toggleTask(id, currentStatus) {
-    try {
-        await fetch(`/api/tasks/${id}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ completed: !currentStatus })
-        });
-        loadTasks();
-        showToast(currentStatus ? 'Task reopened' : 'Task completed!');
-    } catch (error) {
-        showToast('Failed to update task', 'error');
-    }
-}
+function openTaskModal() {
+    currentEditId = null;
+    document.getElementById('task-modal-title').textContent = "New Task";
+    document.getElementById('task-title').value = "";
+    document.getElementById('task-desc').value = "";
+    document.getElementById('task-date').value = "";
+    document.getElementById('task-priority').value = "medium";
+    document.getElementById('task-duration').value = "30";
 
-// Modal Functions
-function openTaskModal(dateStr) {
-    editingTaskId = null;
-    document.getElementById('task-title').value = '';
-    document.getElementById('task-description').value = '';
-
-    if (dateStr && typeof dateStr === 'string') {
-        // Set time to 09:00 by default
-        document.getElementById('task-due-date').value = `${dateStr}T09:00`;
-    } else {
-        document.getElementById('task-due-date').value = '';
-    }
-
-    document.getElementById('task-priority').value = 'medium';
-    document.getElementById('btn-delete-task').style.display = 'none';
     document.getElementById('task-modal').classList.add('active');
+    lucide.createIcons();
 }
 
-async function viewTask(id) {
-    try {
-        // Fetch task details if needed, or find in local list if we stored it.
-        // For now, let's fetch to be safe or just assume we can get it.
-        // Since we don't have a local store, we'll fetch.
-        // Actually, we can just fetch the list again or fetch single.
-        // Let's fetch single.
-        // Wait, backend might not have GET /tasks/{id}.
-        // I'll check backend routes.
-        // If not, I'll filter from the list if I had it.
-        // I'll assume I can fetch list and find it.
-
-        const response = await fetch('/api/tasks');
-        const data = await response.json();
-        const task = data.tasks.find(t => t.id === id);
-
-        if (!task) return;
-
-        editingTaskId = id;
-        document.getElementById('task-title').value = task.title;
-        document.getElementById('task-description').value = task.description || '';
-        document.getElementById('task-due-date').value = task.due_date ? task.due_date.slice(0, 16) : '';
-        document.getElementById('task-priority').value = task.priority;
-
-        document.getElementById('btn-delete-task').style.display = 'block';
-        document.getElementById('task-modal').classList.add('active');
-
-    } catch (error) {
-        console.error(error);
-        showToast('Failed to load task details', 'error');
+function openEditModal(id) {
+    const task = allTasks.find(t => t.id === id);
+    if (!task) {
+        showToast("Task not found", "error");
+        return;
     }
+
+    currentEditId = id;
+    document.getElementById('task-modal-title').textContent = "Edit Task";
+    document.getElementById('task-title').value = task.title || "";
+    document.getElementById('task-desc').value = task.description || "";
+
+    if (task.due_date) {
+        // Format for datetime-local: YYYY-MM-DDTHH:MM
+        const date = new Date(task.due_date);
+        const iso = date.toISOString().slice(0, 16);
+        document.getElementById('task-date').value = iso;
+    } else {
+        document.getElementById('task-date').value = "";
+    }
+
+    document.getElementById('task-priority').value = task.priority || "medium";
+    document.getElementById('task-duration').value = task.duration_minutes || 30;
+
+    document.getElementById('task-modal').classList.add('active');
+    lucide.createIcons();
 }
 
 function closeTaskModal() {
     document.getElementById('task-modal').classList.remove('active');
+    currentEditId = null;
 }
 
+// Close modal when clicking outside
+document.addEventListener('DOMContentLoaded', () => {
+    const modal = document.getElementById('task-modal');
+    if (modal) {
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                closeTaskModal();
+            }
+        });
+        
+        // Close on ESC key
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && modal.classList.contains('active')) {
+                closeTaskModal();
+            }
+        });
+    }
+});
+
 async function saveTask() {
-    const title = document.getElementById('task-title').value;
+    const title = document.getElementById('task-title').value.trim();
+    const desc = document.getElementById('task-desc').value.trim();
+    const date = document.getElementById('task-date').value;
+    const priority = document.getElementById('task-priority').value;
+    const duration = document.getElementById('task-duration').value;
+
     if (!title) {
-        showToast('Title is required', 'error');
+        showToast("Title is required", "error");
         return;
     }
 
-    const data = {
-        title,
-        description: document.getElementById('task-description').value,
-        due_date: document.getElementById('task-due-date').value || null,
-        priority: document.getElementById('task-priority').value
+    // Parse duration to integer, default to 30 if invalid
+    let duration_minutes = 30;
+    if (duration) {
+        const parsed = parseInt(duration, 10);
+        if (!isNaN(parsed) && parsed > 0) {
+            duration_minutes = parsed;
+        }
+    }
+
+    // Format due_date properly - convert datetime-local to ISO format
+    let due_date = null;
+    if (date) {
+        // datetime-local format: YYYY-MM-DDTHH:MM
+        // Convert to ISO format for backend
+        due_date = new Date(date).toISOString();
+    }
+
+    const payload = {
+        title: title,
+        description: desc || null,
+        due_date: due_date,
+        priority: priority || 'medium',
+        duration_minutes: duration_minutes
     };
 
     try {
-        const method = editingTaskId ? 'PUT' : 'POST';
-        const url = editingTaskId ? `/api/tasks/${editingTaskId}` : '/api/tasks';
+        let url = `${API_URL}/tasks`;
+        let method = 'POST';
+
+        if (currentEditId) {
+            url = `${API_URL}/tasks/${currentEditId}`;
+            method = 'PUT';
+        }
 
         const response = await fetch(url, {
-            method,
+            method: method,
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data)
+            body: JSON.stringify(payload)
         });
 
         if (response.ok) {
+            showToast(currentEditId ? "Task updated successfully" : "Task created successfully");
             closeTaskModal();
-            loadTasks();
-            showToast(editingTaskId ? 'Task updated' : 'Task created', 'success');
+            loadTasks(); // Refresh the board
         } else {
             const err = await response.json();
-            showToast(err.detail || 'Failed to save task', 'error');
+            // Handle both 'detail' (FastAPI default) and 'details' (Global Handler)
+            const msg = err.detail || err.details || "Failed to save task";
+            showToast(msg, "error");
         }
     } catch (error) {
-        showToast('Error saving task', 'error');
+        console.error("Error saving task:", error);
+        showToast(error.message || "Error saving task", "error");
     }
 }
 
-async function deleteCurrentTask() {
-    if (!editingTaskId) return;
+// --- Actions ---
 
-    if (!confirm('Are you sure you want to delete this task?')) return;
+async function deleteTask(id) {
+    if (!confirm("Are you sure you want to delete this task?")) return;
 
     try {
-        const response = await fetch(`/api/tasks/${editingTaskId}`, {
-            method: 'DELETE'
+        const response = await fetch(`${API_URL}/tasks/${id}`, { method: 'DELETE' });
+        if (response.ok) {
+            showToast("Task deleted successfully");
+            loadTasks(); // Refresh the board
+        } else {
+            const err = await response.json();
+            const msg = err.detail || err.details || "Failed to delete task";
+            showToast(msg, "error");
+        }
+    } catch (error) {
+        console.error("Error deleting:", error);
+        showToast("Error deleting task", "error");
+    }
+}
+
+async function toggleComplete(id, status) {
+    try {
+        const response = await fetch(`${API_URL}/tasks/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ completed: status })
         });
 
         if (response.ok) {
-            closeTaskModal();
-            loadTasks();
-            showToast('Task deleted', 'success');
+            showToast(status ? "Task completed" : "Task reopened");
+            loadTasks(); // Refresh the board
         } else {
-            showToast('Failed to delete task', 'error');
+            const err = await response.json();
+            const msg = err.detail || err.details || "Failed to update task";
+            showToast(msg, "error");
         }
     } catch (error) {
-        showToast('Error deleting task', 'error');
+        console.error("Error toggling complete:", error);
+        showToast("Error updating task", "error");
     }
 }
 
-// Initialize
-document.addEventListener('DOMContentLoaded', () => {
-    if (document.getElementById('tasks-view').classList.contains('active')) {
-        loadTasks();
-    }
-});
-
-// Observer for view change
-const taskObserver = new MutationObserver((mutations) => {
-    mutations.forEach((mutation) => {
-        if (mutation.target.id === 'tasks-view' && mutation.target.classList.contains('active')) {
-            loadTasks();
-        }
-    });
-});
-
-const tasksView = document.getElementById('tasks-view');
-if (tasksView) {
-    taskObserver.observe(tasksView, { attributes: true });
+// --- Drag & Drop ---
+function drag(ev, id) {
+    ev.dataTransfer.setData("text", id);
 }
+
+// Note: Drop zones would need to call toggleComplete or update priority based on column.
+// For now, we just have the visual drag start.

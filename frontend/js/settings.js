@@ -1,150 +1,72 @@
-// Settings functionality - WITH PERSISTENCE
+// Settings Management
+
+// Settings Management
+
+// API_URL is defined in main.js
+
+// Load settings on startup
+document.addEventListener('DOMContentLoaded', loadSettings);
 
 async function loadSettings() {
     try {
-        // Fetch from backend
-        const response = await fetch('/api/settings');
+        const response = await fetch(`${API_URL}/settings`);
         if (response.ok) {
             const settings = await response.json();
 
             // Apply Theme
-            const theme = settings.theme || 'dark';
-            const themeSelect = document.getElementById('theme-select');
-            if (themeSelect) themeSelect.value = theme;
-            applyTheme(theme);
+            // (Currently theme is CSS-based, but we could toggle classes if needed)
 
-            // Apply Username
-            const userName = settings.username || 'User';
-            const userNameInput = document.getElementById('user-name');
-            if (userNameInput) userNameInput.value = userName;
-            updateUserNameInUI(userName);
+            // Populate Modal Inputs
+            const usernameInput = document.getElementById('settings-username');
+            const tempInput = document.getElementById('settings-temp');
 
-            // Apply Temperature
-            const temp = settings.ai_temperature || 0.7; // Backend uses 0-1 float
-            const tempSlider = document.getElementById('temperature-slider');
-            const tempValue = document.getElementById('temp-value');
-            if (tempSlider && tempValue) {
-                tempSlider.value = temp;
-                tempValue.textContent = temp;
-            }
+            if (usernameInput) usernameInput.value = settings.username || 'User';
+            if (tempInput) tempInput.value = settings.ai_temperature || 0.7;
 
-            // Save to local storage as backup/cache
-            localStorage.setItem('aura-theme', theme);
-            localStorage.setItem('aura-username', userName);
+            console.log("Settings loaded:", settings);
         }
     } catch (error) {
-        console.error('Failed to load settings from backend:', error);
-        // Fallback to local storage
-        const theme = localStorage.getItem('aura-theme') || 'dark';
-        applyTheme(theme);
-    }
-}
-
-async function saveSettings() {
-    const theme = document.getElementById('theme-select')?.value || 'dark';
-    const username = document.getElementById('user-name')?.value || 'User';
-    const temp = parseFloat(document.getElementById('temperature-slider')?.value || 0.7);
-
-    const data = {
-        theme,
-        username,
-        ai_temperature: temp
-    };
-
-    try {
-        const response = await fetch('/api/settings', {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data)
-        });
-
-        if (response.ok) {
-            showToast('Settings saved!');
-
-            // Update UI immediately
-            applyTheme(theme);
-            updateUserNameInUI(username);
-
-            // Update Local Storage
-            localStorage.setItem('aura-theme', theme);
-            localStorage.setItem('aura-username', username);
-        } else {
-            showToast('Failed to save settings', 'error');
-        }
-    } catch (error) {
-        console.error('Error saving settings:', error);
-        showToast('Error saving settings', 'error');
-    }
-}
-
-function applyTheme(theme) {
-    if (theme === 'light') {
-        document.body.classList.add('light-mode');
-    } else {
-        document.body.classList.remove('light-mode');
+        console.error("Error loading settings:", error);
     }
 }
 
 function openSettings() {
     const modal = document.getElementById('settings-modal');
-    if (modal) {
-        modal.classList.add('active');
-        loadSettings();
-    }
+    if (modal) modal.classList.add('active');
 }
 
 function closeSettings() {
     const modal = document.getElementById('settings-modal');
-    if (modal) {
-        modal.classList.remove('active');
-    }
+    if (modal) modal.classList.remove('active');
 }
 
-async function exportData() {
+async function saveSettings() {
+    const username = document.getElementById('settings-username').value;
+    const temp = parseFloat(document.getElementById('settings-temp').value);
+
     try {
-        showToast('Preparing data export...', 'info');
-
-        const response = await fetch('/api/export');
-        if (!response.ok) throw new Error('Export failed');
-
-        const blob = await response.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `aura-export-${new Date().toISOString().split('T')[0]}.json`;
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-        document.body.removeChild(a);
-
-        showToast('✅ Data exported successfully!');
-    } catch (error) {
-        console.error('Export error:', error);
-        showToast('Failed to export data', 'error');
-    }
-}
-
-// Event Listeners
-document.addEventListener('DOMContentLoaded', () => {
-    const tempSlider = document.getElementById('temperature-slider');
-    const tempValue = document.getElementById('temp-value');
-
-    if (tempSlider && tempValue) {
-        tempSlider.addEventListener('input', (e) => {
-            tempValue.textContent = (parseInt(e.target.value) / 100).toFixed(1);
+        const response = await fetch(`${API_URL}/settings`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                username: username,
+                ai_temperature: temp
+            })
         });
 
-        tempSlider.addEventListener('change', saveSettings);
+        if (response.ok) {
+            showToast("Settings saved!");
+            closeSettings();
+            // Reload to apply changes (e.g. username in chat)
+            location.reload();
+        } else {
+            showToast("Failed to save settings", "error");
+        }
+    } catch (error) {
+        console.error("Error saving settings:", error);
+        showToast("Error saving settings", "error");
     }
+}
 
-    // Auto-save on change
-    const themeSelect = document.getElementById('theme-select');
-    if (themeSelect) {
-        themeSelect.addEventListener('change', saveSettings);
-    }
-
-    const userNameInput = document.getElementById('user-name');
-    if (userNameInput) {
-        userNameInput.addEventListener('blur', saveSettings);
-    }
-});
+// Helper for Toasts (assuming main.js has showToast, but defining here just in case or relying on main.js)
+// We will assume main.js provides showToast.
