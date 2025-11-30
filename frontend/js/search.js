@@ -6,6 +6,12 @@ async function performGlobalSearch(query) {
     const modal = document.getElementById('search-modal');
     const resultsContainer = document.getElementById('search-results');
 
+    // Safe check - search modal is optional feature
+    if (!modal || !resultsContainer) {
+        console.warn('Search modal elements not found. Search feature may not be fully implemented.');
+        return;
+    }
+
     modal.style.display = 'flex';
     resultsContainer.innerHTML = '<div class="loading">Searching...</div>';
 
@@ -56,5 +62,8 @@ function handleResultClick(type, id) {
 }
 
 function closeSearchModal() {
-    document.getElementById('search-modal').style.display = 'none';
+    const modal = document.getElementById('search-modal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
 }

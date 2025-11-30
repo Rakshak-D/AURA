@@ -16,15 +16,17 @@ const chartColors = {
 
 async function loadAnalytics() {
     try {
+        const apiUrl = typeof API_URL !== 'undefined' ? API_URL : '/api';
+        
         // 1. Fetch Focus Score
-        const scoreRes = await fetch('/api/insights/focus-score');
+        const scoreRes = await fetch(`${apiUrl}/insights/focus-score`);
         if (!scoreRes.ok) throw new Error('Failed to fetch focus score');
         const scoreData = await scoreRes.json();
 
         renderFocusScore(scoreData);
 
         // 2. Fetch Trends
-        const trendsRes = await fetch('/api/insights/trends');
+        const trendsRes = await fetch(`${apiUrl}/insights/trends`);
         if (!trendsRes.ok) throw new Error('Failed to fetch trends');
         const trendsData = await trendsRes.json();
 

@@ -30,7 +30,9 @@ async def upload_file(
         
         return {"status": "success", "filename": file.filename, "message": "File uploaded. Processing for search in background."}
     except Exception as e:
-        print(f"Upload error: {e}")
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Upload error: {str(e)}", exc_info=True)
         return {"status": "error", "message": str(e)}
 
 @router.get("/upload/files")
@@ -48,4 +50,7 @@ async def list_files(db: Session = Depends(get_db)):
             ]
         }
     except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"List files error: {str(e)}", exc_info=True)
         return {"status": "error", "message": str(e)}

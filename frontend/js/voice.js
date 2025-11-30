@@ -4,10 +4,11 @@ let recognition = null;
 let isListening = false;
 
 function setupVoiceInput() {
-    const voiceBtn = document.getElementById('voice-btn');
+    // Voice button is the icon-btn with mic icon, not a separate voice-btn
+    const voiceBtn = document.querySelector('.icon-btn i[data-lucide="mic"]')?.parentElement;
 
     if (!voiceBtn) {
-        console.warn('Voice button not found');
+        console.warn('Voice button not found - mic icon button may not exist');
         return;
     }
 
@@ -90,7 +91,7 @@ function stopVoiceInput() {
             console.error('Error stopping recognition:', error);
         }
         isListening = false;
-        const voiceBtn = document.getElementById('voice-btn');
+        const voiceBtn = document.querySelector('.icon-btn i[data-lucide="mic"]')?.parentElement;
         if (voiceBtn) {
             voiceBtn.classList.remove('listening');
         }

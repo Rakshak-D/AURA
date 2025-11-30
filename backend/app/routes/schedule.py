@@ -33,7 +33,9 @@ def get_routine(
     except HTTPException:
         raise
     except Exception as e:
-        print(f"Error generating routine: {e}")
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error generating routine: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/schedule/auto-assign")
@@ -53,7 +55,9 @@ def auto_assign_tasks(
     except HTTPException:
         raise
     except Exception as e:
-        print(f"Error auto-scheduling: {e}")
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error auto-scheduling: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/schedule/events")
@@ -100,7 +104,9 @@ def create_event(event: EventCreate, db: Session = Depends(get_db)):
         }
     except Exception as e:
         db.rollback()
-        print(f"Error creating event: {e}")
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error creating event: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/schedule/conflicts")
@@ -129,5 +135,7 @@ def check_conflicts(start_time: str, end_time: str, db: Session = Depends(get_db
                 
         return {"conflicts": conflicts}
     except Exception as e:
-        print(f"Error checking conflicts: {e}")
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error checking conflicts: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))

@@ -36,5 +36,7 @@ async def chat_endpoint(request: Request, msg: ChatMessage, db: Session = Depend
         return result
 
     except Exception as e:
-        print(f"An error occurred: {e}")
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Chat endpoint error: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))

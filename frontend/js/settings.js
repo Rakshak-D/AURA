@@ -46,15 +46,34 @@ function closeSettings() {
 }
 
 async function saveSettings() {
-    const username = document.getElementById('settings-username').value;
-    const temp = parseFloat(document.getElementById('settings-temp').value);
+    // Support both old and new IDs
+    const usernameInput = document.getElementById('setting-username') || document.getElementById('settings-username');
+    const themeInput = document.getElementById('setting-theme');
+    const voiceInput = document.getElementById('setting-voice');
+    const tempInput = document.getElementById('settings-temp');
+
+    if (!usernameInput || !tempInput) {
+        showToast("Settings form elements not found", "error");
+        return;
+    }
+
+    const username = usernameInput.value.trim();
+    const theme = themeInput ? themeInput.value : 'dark';
+    const voice = voiceInput ? voiceInput.value : 'enabled';
+    const temp = parseFloat(tempInput.value);
+
+    if (!username) {
+        showToast("Username is required", "error");
+        return;
+    }
 
     try {
         const response = await fetch(`${API_URL}/settings`, {
-            method: 'POST',
+            method: 'PUT',  // Fixed: Use PUT instead of POST
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 username: username,
+                theme: theme,
                 ai_temperature: temp
             })
         });

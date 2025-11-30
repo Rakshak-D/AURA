@@ -88,7 +88,9 @@ def get_focus_score(db: Session = Depends(get_db)):
             }
         }
     except Exception as e:
-        print(f"Error calculating focus score: {e}")
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error calculating focus score: {str(e)}", exc_info=True)
         # Return safe defaults
         return {
             "score": 0,
@@ -145,7 +147,9 @@ def get_trends(db: Session = Depends(get_db)):
             }
         }
     except Exception as e:
-        print(f"Error generating trends: {e}")
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error generating trends: {str(e)}", exc_info=True)
         # Return safe defaults
         return {
             "activity": {

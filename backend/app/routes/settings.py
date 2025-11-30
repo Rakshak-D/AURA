@@ -84,5 +84,7 @@ def update_settings(settings_update: SettingsUpdate, db: Session = Depends(get_d
         return response_settings
     except Exception as e:
         db.rollback()
-        print(f"Error updating settings: {e}")
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error updating settings: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))

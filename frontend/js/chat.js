@@ -128,7 +128,7 @@ function renderWidget(widgetData) {
         const tasks = widgetData.data.tasks || [];
         const tasksHtml = tasks.map(t => `
             <div class="task-card-widget">
-                <input type="checkbox" ${t.completed ? 'checked' : ''} onclick="toggleTask(${t.id}, this.checked)">
+                <input type="checkbox" ${t.completed ? 'checked' : ''} onclick="toggleComplete(${t.id}, !this.checked)">
                 <div style="flex:1">
                     <div class="${t.completed ? 'completed' : ''}" style="font-weight:500">${t.title}</div>
                     <div style="font-size:0.8em; color:var(--text-secondary)">
@@ -229,9 +229,13 @@ function handleAction(action, data) {
 document.addEventListener('DOMContentLoaded', () => {
     const input = document.getElementById('chat-input');
     if (input) {
+        // Auto-resize textarea
         input.addEventListener('input', function () {
             this.style.height = 'auto';
             this.style.height = (this.scrollHeight) + 'px';
         });
+        
+        // Handle Enter key to send message
+        input.addEventListener('keydown', handleChatInput);
     }
 });
