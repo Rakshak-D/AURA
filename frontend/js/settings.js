@@ -4,7 +4,8 @@
 
 // API_URL is defined in main.js
 
-// Load settings on startup
+// Load settings on window load (ensures all elements exist)
+window.addEventListener('load', loadSettings);
 document.addEventListener('DOMContentLoaded', loadSettings);
 
 async function loadSettings() {
@@ -16,11 +17,15 @@ async function loadSettings() {
             // Apply Theme
             // (Currently theme is CSS-based, but we could toggle classes if needed)
 
-            // Populate Modal Inputs
-            const usernameInput = document.getElementById('settings-username');
+            // Populate Modal Inputs - support both old and new IDs
+            const usernameInput = document.getElementById('setting-username') || document.getElementById('settings-username');
+            const themeInput = document.getElementById('setting-theme');
+            const voiceInput = document.getElementById('setting-voice');
             const tempInput = document.getElementById('settings-temp');
 
             if (usernameInput) usernameInput.value = settings.username || 'User';
+            if (themeInput) themeInput.value = settings.theme || 'dark';
+            if (voiceInput) voiceInput.value = settings.voice || 'enabled';
             if (tempInput) tempInput.value = settings.ai_temperature || 0.7;
 
             console.log("Settings loaded:", settings);

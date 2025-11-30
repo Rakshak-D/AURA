@@ -9,49 +9,86 @@ async function loadTasks() {
     try {
         const response = await fetch(`${API_URL}/tasks`);
         if (response.ok) {
-            allTasks = await response.json();
+            const data = await response.json();
+            // Handle both array and object responses
+            allTasks = Array.isArray(data) ? data : (data.tasks || []);
             renderKanban(allTasks);
         } else {
-            console.error("Failed to load tasks");
+            const errorText = await response.text();
+            console.error("Failed to load tasks:", response.status, errorText);
+            // Show empty state gracefully
+            allTasks = [];
+            renderKanban([]);
+            if (typeof showToast === 'function') {
+                showToast("Failed to load tasks. Please refresh.", "error");
+            }
         }
     } catch (error) {
         console.error("Error loading tasks:", error);
+        // Show empty state gracefully
+        allTasks = [];
+        renderKanban([]);
+        if (typeof showToast === 'function') {
+            showToast("Connection error. Please check your network.", "error");
+        }
     }
 }
 
 function renderKanban(tasks) {
-    const todoList = document.getElementById('list-todo');
-    const progressList = document.getElementById('list-inprogress');
-    const doneList = document.getElementById('list-done');
+    // Support both old and new IDs for compatibility
+    const todoList = document.getElementById('todo-list') || document.getElementById('list-todo');
+    const doneList = document.getElementById('done-list') || document.getElementById('list-done');
 
     // Clear lists
-    todoList.innerHTML = '';
-    progressList.innerHTML = '';
-    doneList.innerHTML = '';
+    if (todoList) todoList.innerHTML = '';
+    if (doneList) doneList.innerHTML = '';
 
-    let counts = { todo: 0, inprogress: 0, done: 0 };
+    // Handle empty or invalid tasks array
+    if (!tasks || !Array.isArray(tasks)) {
+        tasks = [];
+    }
 
-    tasks.forEach(task => {
-        const card = createTaskCard(task);
+    let counts = { todo: 0, done: 0 };
 
-        // Use completed boolean to determine column
-        if (task.completed === true) {
-            doneList.appendChild(card);
-            counts.done++;
-        } else {
-            // All non-completed tasks go to "To Do"
-            todoList.appendChild(card);
-            counts.todo++;
+    // Show "No tasks yet" message if array is empty
+    if (tasks.length === 0) {
+        if (todoList) {
+            todoList.innerHTML = '<div style="text-align: center; padding: 2rem; color: var(--text-muted);">No tasks yet. Click "+ New Task" to get started!</div>';
         }
-    });
+        if (doneList) {
+            doneList.innerHTML = '<div style="text-align: center; padding: 2rem; color: var(--text-muted);">No completed tasks</div>';
+        }
+    } else {
+        tasks.forEach(task => {
+            try {
+                const card = createTaskCard(task);
+                if (!card) return;  // Skip if card creation failed
 
-    // Update counts
-    document.getElementById('count-todo').textContent = counts.todo;
-    document.getElementById('count-inprogress').textContent = counts.inprogress;
-    document.getElementById('count-done').textContent = counts.done;
+                // Use completed boolean to determine column
+                if (task.completed === true) {
+                    if (doneList) doneList.appendChild(card);
+                    counts.done++;
+                } else {
+                    // All non-completed tasks go to "To Do"
+                    if (todoList) todoList.appendChild(card);
+                    counts.todo++;
+                }
+            } catch (error) {
+                console.error("Error rendering task card:", task, error);
+            }
+        });
+    }
+
+    // Update counts (safely handle missing elements)
+    const todoCountEl = document.getElementById('count-todo');
+    const doneCountEl = document.getElementById('count-done');
+    if (todoCountEl) todoCountEl.textContent = counts.todo;
+    if (doneCountEl) doneCountEl.textContent = counts.done;
 
     // Re-initialize icons
-    lucide.createIcons();
+    if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+    }
 }
 
 function createTaskCard(task) {
@@ -227,13 +264,19 @@ async function saveTask() {
         due_date = new Date(date).toISOString();
     }
 
+    // Ensure payload matches Pydantic TaskCreate model exactly
     const payload = {
         title: title,
         description: desc || null,
-        due_date: due_date,
+        due_date: due_date,  // ISO string or null
         priority: priority || 'medium',
-        duration_minutes: duration_minutes
+        category: 'Personal',  // Default category
+        duration_minutes: duration_minutes,
+        tags: []  // Empty array by default
     };
+    
+    // Log payload for debugging
+    console.log('[TASK SAVE] Payload:', JSON.stringify(payload, null, 2));
 
     try {
         let url = `${API_URL}/tasks`;
@@ -314,5 +357,33 @@ function drag(ev, id) {
     ev.dataTransfer.setData("text", id);
 }
 
-// Note: Drop zones would need to call toggleComplete or update priority based on column.
-// For now, we just have the visual drag start.
+// Clear Completed Tasks
+async function clearCompletedTasks() {
+    const completedTasks = allTasks.filter(t => t.completed === true);
+    
+    if (completedTasks.length === 0) {
+        showToast("No completed tasks to clear", "error");
+        return;
+    }
+
+    if (!confirm(`Are you sure you want to delete ${completedTasks.length} completed task(s)?`)) {
+        return;
+    }
+
+    try {
+        // Delete all completed tasks
+        const deletePromises = completedTasks.map(task => 
+            fetch(`${API_URL}/tasks/${task.id}`, { method: 'DELETE' })
+        );
+        
+        await Promise.all(deletePromises);
+        showToast(`Cleared ${completedTasks.length} completed task(s)`);
+        loadTasks(); // Refresh the board
+    } catch (error) {
+        console.error("Error clearing completed tasks:", error);
+        showToast("Error clearing completed tasks", "error");
+    }
+}
+
+// Export for global access
+window.clearCompletedTasks = clearCompletedTasks;

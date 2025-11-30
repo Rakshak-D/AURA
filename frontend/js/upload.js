@@ -1,29 +1,58 @@
 // File upload functionality
 function setupFileUpload() {
     const dropZone = document.getElementById('drop-zone');
-    const fileInput = document.getElementById('file-input');
+    const fileInput = document.getElementById('file-upload');
+    const uploadBtn = document.getElementById('upload-btn');
 
     // Initial load
     loadUploadedFiles();
 
+    // Click listener for upload button
+    if (uploadBtn && fileInput) {
+        uploadBtn.addEventListener('click', () => {
+            fileInput.click();
+        });
+    }
+
+    // File input change handler
+    if (fileInput) {
+        fileInput.addEventListener('change', (e) => {
+            const files = e.target.files;
+            if (files && files.length > 0) {
+                handleFiles(files);
+            }
+        });
+    }
+
     // Drag and drop handlers
-    dropZone.addEventListener('dragover', (e) => {
-        e.preventDefault();
-        dropZone.classList.add('drag-over');
-    });
+    if (dropZone) {
+        dropZone.addEventListener('click', () => {
+            if (fileInput) fileInput.click();
+        });
 
-    dropZone.addEventListener('dragleave', () => {
-        dropZone.classList.remove('drag-over');
-    });
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('drag-over');
+        });
 
-    dropZone.addEventListener('drop', (e) => {
-        e.preventDefault();
-        dropZone.classList.remove('drag-over');
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('drag-over');
+        });
 
-        const files = e.dataTransfer.files;
-        handleFiles(files);
-    });
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('drag-over');
+
+            const files = e.dataTransfer.files;
+            handleFiles(files);
+        });
+    }
 }
+
+// Initialize on DOM ready
+document.addEventListener('DOMContentLoaded', () => {
+    setupFileUpload();
+});
 
 function handleFileSelect(event) {
     const files = event.target.files;
@@ -41,55 +70,72 @@ async function uploadFile(file) {
     formData.append('file', file);
 
     try {
-        showToast(`Uploading ${file.name}...`, 'info');
+        if (typeof showToast === 'function') {
+            showToast(`Uploading ${file.name}...`, 'info');
+        }
 
-        const response = await fetch('/api/upload', {
+        const apiUrl = typeof API_URL !== 'undefined' ? API_URL : '/api';
+        const response = await fetch(`${apiUrl}/upload`, {
             method: 'POST',
             body: formData
         });
 
         if (!response.ok) {
-            throw new Error('Upload failed');
+            const errorData = await response.json().catch(() => ({ detail: 'Upload failed' }));
+            throw new Error(errorData.detail || 'Upload failed');
         }
 
         const result = await response.json();
-        showToast(`✅ ${file.name} uploaded!`);
+        if (typeof showToast === 'function') {
+            showToast(`✅ ${file.name} uploaded successfully!`, 'success');
+        } else {
+            alert(`✅ ${file.name} uploaded successfully!`);
+        }
 
         loadUploadedFiles();
 
     } catch (error) {
         console.error('Upload error:', error);
-        showToast(`Failed to upload ${file.name}`, 'error');
+        if (typeof showToast === 'function') {
+            showToast(`Failed to upload ${file.name}: ${error.message}`, 'error');
+        } else {
+            alert(`Failed to upload ${file.name}: ${error.message}`);
+        }
     }
 }
 
 async function loadUploadedFiles() {
-    const filesList = document.getElementById('files-list');
+    const filesList = document.getElementById('file-list');
+    if (!filesList) return;
+
     filesList.innerHTML = '<div class="loading">Loading...</div>';
 
     try {
-        const response = await fetch('/api/upload/files');
+        const response = await fetch(`${API_URL}/upload/files`);
+        if (!response.ok) {
+            throw new Error('Failed to fetch files');
+        }
+        
         const data = await response.json();
 
-        if (data.status === 'success') {
-            filesList.innerHTML = '';
-            if (data.files.length === 0) {
-                filesList.innerHTML = '<div class="no-files">No documents yet</div>';
-                return;
-            }
-
-            data.files.forEach(file => {
-                const div = document.createElement('div');
-                div.className = 'file-item';
-                div.innerHTML = `
-                    <span class="file-icon">📄</span>
-                    <span class="file-name">${file.filename}</span>
-                `;
-                filesList.appendChild(div);
-            });
+        filesList.innerHTML = '';
+        if (!data.files || data.files.length === 0) {
+            filesList.innerHTML = '<div style="text-align: center; padding: 2rem; color: var(--text-muted);">No documents yet. Upload some files to build your knowledge base!</div>';
+            return;
         }
+
+        data.files.forEach(file => {
+            const div = document.createElement('div');
+            div.className = 'file-item';
+            div.style.cssText = 'padding: 1rem; margin-bottom: 0.5rem; background: var(--surface-color); border-radius: var(--radius-md); display: flex; align-items: center; gap: 0.75rem;';
+            div.innerHTML = `
+                <span style="font-size: 1.5rem;">📄</span>
+                <span style="flex: 1; color: var(--text-primary);">${file.filename || file.name || 'Unknown file'}</span>
+            `;
+            filesList.appendChild(div);
+        });
     } catch (error) {
         console.error('Error loading files:', error);
-        filesList.innerHTML = '<div class="error">Failed to load files</div>';
+        filesList.innerHTML = '<div style="text-align: center; padding: 2rem; color: var(--danger);">Failed to load files</div>';
     }
 }

@@ -128,17 +128,27 @@ def generate_routine(user_id: int, db: Session, date: datetime = None) -> Dict:
             "color": color_map.get(event.event_type, "#3B82F6")
         })
         
-    # 2. Add Existing Scheduled Tasks
+    # 2. Add Existing Scheduled Tasks - Fetch ALL uncompleted tasks with due_date matching the requested day
+    # Use date-only comparison to ensure we get all tasks for the day regardless of time
+    day_end = base_date + timedelta(days=1)
+    
     scheduled_tasks = db.query(Task).filter(
         Task.user_id == user_id,
+        Task.due_date.isnot(None),  # Must have a due_date
         Task.due_date >= base_date,
-        Task.due_date < base_date + timedelta(days=1),
+        Task.due_date < day_end,
         Task.completed == False
     ).all()
     
     for task in scheduled_tasks:
         duration = task.duration_minutes or 30
         end_time = task.due_date + timedelta(minutes=duration)
+        
+        # Ensure ISO format includes timezone info if available
+        # If task.due_date is naive, convert to ISO string (frontend will handle as local time)
+        # If timezone-aware, it will include timezone info automatically
+        start_iso = task.due_date.isoformat()
+        end_iso = end_time.isoformat()
         
         # Determine color based on priority
         priority_colors = {
@@ -149,10 +159,10 @@ def generate_routine(user_id: int, db: Session, date: datetime = None) -> Dict:
         }
         
         timeline.append({
-            "start": task.due_date.isoformat(),
-            "end": end_time.isoformat(),
-            "start_time": task.due_date.isoformat(),
-            "end_time": end_time.isoformat(),
+            "start": start_iso,
+            "end": end_iso,
+            "start_time": start_iso,
+            "end_time": end_iso,
             "title": task.title,
             "description": task.description,
             "type": "task",

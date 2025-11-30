@@ -33,27 +33,38 @@ def get_tasks(
         
         result = []
         for task in tasks:
-            task_dict = {
-                'id': task.id,
-                'title': task.title,
-                'description': task.description,
-                'due_date': task.due_date,
-                'completed': task.completed,
-                'priority': task.priority,
-                'category': task.category,
-                'duration_minutes': task.duration_minutes,
-                'tags': json.loads(task.tags) if task.tags else [],
-                'recurring': task.recurring,
-                'created_at': task.created_at,
-                'completed_at': task.completed_at
-            }
-            result.append(TaskResponse(**task_dict))
+            try:
+                task_dict = {
+                    'id': task.id,
+                    'title': task.title or '',
+                    'description': task.description,
+                    'due_date': task.due_date,
+                    'completed': task.completed if task.completed is not None else False,
+                    'priority': task.priority or 'medium',
+                    'category': task.category or 'Personal',
+                    'duration_minutes': task.duration_minutes or 30,
+                    'tags': json.loads(task.tags) if task.tags else [],
+                    'recurring': task.recurring,
+                    'created_at': task.created_at,
+                    'completed_at': task.completed_at
+                }
+                result.append(TaskResponse(**task_dict))
+            except Exception as task_error:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error(f"Error serializing task {task.id}: {str(task_error)}")
+                continue  # Skip invalid tasks instead of crashing
         
+        # Always return a list, even if empty
         return result
     
     except Exception as e:
-        print(f"Error getting tasks: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error getting tasks: {str(e)}", exc_info=True)
+        print(f"[TASK GET] Error: {str(e)}")
+        # Return empty list instead of 500 error to prevent frontend crash
+        return []
 
 def check_conflict(db: Session, user_id: int, start_time: datetime, duration_minutes: int, exclude_task_id: int = None):
     from datetime import timedelta
@@ -94,24 +105,74 @@ def check_conflict(db: Session, user_id: int, start_time: datetime, duration_min
 
 @router.post("/tasks", response_model=TaskResponse)
 def create_task(task: TaskCreate, db: Session = Depends(get_db)):
+    import logging
+    logger = logging.getLogger(__name__)
+    
     try:
-        # Safely handle None values with defaults
-        duration_minutes = int(task.duration_minutes) if task.duration_minutes is not None else 30
-        priority = task.priority if task.priority else 'medium'
-        category = task.category if task.category else 'Personal'
+        # Sanitize and validate inputs with strict defaults
+        if not task.title or not task.title.strip():
+            raise HTTPException(status_code=400, detail="Task title is required")
+        
+        # Log incoming task data for debugging
+        task_data = {
+            "title": task.title,
+            "description": task.description,
+            "due_date": str(task.due_date) if task.due_date else None,
+            "priority": task.priority,
+            "category": task.category,
+            "duration_minutes": task.duration_minutes,
+            "tags": task.tags
+        }
+        logger.info(f"Creating task with data: {json.dumps(task_data, default=str)}")
+        print(f"[TASK CREATE] Incoming task_data: {json.dumps(task_data, default=str)}")
+        
+        # Safely handle None values with defaults - CRITICAL FIX
+        if task.duration_minutes is None:
+            duration_minutes = 30
+        else:
+            try:
+                duration_minutes = int(task.duration_minutes)
+                if duration_minutes < 1:
+                    duration_minutes = 30
+            except (ValueError, TypeError):
+                duration_minutes = 30
+        
+        if task.priority is None or task.priority.strip() == "":
+            priority = 'medium'
+        else:
+            priority = task.priority.strip().lower()
+            if priority not in ['low', 'medium', 'high', 'urgent']:
+                priority = 'medium'
+        
+        if task.category is None or task.category.strip() == "":
+            category = 'Personal'
+        else:
+            category = task.category.strip()
         
         # Ensure tags is a list and serialize to JSON
         tags_list = task.tags if isinstance(task.tags, list) else (task.tags if task.tags else [])
         tags_json = json.dumps(tags_list) if tags_list else '[]'
         
-        # Conflict Detection
-        if task.due_date:
-            check_conflict(db, 1, task.due_date, duration_minutes)
+        # Parse due_date if it's a string (from frontend)
+        due_date = task.due_date
+        if isinstance(due_date, str):
+            try:
+                due_date = datetime.fromisoformat(due_date.replace('Z', '+00:00'))
+            except ValueError:
+                try:
+                    due_date = datetime.fromisoformat(due_date)
+                except ValueError:
+                    logger.error(f"Invalid due_date format: {due_date}")
+                    raise HTTPException(status_code=400, detail=f"Invalid due_date format: {due_date}")
+        
+        # Conflict Detection (only if due_date is set)
+        if due_date:
+            check_conflict(db, 1, due_date, duration_minutes)
 
         new_task = Task(
             title=task.title,
             description=task.description,
-            due_date=task.due_date,
+            due_date=due_date,
             priority=priority,
             category=category,
             duration_minutes=duration_minutes,
@@ -126,6 +187,9 @@ def create_task(task: TaskCreate, db: Session = Depends(get_db)):
         db.add(new_task)
         db.commit()
         db.refresh(new_task)
+        
+        logger.info(f"Task created successfully: ID={new_task.id}, Title={new_task.title}")
+        print(f"[TASK CREATE] Success: ID={new_task.id}, Title={new_task.title}")
         
         return TaskResponse(
             id=new_task.id,
@@ -144,11 +208,20 @@ def create_task(task: TaskCreate, db: Session = Depends(get_db)):
         )
     
     except HTTPException as he:
+        logger.error(f"HTTPException in create_task: {he.detail}")
         raise he
+    except ValueError as ve:
+        db.rollback()
+        logger.error(f"ValueError in create_task: {str(ve)}")
+        print(f"[TASK CREATE] ValueError: {str(ve)}")
+        raise HTTPException(status_code=400, detail=f"Invalid input: {str(ve)}")
     except Exception as e:
         db.rollback()
-        print(f"Error creating task: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error creating task: {str(e)}", exc_info=True)
+        print(f"[TASK CREATE] Error: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to create task: {str(e)}")
 
 @router.get("/tasks/{task_id}", response_model=TaskResponse)
 def get_task(task_id: int, db: Session = Depends(get_db)):

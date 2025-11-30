@@ -1,7 +1,7 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
 :root {
-    /* Deep Space Theme */
+    /* Deep Space Theme - Enforced */
     --bg-color: #0B0F19;
     --surface-color: #151B2B;
     --surface-hover: #1E2538;
@@ -9,7 +9,7 @@
     --primary-hover: #2563EB;
     --primary-glow: rgba(59, 130, 246, 0.3);
 
-    --text-primary: #F3F4F6;
+    --text-primary: #E2E8F0;
     --text-secondary: #9CA3AF;
     --text-muted: #6B7280;
 
@@ -133,10 +133,12 @@ body {
 
 .message-content {
     padding: 0.75rem 1rem;
-    border-radius: var(--radius-lg);
+    border-radius: 12px;
     line-height: 1.5;
     font-size: 0.95rem;
     position: relative;
+    background: var(--surface-color);
+    border: 1px solid var(--border-color);
 }
 
 .message.assistant .message-content {
@@ -207,7 +209,7 @@ textarea {
 /* Kanban Board */
 .kanban-board {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(2, 1fr);
     gap: 1.5rem;
     height: 100%;
     overflow-x: auto;
@@ -231,6 +233,26 @@ textarea {
     align-items: center;
 }
 
+.btn-clear-completed {
+    background: transparent;
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    padding: 0.25rem 0.5rem;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.75rem;
+    transition: var(--transition);
+}
+
+.btn-clear-completed:hover {
+    background: var(--surface-hover);
+    border-color: var(--danger);
+    color: var(--danger);
+}
+
 .task-list {
     flex: 1;
     overflow-y: auto;
@@ -242,11 +264,11 @@ textarea {
     gap: 0.75rem;
 }
 
-/* Professional Task Cards */
+/* Professional Task Cards - Deep Space Theme */
 .task-card {
     background: var(--surface-color);
     border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
+    border-radius: 12px;
     padding: 1rem;
     transition: var(--transition);
     cursor: grab;
@@ -254,6 +276,8 @@ textarea {
     flex-direction: column;
     gap: 0.75rem;
     min-height: 120px;
+    margin-bottom: 0.75rem;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 }
 
 .task-card:hover {
@@ -533,13 +557,14 @@ textarea {
 /* Calendar Grid Layout */
 .calendar-grid {
     display: grid;
-    grid-template-columns: 80px 1fr;
+    grid-template-columns: 60px 1fr;
     gap: 0;
     height: calc(100vh - 250px);
     min-height: 600px;
     border: 1px solid var(--border-color);
     border-radius: var(--radius-lg);
-    overflow: hidden;
+    overflow-y: auto;
+    overflow-x: hidden;
     background: var(--surface-color);
 }
 
@@ -547,12 +572,16 @@ textarea {
 .time-labels-column {
     background: var(--bg-color);
     border-right: 1px solid var(--border-color);
-    overflow: hidden;
+    position: relative;
+    /* Match the height of the day-view */
+    min-height: 2880px;
+    height: 2880px;
 }
 
 .time-labels-container {
     position: relative;
-    height: 100%;
+    height: 2880px;
+    /* 24 hours * 60 minutes * 2px per minute */
 }
 
 .time-label {
@@ -570,19 +599,24 @@ textarea {
 /* Day Track Column */
 .day-track-column {
     position: relative;
-    overflow-y: auto;
-    overflow-x: hidden;
     background: var(--bg-color);
+    /* Match the height of the time labels */
+    min-height: 2880px;
+    height: 2880px;
 }
 
 .day-view {
     position: relative;
     min-height: 2880px;
-    /* 24 hours * 60 minutes * 2px per minute */
+    /* 24 hours * 60 minutes * 2px per minute = 2880px total */
     height: 2880px;
-    background: repeating-linear-gradient(transparent 0px,
-            transparent 119px,
-            var(--border-color) 120px);
+    /* Hour separators: 1px line every 120px (1 hour = 60 min * 2px) */
+    background: repeating-linear-gradient(
+        to bottom,
+        transparent 0px,
+        transparent 119px,
+        var(--border-color) 120px
+    );
     cursor: pointer;
 }
 
@@ -596,22 +630,24 @@ textarea {
     pointer-events: none;
 }
 
-/* Calendar Events */
+/* Calendar Events - Deep Space Theme */
 .calendar-event {
     position: absolute;
     left: 8px;
     right: 8px;
     min-height: 30px;
-    border-radius: var(--radius-md);
+    border-radius: 12px;
     padding: 0.5rem 0.75rem;
     border-left: 4px solid;
     cursor: pointer;
     transition: var(--transition);
     overflow: hidden;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
     display: flex;
     flex-direction: column;
     gap: 0.25rem;
+    background: var(--surface-color);
+    border: 1px solid var(--border-color);
 }
 
 .calendar-event:hover {
@@ -709,21 +745,21 @@ textarea {
     font-size: 0.9rem;
 }
 
-/* Scrollbar for day view */
-.day-track-column::-webkit-scrollbar {
+/* Scrollbar for calendar grid */
+.calendar-grid::-webkit-scrollbar {
     width: 8px;
 }
 
-.day-track-column::-webkit-scrollbar-track {
+.calendar-grid::-webkit-scrollbar-track {
     background: var(--bg-color);
 }
 
-.day-track-column::-webkit-scrollbar-thumb {
+.calendar-grid::-webkit-scrollbar-thumb {
     background: var(--surface-hover);
     border-radius: 4px;
 }
 
-.day-track-column::-webkit-scrollbar-thumb:hover {
+.calendar-grid::-webkit-scrollbar-thumb:hover {
     background: var(--text-muted);
 }
 
@@ -745,6 +781,73 @@ textarea {
     margin-bottom: 1rem;
     font-size: 1rem;
     color: var(--text-secondary);
+}
+
+/* Chart Container */
+.chart-container {
+    position: relative;
+    height: 300px;
+    width: 100%;
+}
+
+/* Focus Score Widget */
+.widget-focus-score {
+    display: flex;
+    flex-direction: column;
+}
+
+.focus-score-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem 0;
+    min-height: 200px;
+}
+
+.focus-score-value {
+    font-size: 5rem;
+    font-weight: 700;
+    background: linear-gradient(135deg, var(--primary-color), var(--primary-hover));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    text-shadow: 0 0 30px rgba(59, 130, 246, 0.5);
+    line-height: 1;
+    margin-bottom: 0.5rem;
+    position: relative;
+}
+
+.focus-score-value::after {
+    content: '';
+    position: absolute;
+    inset: -10px;
+    background: radial-gradient(circle, rgba(59, 130, 246, 0.2), transparent 70%);
+    filter: blur(20px);
+    z-index: -1;
+}
+
+.focus-score-label {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 0.5rem;
+}
+
+.focus-score-trend {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.focus-score-trend.positive {
+    color: var(--success);
+}
+
+.focus-score-trend.negative {
+    color: var(--danger);
 }
 
 /* Modal */

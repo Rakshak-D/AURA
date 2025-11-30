@@ -11,17 +11,46 @@ router = APIRouter()
 def get_settings(db: Session = Depends(get_db)):
     try:
         user = db.query(User).filter_by(id=1).first()
+        
+        # Return defaults if user doesn't exist or settings are empty
         if not user:
-            raise HTTPException(status_code=404, detail="User not found")
+            return {
+                "username": "User",
+                "theme": "dark",
+                "notifications_enabled": True,
+                "default_reminder_time": "09:00",
+                "ai_temperature": 0.7
+            }
         
         # Merge name into settings for frontend convenience
-        settings = user.settings or {}
-        settings['username'] = user.name
+        settings = user.settings if user.settings else {}
         
-        return settings
+        # Ensure all required fields have defaults
+        default_settings = {
+            "username": user.name if user.name else "User",
+            "theme": settings.get("theme", "dark"),
+            "notifications_enabled": settings.get("notifications_enabled", True),
+            "default_reminder_time": settings.get("default_reminder_time", "09:00"),
+            "ai_temperature": settings.get("ai_temperature", 0.7)
+        }
+        
+        # Merge user settings with defaults
+        default_settings.update(settings)
+        default_settings['username'] = user.name if user.name else "User"
+        
+        return default_settings
     except Exception as e:
-        print(f"Error fetching settings: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Error fetching settings: {str(e)}", exc_info=True)
+        # Return safe defaults instead of crashing
+        return {
+            "username": "User",
+            "theme": "dark",
+            "notifications_enabled": True,
+            "default_reminder_time": "09:00",
+            "ai_temperature": 0.7
+        }
 
 @router.put("/settings")
 def update_settings(settings_update: SettingsUpdate, db: Session = Depends(get_db)):

@@ -36,8 +36,20 @@ async function sendMessage() {
         if (data.type === 'widget') {
             renderWidget(data);
         } else if (data.response) {
-            // Fallback to text or legacy task card
-            if (data.action_taken === 'task_query' && data.data && data.data.tasks) {
+            // Handle schedule queries with formatted lists
+            if (data.action_taken === 'query_schedule' && data.data && data.data.events) {
+                // Format schedule as markdown list for better display
+                let scheduleText = data.response;
+                if (data.data.events && data.data.events.length > 0) {
+                    scheduleText += '\n\n**Events:**\n';
+                    data.data.events.forEach((event, idx) => {
+                        const start = new Date(event.start);
+                        const timeStr = start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                        scheduleText += `${idx + 1}. ${event.title} - ${timeStr}\n`;
+                    });
+                }
+                addMessage(scheduleText, 'assistant');
+            } else if (data.action_taken === 'task_query' && data.data && data.data.tasks) {
                 renderWidget({ type: 'widget', widget_type: 'task_list', data: { title: data.response, tasks: data.data.tasks } });
             } else {
                 addMessage(data.response, 'assistant');
@@ -58,11 +70,38 @@ async function sendMessage() {
 
 function addMessage(text, sender, isError = false) {
     const history = document.getElementById('chat-history');
+    if (!history) {
+        console.error('Chat history element not found');
+        return null;
+    }
+    
     const div = document.createElement('div');
     div.className = `message ${sender} ${isError ? 'error' : ''}`;
 
-    // Use marked.js if available, otherwise fallback to text
-    const content = typeof marked !== 'undefined' ? marked.parse(text) : text.replace(/\n/g, '<br>');
+    // Use marked.js if available for markdown support, otherwise fallback to text
+    let content = text;
+    if (typeof marked !== 'undefined') {
+        try {
+            // Configure marked for safe rendering
+            marked.setOptions({
+                breaks: true,
+                gfm: true,
+                sanitize: false
+            });
+            content = marked.parse(text);
+        } catch (error) {
+            console.error('Markdown parsing error:', error);
+            // Fallback to plain text with line breaks
+            content = text.replace(/\n/g, '<br>');
+        }
+    } else {
+        // Fallback: convert newlines to <br> and escape HTML
+        content = text
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/\n/g, '<br>');
+    }
 
     div.innerHTML = `
         <div class="message-content">
@@ -71,7 +110,10 @@ function addMessage(text, sender, isError = false) {
     `;
 
     history.appendChild(div);
-    scrollToBottom();
+    
+    // Auto-scroll with smooth behavior
+    setTimeout(() => scrollToBottom(), 50);
+    
     return div;
 }
 
@@ -147,7 +189,18 @@ function removeLoadingIndicator(id) {
 
 function scrollToBottom() {
     const history = document.getElementById('chat-history');
-    history.scrollTop = history.scrollHeight;
+    if (!history) return;
+    
+    // Smooth scroll to bottom
+    history.scrollTo({
+        top: history.scrollHeight,
+        behavior: 'smooth'
+    });
+    
+    // Fallback for browsers that don't support smooth scroll
+    if (history.scrollTop !== history.scrollHeight) {
+        history.scrollTop = history.scrollHeight;
+    }
 }
 
 function handleChatInput(e) {

@@ -2,16 +2,22 @@ from sqlalchemy.orm import Session
 from ..models.sql_models import ChatHistory, Task, User
 from ..models.llm_models import llm
 from .rag_service import query_rag
-from .schedule_service import generate_daily_schedule
+from .schedule_service import generate_daily_schedule, generate_routine
 from .intent_service import detect_intent
 from datetime import datetime, timedelta
 import json
 import re
 import asyncio
+import logging
+
+logger = logging.getLogger(__name__)
 
 class ChatService:
     def __init__(self):
         self.intents = {
+            'query_schedule': self.handle_query_schedule,
+            'add_task': self.handle_task_create,
+            'query_knowledge': self.handle_query_knowledge,
             'task_create': self.handle_task_create,
             'task_query': self.handle_task_query,
             'task_update': self.handle_task_update,
@@ -23,6 +29,10 @@ class ChatService:
         }
     
     async def process_chat(self, user_id: int, message_data: any, db: Session):
+        """
+        Main chat processing with intelligent Tool Router.
+        The bot now acts as an agent that can access schedule, create tasks, and query knowledge.
+        """
         try:
             # Handle both string (legacy) and object input
             if isinstance(message_data, str):
@@ -37,12 +47,48 @@ class ChatService:
             
             self.save_message(user_id, "user", message, db)
             
-            # Detect Intent (Returns Dict)
-            # Assuming detect_intent is fast/sync. If slow, wrap in to_thread.
+            message_lower = message.lower()
+            
+            # ===== TOOL ROUTER: Intelligent Agent Logic =====
+            
+            # 1. Schedule/Calendar Query Detection
+            schedule_keywords = ['schedule', 'calendar', 'what am i doing', 'what\'s on my schedule', 
+                                'what do i have', 'am i free', 'free time', 'what am i scheduled']
+            if any(keyword in message_lower for keyword in schedule_keywords):
+                logger.info(f"Detected schedule query: {message}")
+                result = await self.handle_query_schedule(user_id, message, db, None)
+                self.save_message(user_id, "assistant", result['response'], db, intent='query_schedule')
+                result['suggestions'] = self.generate_suggestions('query_schedule', db, user_id)
+                return result
+            
+            # 2. Task Creation Detection
+            task_keywords = ['remind me', 'add task', 'create task', 'schedule a task', 
+                           'add to my list', 'set a reminder', 'i need to']
+            if any(keyword in message_lower for keyword in task_keywords):
+                logger.info(f"Detected task creation: {message}")
+                # Use intent detection to extract task details
+                intent_result = detect_intent(message)
+                result = await self.handle_task_create(user_id, message, db, intent_result)
+                self.save_message(user_id, "assistant", result['response'], db, intent='add_task')
+                result['suggestions'] = self.generate_suggestions('add_task', db, user_id)
+                return result
+            
+            # 3. Knowledge Base Query Detection (Question patterns)
+            question_patterns = ['how', 'what is', 'what are', 'explain', 'tell me about', 
+                               'summarize', 'what did', 'what does', 'describe']
+            if any(message_lower.startswith(pattern) or f' {pattern} ' in message_lower 
+                   for pattern in question_patterns):
+                logger.info(f"Detected knowledge query: {message}")
+                result = await self.handle_query_knowledge(user_id, message, db, None)
+                self.save_message(user_id, "assistant", result['response'], db, intent='query_knowledge')
+                result['suggestions'] = self.generate_suggestions('query_knowledge', db, user_id)
+                return result
+            
+            # 4. Standard Intent Detection (fallback for other intents)
             intent_result = detect_intent(message)
             intent = intent_result.get('intent', 'general_chat')
             
-            # Pass context to handler if needed
+            # Route to appropriate handler
             if intent == 'general_chat':
                 result = await self.handle_general_chat(user_id, message, db, context)
             else:
@@ -59,7 +105,7 @@ class ChatService:
             return result
             
         except Exception as e:
-            print(f"Chat processing error: {e}")
+            logger.error(f"Chat processing error: {str(e)}", exc_info=True)
             return {
                 "response": "I encountered an error. Please try again.",
                 "action_taken": "error",
@@ -67,15 +113,40 @@ class ChatService:
             }
     
     async def handle_task_create(self, user_id: int, message: str, db: Session, intent_data: dict):
+        """Create task programmatically using TaskService"""
         try:
             entities = intent_data.get('entities', {})
+            
+            # Extract task details using LLM if not in entities
+            if not entities.get('title'):
+                # Use LLM to extract task details from natural language
+                extract_prompt = f"""<|system|>
+Extract task information from this message. Output JSON with: title, time (YYYY-MM-DD HH:MM format), duration (minutes), priority (low/medium/high/urgent).
+
+Message: {message}
+Current Time: {datetime.now().strftime('%Y-%m-%d %H:%M')}
+<|end|>
+<|user|>
+Extract task details.
+<|end|>
+<|assistant|>"""
+                
+                try:
+                    extraction = await asyncio.to_thread(llm.generate, extract_prompt, max_tokens=200)
+                    # Try to parse JSON from extraction
+                    import json
+                    extracted_data = json.loads(extraction.strip().replace('```json', '').replace('```', ''))
+                    entities.update(extracted_data)
+                except:
+                    # Fallback: use message as title
+                    entities['title'] = message[:100]
             
             # Parse due date
             due_date = None
             if entities.get('time'):
                 try:
                     # Try ISO format first
-                    due_date = datetime.fromisoformat(entities['time'])
+                    due_date = datetime.fromisoformat(entities['time'].replace('Z', '+00:00'))
                 except:
                     try:
                         # Try simple format YYYY-MM-DD HH:MM
@@ -83,19 +154,27 @@ class ChatService:
                     except:
                         pass
             
-            # Safe integer casting
+            # Safe integer casting with defaults
             duration_val = entities.get('duration')
             if duration_val is None:
                 duration_minutes = 30
             else:
                 try:
                     duration_minutes = int(duration_val)
+                    if duration_minutes < 1:
+                        duration_minutes = 30
                 except (ValueError, TypeError):
                     duration_minutes = 30
 
+            # Get title - use entities or fallback to message
+            task_title = entities.get('title', message[:100].strip())
+            if not task_title:
+                task_title = "New Task"
+
+            # Create task using TaskService (programmatic call)
             new_task = Task(
-                title=entities.get('title', message[:100]),
-                description=message, # Use full message as description if needed
+                title=task_title,
+                description=message if len(message) > len(task_title) else None,
                 due_date=due_date,
                 priority=entities.get('priority', 'medium'),
                 category=entities.get('category', 'Personal'),
@@ -108,9 +187,9 @@ class ChatService:
             db.commit()
             db.refresh(new_task)
             
-            response = f"✅ Task created: '{new_task.title}'"
+            response = f"I have added '{new_task.title}' to your list."
             if due_date:
-                response += f" due {self.format_due_date(due_date)}"
+                response += f" It's scheduled for {self.format_due_date(due_date)}."
             
             return {
                 "response": response,
@@ -119,7 +198,7 @@ class ChatService:
             }
             
         except Exception as e:
-            print(f"Task creation error: {e}")
+            logger.error(f"Task creation error: {str(e)}", exc_info=True)
             return {"response": f"I couldn't create the task. Error: {str(e)}", "action_taken": "error"}
     
     async def handle_task_query(self, user_id: int, message: str, db: Session, intent_data: dict = None):
@@ -187,7 +266,7 @@ class ChatService:
             }
             
         except Exception as e:
-            print(f"Task query error: {e}")
+            logger.error(f"Task query error: {str(e)}", exc_info=True)
             return {"response": "I couldn't retrieve your tasks.", "action_taken": "error"}
     
     async def handle_task_update(self, user_id: int, message: str, db: Session, intent_data: dict = None):
@@ -216,7 +295,7 @@ class ChatService:
             return {"response": "I'm not sure how to update that task.", "action_taken": None}
             
         except Exception as e:
-            print(f"Task update error: {e}")
+            logger.error(f"Task update error: {str(e)}", exc_info=True)
             return {"response": "I couldn't update the task.", "action_taken": "error"}
     
     async def handle_task_delete(self, user_id: int, message: str, db: Session, intent_data: dict = None):
@@ -236,8 +315,134 @@ class ChatService:
             return {"response": "I couldn't find that task to delete.", "action_taken": None}
             
         except Exception as e:
-            print(f"Task delete error: {e}")
+            logger.error(f"Task delete error: {str(e)}", exc_info=True)
             return {"response": "I couldn't delete the task.", "action_taken": "error"}
+    
+    async def handle_query_schedule(self, user_id: int, message: str, db: Session, intent_data: dict = None):
+        """Handle schedule queries - fetch and format routine data using ScheduleService"""
+        try:
+            message_lower = message.lower()
+            
+            # Determine which date to query
+            target_date = datetime.now()
+            if 'tomorrow' in message_lower:
+                target_date = datetime.now() + timedelta(days=1)
+            elif 'yesterday' in message_lower:
+                target_date = datetime.now() - timedelta(days=1)
+            elif 'next week' in message_lower or 'week' in message_lower:
+                # For week queries, we'll show today's schedule
+                target_date = datetime.now()
+            
+            # Call ScheduleService to get today's routine
+            routine = generate_routine(user_id, db, target_date)
+            timeline = routine.get('timeline', [])
+            
+            # Filter out free blocks for summary
+            events = [e for e in timeline if e.get('type') != 'free']
+            
+            if not events:
+                response = f"You have no scheduled events for {target_date.strftime('%B %d, %Y')}."
+                return {
+                    "response": response,
+                    "action_taken": "query_schedule",
+                    "data": {"date": target_date.isoformat(), "events": []}
+                }
+            
+            # Format response with markdown for better display
+            date_str = target_date.strftime('%B %d, %Y')
+            response = f"Here's your schedule for {date_str}:\n\n"
+            
+            for event in events:
+                start_time = datetime.fromisoformat(event['start'])
+                end_time = datetime.fromisoformat(event['end'])
+                time_str = start_time.strftime('%I:%M %p')
+                duration = (end_time - start_time).total_seconds() / 60
+                
+                event_type = event.get('type', 'event')
+                title = event.get('title', 'Untitled')
+                
+                # Format based on event type
+                if event_type == 'task':
+                    priority = event.get('priority', 'medium')
+                    response += f"• **{title}** ({time_str}, {int(duration)} min) - Priority: {priority}\n"
+                elif event_type == 'routine' or event_type == 'class':
+                    response += f"• **{title}** ({time_str}, {int(duration)} min) - Routine\n"
+                else:
+                    response += f"• **{title}** ({time_str}, {int(duration)} min)\n"
+            
+            # Format events for frontend
+            formatted_events = [{
+                "title": e.get('title', 'Untitled'),
+                "start": e.get('start'),
+                "end": e.get('end'),
+                "type": e.get('type', 'event'),
+                "priority": e.get('priority')
+            } for e in events]
+            
+            return {
+                "response": response,
+                "action_taken": "query_schedule",
+                "data": {
+                    "date": target_date.isoformat(),
+                    "events": formatted_events,
+                    "count": len(events)
+                }
+            }
+            
+        except Exception as e:
+            logger.error(f"Schedule query error: {str(e)}", exc_info=True)
+            return {
+                "response": "I couldn't retrieve your schedule. Please try again.",
+                "action_taken": "error"
+            }
+    
+    async def handle_query_knowledge(self, user_id: int, message: str, db: Session, intent_data: dict = None):
+        """Handle knowledge base queries using RAG Service"""
+        try:
+            # Extract the actual query (remove phrases like "summarize", "what did", etc.)
+            query = message.lower()
+            query = re.sub(r'(summarize|what did|what does|tell me about|explain|how)', '', query)
+            query = query.strip()
+            
+            # Call RAG Service to query knowledge base
+            rag_context = query_rag(query if query else message)
+            
+            if not rag_context or rag_context.strip() == "":
+                return {
+                    "response": "I couldn't find any relevant information in your knowledge base. Try uploading documents first or rephrase your question.",
+                    "action_taken": "query_knowledge",
+                    "data": {"found": False}
+                }
+            
+            # Use LLM to generate a natural response based on RAG context
+            prompt = f"""<|system|>
+You are AURA, a helpful AI assistant. Answer the user's question based on the following context from their knowledge base.
+
+Context from Knowledge Base:
+{rag_context}
+
+Provide a clear, concise answer. If the context doesn't fully answer the question, say so.
+<|end|>
+<|user|>
+{message}
+<|end|>
+<|assistant|>"""
+            
+            response = await asyncio.to_thread(llm.generate, prompt, max_tokens=500)
+            response = response.replace("<|end|>", "").replace("<|user|>", "").replace("<|assistant|>", "").strip()
+            
+            return {
+                "response": response,
+                "action_taken": "query_knowledge",
+                "data": {"found": True, "context_length": len(rag_context)}
+            }
+            
+        except Exception as e:
+            logger.error(f"Knowledge query error: {str(e)}", exc_info=True)
+            return {
+                "response": "I encountered an error while searching your knowledge base. Please try again.",
+                "action_taken": "error"
+            }
     
     async def handle_day_summary(self, user_id: int, message: str, db: Session, intent_data: dict = None):
         try:
@@ -271,7 +476,7 @@ class ChatService:
             }
             
         except Exception as e:
-            print(f"Day summary error: {e}")
+            logger.error(f"Day summary error: {str(e)}", exc_info=True)
             return {"response": "I couldn't generate your day summary.", "action_taken": "error"}
     
     async def handle_reminder(self, user_id: int, message: str, db: Session, intent_data: dict):
@@ -298,7 +503,7 @@ class ChatService:
                 schedule_reminder(task.id, reminder_time)
                 return {"response": f"⏰ Reminder set for '{title}' at {reminder_time.strftime('%I:%M %p')}", "action_taken": "reminder_set"}
             except Exception as e:
-                print(f"Reminder error: {e}")
+                logger.error(f"Reminder error: {str(e)}", exc_info=True)
                 return {"response": "I couldn't set that reminder. Please check the time format.", "action_taken": "error"}
         
         return {"response": "When should I remind you?", "action_taken": "ask_slot"}
@@ -326,7 +531,7 @@ class ChatService:
             }
             
         except Exception as e:
-            print(f"Search error: {e}")
+            logger.error(f"Search error: {str(e)}", exc_info=True)
             return {"response": "I couldn't complete the search.", "action_taken": "error"}
     
     def get_user_context(self, user_id: int, db: Session) -> str:
@@ -375,7 +580,7 @@ class ChatService:
             
             return " | ".join(parts)
         except Exception as e:
-            print(f"Context Error: {e}")
+            logger.error(f"Context Error: {str(e)}", exc_info=True)
             return ""
     
     async def handle_general_chat(self, user_id: int, message: str, db: Session, context: dict = None):
@@ -413,7 +618,7 @@ class ChatService:
             }
             
         except Exception as e:
-            print(f"General chat error: {e}")
+            logger.error(f"General chat error: {str(e)}", exc_info=True)
             return {"response": "I'm having trouble thinking right now.", "action_taken": "error"}
 
     def save_message(self, user_id: int, role: str, content: str, db: Session, intent: str = None):
@@ -428,7 +633,7 @@ class ChatService:
             db.add(history)
             db.commit()
         except Exception as e:
-            print(f"Error saving message: {e}")
+            logger.error(f"Error saving message: {str(e)}", exc_info=True)
 
     def format_due_date(self, due_date: datetime) -> str:
         now = datetime.now()

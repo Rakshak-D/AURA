@@ -172,10 +172,11 @@ function renderTimelineView(container, events) {
     // Generate time labels
     generateTimeLabels();
 
-    // Create hour grid lines
+    // Create hour grid lines - exactly matching time label positions
     for (let hour = TIMELINE_START_HOUR; hour < TIMELINE_END_HOUR; hour++) {
         const gridLine = document.createElement('div');
         gridLine.className = 'timeline-hour-line';
+        // Each hour line is at hour * 60 minutes * PIXELS_PER_MINUTE
         gridLine.style.top = `${hour * 60 * PIXELS_PER_MINUTE}px`;
         container.appendChild(gridLine);
     }
@@ -216,13 +217,24 @@ function renderTimelineView(container, events) {
 }
 
 function createEventElement(event) {
+    // Parse ISO strings - JavaScript Date automatically converts UTC to local time
     const start = new Date(event.start_time || event.start);
     const end = new Date(event.end_time || event.end);
 
-    // Calculate position
-    const startMinutes = start.getHours() * 60 + start.getMinutes();
-    const durationMinutes = (end - start) / (1000 * 60);
+    // Validate dates
+    if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+        console.error('Invalid date in event:', event);
+        return null;
+    }
 
+    // Calculate position using strict pixel-per-minute math
+    // Get hours and minutes from the local time (already converted from UTC)
+    const startMinutes = start.getHours() * 60 + start.getMinutes();
+    
+    // Calculate duration in minutes
+    const durationMinutes = Math.round((end - start) / (1000 * 60));
+    
+    // Calculate pixel positions
     const top = startMinutes * PIXELS_PER_MINUTE;
     const height = Math.max(durationMinutes * PIXELS_PER_MINUTE, 30); // Minimum 30px height
 
@@ -308,18 +320,20 @@ function formatTimeRange(start, end) {
 function handleTimelineClick(e) {
     // Only handle clicks on the timeline background, not on events
     if (e.target.classList.contains('calendar-event') ||
-        e.target.closest('.calendar-event')) {
+        e.target.closest('.calendar-event') ||
+        e.target.classList.contains('timeline-hour-line')) {
         return;
     }
 
-    // Calculate clicked time
-    const rect = e.currentTarget.getBoundingClientRect();
+    // Calculate clicked time relative to the day-view container
+    const dayView = e.currentTarget;
+    const rect = dayView.getBoundingClientRect();
     const clickY = e.clientY - rect.top;
     const clickedMinutes = Math.floor(clickY / PIXELS_PER_MINUTE);
     const clickedHour = Math.floor(clickedMinutes / 60);
     const clickedMinute = clickedMinutes % 60;
 
-    // Create datetime for clicked time
+    // Create datetime for clicked time (in local timezone)
     const clickedDate = new Date(currentCalendarDate);
     clickedDate.setHours(clickedHour, clickedMinute, 0, 0);
 
@@ -337,15 +351,22 @@ function openEventModal(event = null, startTime = null) {
     } else {
         // Open new event/task modal
         if (startTime) {
-            // Pre-fill time in task modal
+            // Pre-fill time in task modal based on clicked position
             if (typeof openTaskModal === 'function') {
                 openTaskModal();
                 // Set the date/time in the modal
+                // Convert to local datetime string format (YYYY-MM-DDTHH:mm)
                 setTimeout(() => {
                     const dateInput = document.getElementById('task-date');
                     if (dateInput) {
-                        const isoString = startTime.toISOString().slice(0, 16);
-                        dateInput.value = isoString;
+                        // Format as local datetime for datetime-local input
+                        const year = startTime.getFullYear();
+                        const month = String(startTime.getMonth() + 1).padStart(2, '0');
+                        const day = String(startTime.getDate()).padStart(2, '0');
+                        const hours = String(startTime.getHours()).padStart(2, '0');
+                        const minutes = String(startTime.getMinutes()).padStart(2, '0');
+                        const localDateTimeString = `${year}-${month}-${day}T${hours}:${minutes}`;
+                        dateInput.value = localDateTimeString;
                     }
                 }, 100);
             }
@@ -417,10 +438,12 @@ function generateTimeLabels() {
 
     labelsContainer.innerHTML = '';
 
+    // Generate labels for each hour, matching grid line positions exactly
     for (let hour = TIMELINE_START_HOUR; hour < TIMELINE_END_HOUR; hour++) {
         const label = document.createElement('div');
         label.className = 'time-label';
         label.textContent = `${String(hour).padStart(2, '0')}:00`;
+        // Position matches grid lines: hour * 60 minutes * PIXELS_PER_MINUTE
         label.style.top = `${hour * 60 * PIXELS_PER_MINUTE}px`;
         labelsContainer.appendChild(label);
     }

@@ -27,14 +27,29 @@ def detect_intent(message: str) -> Dict:
     base_prompt = f"""<|system|>
 You are an intent classification engine. Output ONLY valid JSON.
 Extract:
-- intent: task_create, task_query, day_summary, search, general_chat
+- intent: One of: query_schedule, add_task, query_knowledge, general_chat, task_query, day_summary, search
 - entities: title, time (YYYY-MM-DD HH:MM), duration (minutes), category (Personal, Work, College, Health)
 - sentiment: positive, neutral, negative
 
+Intent Classification Rules:
+- query_schedule: Questions about schedule, calendar, availability (e.g., "What am I doing today?", "Do I have free time at 4?", "What's on my schedule?")
+- add_task: Creating/adding tasks or reminders (e.g., "Remind me to call John at 5pm", "Add a task to buy groceries")
+- query_knowledge: Questions about uploaded documents, knowledge base (e.g., "Summarize the PDF I uploaded", "What did the document say about X?")
+- task_query: Asking about existing tasks (e.g., "What tasks do I have?", "Show my tasks")
+- day_summary: Requesting daily summary or overview
+- search: Searching for specific information
+- general_chat: General conversation, greetings, jokes
+
 Current Time: {current_time}
 
-Example Input: "Schedule a gym session for 1 hour at 5pm"
-Example Output: {{"intent": "task_create", "entities": {{"title": "Gym session", "time": "2025-11-23 17:00", "duration": 60, "category": "Health"}}, "sentiment": "neutral"}}
+Example Input: "What am I doing today?"
+Example Output: {{"intent": "query_schedule", "entities": {{}}, "sentiment": "neutral"}}
+
+Example Input: "Remind me to call John at 5pm"
+Example Output: {{"intent": "add_task", "entities": {{"title": "Call John", "time": "2025-11-23 17:00"}}, "sentiment": "neutral"}}
+
+Example Input: "Summarize the PDF I uploaded"
+Example Output: {{"intent": "query_knowledge", "entities": {{}}, "sentiment": "neutral"}}
 <|end|>
 <|user|>
 {message}

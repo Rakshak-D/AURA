@@ -87,7 +87,7 @@
             <div id="view-tasks" class="view">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
                     <h2>Tasks</h2>
-                    <button class="btn-primary" style="width: auto;" onclick="openTaskModal()">+ New Task</button>
+                    <button id="add-task-btn" class="btn-primary" style="width: auto;" onclick="openTaskModal()">+ New Task</button>
                 </div>
 
                 <div class="kanban-board">
@@ -95,25 +95,21 @@
                     <div class="kanban-column">
                         <div class="column-header">To Do <span id="count-todo"
                                 style="color: var(--text-muted); font-size: 0.8rem;">0</span></div>
-                        <div class="task-list" id="list-todo">
-                            <!-- Tasks injected here -->
-                        </div>
-                    </div>
-
-                    <!-- In Progress -->
-                    <div class="kanban-column">
-                        <div class="column-header">In Progress <span id="count-inprogress"
-                                style="color: var(--text-muted); font-size: 0.8rem;">0</span></div>
-                        <div class="task-list" id="list-inprogress">
+                        <div class="task-list" id="todo-list">
                             <!-- Tasks injected here -->
                         </div>
                     </div>
 
                     <!-- Done -->
                     <div class="kanban-column">
-                        <div class="column-header">Done <span id="count-done"
-                                style="color: var(--text-muted); font-size: 0.8rem;">0</span></div>
-                        <div class="task-list" id="list-done">
+                        <div class="column-header">
+                            <span>Done <span id="count-done"
+                                    style="color: var(--text-muted); font-size: 0.8rem;">0</span></span>
+                            <button class="btn-clear-completed" onclick="clearCompletedTasks()" title="Clear Completed Tasks">
+                                <i data-lucide="trash-2" style="width: 14px; height: 14px;"></i>
+                            </button>
+                        </div>
+                        <div class="task-list" id="done-list">
                             <!-- Tasks injected here -->
                         </div>
                     </div>
@@ -169,12 +165,15 @@
             <!-- Knowledge View -->
             <div id="view-knowledge" class="view">
                 <h2>Knowledge Base</h2>
-                <div class="upload-area" id="drop-zone"
-                    style="border: 2px dashed var(--border-color); padding: 3rem; text-align: center; border-radius: var(--radius-lg); margin-top: 2rem;">
-                    <i data-lucide="upload-cloud"
-                        style="width: 48px; height: 48px; color: var(--text-secondary); margin-bottom: 1rem;"></i>
-                    <p>Drag & Drop documents here or click to upload</p>
-                    <input type="file" id="file-input" hidden>
+                <div class="upload-section" style="margin-top: 2rem;">
+                    <div class="upload-area" id="drop-zone"
+                        style="border: 2px dashed var(--border-color); padding: 3rem; text-align: center; border-radius: var(--radius-lg); margin-bottom: 1.5rem;">
+                        <i data-lucide="upload-cloud"
+                            style="width: 48px; height: 48px; color: var(--text-secondary); margin-bottom: 1rem;"></i>
+                        <p>Drag & Drop documents here or click to upload</p>
+                        <input type="file" id="file-upload" multiple style="display: none;">
+                    </div>
+                    <button id="upload-btn" class="btn-primary" style="width: auto; margin-bottom: 1.5rem;">Upload to Brain</button>
                 </div>
                 <div id="file-list" style="margin-top: 2rem;"></div>
             </div>
@@ -183,18 +182,25 @@
             <div id="view-insights" class="view">
                 <h2>Insights</h2>
                 <div class="insights-grid" style="margin-top: 2rem;">
-                    <div class="widget">
+                    <div class="widget widget-focus-score">
                         <h3>Focus Score</h3>
-                        <div style="font-size: 3rem; font-weight: 700; color: var(--primary-color);" id="focus-score">--
+                        <div class="focus-score-container">
+                            <div class="focus-score-value" id="focus-score">--</div>
+                            <div class="focus-score-label" id="focus-score-label">Loading...</div>
+                            <div class="focus-score-trend" id="focus-score-trend"></div>
                         </div>
                     </div>
                     <div class="widget">
                         <h3>Activity Trend</h3>
-                        <canvas id="activityChart"></canvas>
+                        <div class="chart-container">
+                            <canvas id="activityChart"></canvas>
+                        </div>
                     </div>
                     <div class="widget">
                         <h3>Priority Breakdown</h3>
-                        <canvas id="priorityChart"></canvas>
+                        <div class="chart-container">
+                            <canvas id="priorityChart"></canvas>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -207,10 +213,22 @@
         <div class="modal-content">
             <h3 style="margin-bottom: 1.5rem;">Settings</h3>
             <label style="display: block; margin-bottom: 0.5rem; color: var(--text-secondary);">Username</label>
-            <input type="text" class="modal-input" id="settings-username">
+            <input type="text" class="modal-input" id="setting-username">
+
+            <label style="display: block; margin-bottom: 0.5rem; color: var(--text-secondary);">Theme</label>
+            <select class="modal-input" id="setting-theme">
+                <option value="dark">Dark</option>
+                <option value="light">Light</option>
+            </select>
+
+            <label style="display: block; margin-bottom: 0.5rem; color: var(--text-secondary);">Voice Input</label>
+            <select class="modal-input" id="setting-voice">
+                <option value="enabled">Enabled</option>
+                <option value="disabled">Disabled</option>
+            </select>
 
             <label style="display: block; margin-bottom: 0.5rem; color: var(--text-secondary);">AI Temperature</label>
-            <input type="range" class="modal-input" id="settings-temp" min="0" max="1" step="0.1">
+            <input type="range" class="modal-input" id="settings-temp" min="0" max="1" step="0.1" value="0.7">
 
             <div style="display: flex; gap: 1rem; margin-top: 1rem;">
                 <button class="btn-primary" onclick="saveSettings()">Save</button>
