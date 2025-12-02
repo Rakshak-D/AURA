@@ -1,4 +1,4 @@
-# 🌌 AURA (Advanced User Reactive Assistant)
+# 🌌 AURA (Augmented Understanding And Response Agent)
 
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.110.0-brightgreen)](https://fastapi.tiangolo.com/)
 [![Google Gemini](https://img.shields.io/badge/Google%20Gemini-2.0--flash-blue)](https://ai.google.dev/)
