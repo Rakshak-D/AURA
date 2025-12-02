@@ -6,16 +6,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AURA</title>
     <link rel="stylesheet" href="/static/css/styles.css?v=2">
-    <!-- Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
-    <!-- Markdown -->
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-    <!-- Charts -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 
 <body>
     <div class="app-container">
+
         <!-- Sidebar -->
         <aside class="sidebar" id="sidebar">
             <div class="brand">
@@ -46,6 +44,7 @@
                 </button>
             </nav>
 
+            <!-- New Feature Section -->
             <div class="nav-section">
                 <div class="nav-section-title">Features</div>
                 <button class="nav-item sub-item">
@@ -83,7 +82,32 @@
             <div id="view-chat" class="view active">
                 <div class="chat-container">
                     <div class="chat-history" id="chat-history">
-                        <!-- Welcome panel and messages injected here -->
+
+                        <!-- NEW: Welcome Message + Suggestions -->
+                        <div class="welcome-panel">
+                            <h2 class="welcome-title">Hello, I’m AURA 👋</h2>
+                            <p class="welcome-subtext">Your personal assistant for tasks, planning, insights, and more.</p>
+
+                            <div class="suggestion-grid">
+                                <button class="suggestion-btn" onclick="quickAsk('Create a study schedule')">
+                                    <i data-lucide="calendar"></i>
+                                    Create a study schedule
+                                </button>
+                                <button class="suggestion-btn" onclick="quickAsk('Summarize this text')">
+                                    <i data-lucide="file-text"></i>
+                                    Summarize text
+                                </button>
+                                <button class="suggestion-btn" onclick="quickAsk('What should I focus on today?')">
+                                    <i data-lucide="sparkles"></i>
+                                    Daily focus recommendation
+                                </button>
+                                <button class="suggestion-btn" onclick="quickAsk('Show me my tasks')">
+                                    <i data-lucide="check-circle"></i>
+                                    Show my tasks
+                                </button>
+                            </div>
+                        </div>
+
                     </div>
 
                     <div class="input-area">
@@ -103,83 +127,58 @@
                 </div>
             </div>
 
-            <!-- Tasks View (Kanban) -->
+            <!-- Tasks View -->
             <div id="view-tasks" class="view">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
                     <h2>Tasks</h2>
-                    <button id="add-task-btn" class="btn-primary" style="width: auto;" onclick="openTaskModal()">+ New
-                        Task</button>
+                    <button id="add-task-btn" class="btn-primary" style="width: auto;" onclick="openTaskModal()">+ New Task</button>
                 </div>
 
                 <div class="kanban-board">
-                    <!-- To Do -->
                     <div class="kanban-column">
-                        <div class="column-header">To Do <span id="count-todo"
-                                style="color: var(--text-muted); font-size: 0.8rem;">0</span></div>
-                        <div class="task-list" id="todo-list">
-                            <!-- Tasks injected here -->
+                        <div class="column-header">To Do 
+                            <span id="count-todo" style="color: var(--text-muted); font-size: 0.8rem;">0</span>
                         </div>
+                        <div class="task-list" id="todo-list"></div>
                     </div>
 
-                    <!-- Done -->
                     <div class="kanban-column">
                         <div class="column-header">
-                            <span>Done <span id="count-done"
-                                    style="color: var(--text-muted); font-size: 0.8rem;">0</span></span>
-                            <button class="btn-clear-completed" onclick="clearCompletedTasks()"
-                                title="Clear Completed Tasks">
-                                <i data-lucide="trash-2" style="width: 14px; height: 14px;"></i>
+                            <span>Done 
+                                <span id="count-done" style="color: var(--text-muted); font-size: 0.8rem;">0</span>
+                            </span>
+                            <button class="btn-clear-completed" onclick="clearCompletedTasks()">
+                                <i data-lucide="trash-2"></i>
                             </button>
                         </div>
-                        <div class="task-list" id="done-list">
-                            <!-- Tasks injected here -->
-                        </div>
+                        <div class="task-list" id="done-list"></div>
                     </div>
                 </div>
             </div>
 
-            <!-- Calendar View (Timeline) -->
+            <!-- Calendar View -->
             <div id="view-calendar" class="view">
-                <!-- Calendar Header -->
                 <div class="calendar-header">
                     <div class="calendar-nav">
-                        <button class="nav-btn" onclick="prevDay()" title="Previous Day">
-                            <i data-lucide="chevron-left"></i>
-                        </button>
+                        <button class="nav-btn" onclick="prevDay()"><i data-lucide="chevron-left"></i></button>
                         <h2 id="calendar-date-header" class="calendar-date-title">Loading...</h2>
-                        <button class="nav-btn" onclick="nextDay()" title="Next Day">
-                            <i data-lucide="chevron-right"></i>
-                        </button>
+                        <button class="nav-btn" onclick="nextDay()"><i data-lucide="chevron-right"></i></button>
                     </div>
                     <div class="calendar-actions">
-                        <button class="btn-secondary" onclick="goToToday()" title="Go to Today">
-                            <i data-lucide="calendar"></i>
-                            <span>Today</span>
-                        </button>
-                        <button class="btn-primary" onclick="autoSchedule()" title="Auto-schedule tasks">
-                            <i data-lucide="sparkles"></i>
-                            <span>Magic Schedule</span>
-                        </button>
+                        <button class="btn-secondary" onclick="goToToday()"><i data-lucide="calendar"></i><span>Today</span></button>
+                        <button class="btn-primary" onclick="autoSchedule()"><i data-lucide="sparkles"></i><span>Magic Schedule</span></button>
                     </div>
                 </div>
 
-                <!-- Calendar Timeline Grid -->
                 <div class="calendar-grid">
-                    <!-- Time Labels Column -->
                     <div class="time-labels-column">
                         <div class="time-labels-container">
-                            <!-- Generate time labels for 00:00 to 23:00 -->
-                            <template id="time-labels-template">
-                                <!-- Will be populated by JS -->
-                            </template>
+                            <template id="time-labels-template"></template>
                         </div>
                     </div>
 
-                    <!-- Day Track Column -->
                     <div class="day-track-column">
-                        <div class="day-view" id="calendar-timeline">
-                            <!-- Events will be injected here by calendar.js -->
-                        </div>
+                        <div class="day-view" id="calendar-timeline"></div>
                     </div>
                 </div>
             </div>
@@ -190,13 +189,11 @@
                 <div class="upload-section" style="margin-top: 2rem;">
                     <div class="upload-area" id="drop-zone"
                         style="border: 2px dashed var(--border-color); padding: 3rem; text-align: center; border-radius: var(--radius-lg); margin-bottom: 1.5rem;">
-                        <i data-lucide="upload-cloud"
-                            style="width: 48px; height: 48px; color: var(--text-secondary); margin-bottom: 1rem;"></i>
+                        <i data-lucide="upload-cloud" style="width: 48px; height: 48px; margin-bottom: 1rem;"></i>
                         <p>Drag & Drop documents here or click to upload</p>
                         <input type="file" id="file-upload" multiple style="display: none;">
                     </div>
-                    <button id="upload-btn" class="btn-primary" style="width: auto; margin-bottom: 1.5rem;">Upload to
-                        Brain</button>
+                    <button id="upload-btn" class="btn-primary" style="width: auto;">Upload to Brain</button>
                 </div>
                 <div id="file-list" style="margin-top: 2rem;"></div>
             </div>
@@ -204,7 +201,7 @@
             <!-- Insights View -->
             <div id="view-insights" class="view">
                 <h2>Insights</h2>
-                <div class="insights-grid" style="margin-top: 2rem;">
+                <div class="insights-grid">
                     <div class="widget widget-focus-score">
                         <h3>Focus Score</h3>
                         <div class="focus-score-container">
@@ -213,17 +210,15 @@
                             <div class="focus-score-trend" id="focus-score-trend"></div>
                         </div>
                     </div>
+
                     <div class="widget">
                         <h3>Activity Trend</h3>
-                        <div class="chart-container">
-                            <canvas id="activityChart"></canvas>
-                        </div>
+                        <div class="chart-container"><canvas id="activityChart"></canvas></div>
                     </div>
+
                     <div class="widget">
                         <h3>Priority Breakdown</h3>
-                        <div class="chart-container">
-                            <canvas id="priorityChart"></canvas>
-                        </div>
+                        <div class="chart-container"><canvas id="priorityChart"></canvas></div>
                     </div>
                 </div>
             </div>
@@ -231,28 +226,32 @@
         </main>
     </div>
 
-    <!-- Modals -->
+    <!-- Settings Modal -->
     <div class="modal" id="settings-modal">
         <div class="modal-content">
-            <h3 style="margin-bottom: 1.5rem;">Settings</h3>
-            <label style="display: block; margin-bottom: 0.5rem; color: var(--text-secondary);">Username</label>
+            <h3>Settings</h3>
+
+            <label>Username</label>
             <input type="text" class="modal-input" id="setting-username">
 
+            <label>Theme</label>
+            <select class="modal-input" id="setting-theme">
+                <option value="dark">Dark</option>
+                <option value="light">Light</option>
+            </select>
 
-
-            <label style="display: block; margin-bottom: 0.5rem; color: var(--text-secondary);">Voice Input</label>
+            <label>Voice Input</label>
             <select class="modal-input" id="setting-voice">
                 <option value="enabled">Enabled</option>
                 <option value="disabled">Disabled</option>
             </select>
 
-            <label style="display: block; margin-bottom: 0.5rem; color: var(--text-secondary);">AI Temperature</label>
+            <label>AI Temperature</label>
             <input type="range" class="modal-input" id="settings-temp" min="0" max="1" step="0.1" value="0.7">
 
-            <div style="display: flex; gap: 1rem; margin-top: 1rem;">
+            <div style="display:flex; gap:1rem; margin-top:1rem;">
                 <button class="btn-primary" onclick="saveSettings()">Save</button>
-                <button class="btn-primary" style="background: transparent; border: 1px solid var(--border-color);"
-                    onclick="closeSettings()">Cancel</button>
+                <button class="btn-primary" style="background:transparent; border:1px solid var(--border-color);" onclick="closeSettings()">Cancel</button>
             </div>
         </div>
     </div>
@@ -260,22 +259,23 @@
     <!-- Task Modal -->
     <div class="modal" id="task-modal">
         <div class="modal-content">
-            <h3 style="margin-bottom: 1.5rem;" id="task-modal-title">New Task</h3>
+            <h3 id="task-modal-title">New Task</h3>
             <input type="hidden" id="task-id">
 
-            <label style="display: block; margin-bottom: 0.5rem; color: var(--text-secondary);">Title</label>
-            <input type="text" class="modal-input" id="task-title" placeholder="Task Title">
+            <label>Title</label>
+            <input type="text" class="modal-input" id="task-title">
 
-            <label style="display: block; margin-bottom: 0.5rem; color: var(--text-secondary);">Description</label>
-            <textarea class="modal-input" id="task-desc" rows="3" placeholder="Optional description"></textarea>
+            <label>Description</label>
+            <textarea class="modal-input" id="task-desc" rows="3"></textarea>
 
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
                 <div>
-                    <label style="display: block; margin-bottom: 0.5rem; color: var(--text-secondary);">Due Date</label>
+                    <label>Due Date</label>
                     <input type="datetime-local" class="modal-input" id="task-date">
                 </div>
+
                 <div>
-                    <label style="display: block; margin-bottom: 0.5rem; color: var(--text-secondary);">Priority</label>
+                    <label>Priority</label>
                     <select class="modal-input" id="task-priority">
                         <option value="low">Low</option>
                         <option value="medium" selected>Medium</option>
@@ -285,16 +285,12 @@
                 </div>
             </div>
 
-            <div style="margin-top: 1rem;">
-                <label style="display: block; margin-bottom: 0.5rem; color: var(--text-secondary);">Duration
-                    (minutes)</label>
-                <input type="number" class="modal-input" id="task-duration" min="1" value="30" placeholder="30">
-            </div>
+            <label style="margin-top:1rem;">Duration (minutes)</label>
+            <input type="number" class="modal-input" id="task-duration" min="1" value="30">
 
-            <div style="display: flex; gap: 1rem; margin-top: 1rem;">
+            <div style="display:flex; gap:1rem; margin-top:1rem;">
                 <button class="btn-primary" onclick="saveTask()">Save Task</button>
-                <button class="btn-primary" style="background: transparent; border: 1px solid var(--border-color);"
-                    onclick="closeTaskModal()">Cancel</button>
+                <button class="btn-primary" style="background:transparent; border:1px solid var(--border-color);" onclick="closeTaskModal()">Cancel</button>
             </div>
         </div>
     </div>
@@ -310,6 +306,6 @@
     <script>
         lucide.createIcons();
     </script>
-</body>
 
+</body>
 </html>
