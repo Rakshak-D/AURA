@@ -86,22 +86,23 @@
                         <!-- NEW: Welcome Message + Suggestions -->
                         <div class="welcome-panel">
                             <h2 class="welcome-title">Hello, I’m AURA 👋</h2>
-                            <p class="welcome-subtext">Your personal assistant for tasks, planning, insights, and more.</p>
+                            <p class="welcome-subtext">Your personal assistant for tasks, planning, insights, and more.
+                            </p>
 
                             <div class="suggestion-grid">
-                                <button class="suggestion-btn" onclick="quickAsk('Create a study schedule')">
+                                <button class="suggestion-btn" onclick="useSuggestion('Create a study schedule')">
                                     <i data-lucide="calendar"></i>
                                     Create a study schedule
                                 </button>
-                                <button class="suggestion-btn" onclick="quickAsk('Summarize this text')">
+                                <button class="suggestion-btn" onclick="useSuggestion('Summarize this text')">
                                     <i data-lucide="file-text"></i>
                                     Summarize text
                                 </button>
-                                <button class="suggestion-btn" onclick="quickAsk('What should I focus on today?')">
+                                <button class="suggestion-btn" onclick="useSuggestion('What should I focus on today?')">
                                     <i data-lucide="sparkles"></i>
                                     Daily focus recommendation
                                 </button>
-                                <button class="suggestion-btn" onclick="quickAsk('Show me my tasks')">
+                                <button class="suggestion-btn" onclick="useSuggestion('Show me my tasks')">
                                     <i data-lucide="check-circle"></i>
                                     Show my tasks
                                 </button>
@@ -131,12 +132,13 @@
             <div id="view-tasks" class="view">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
                     <h2>Tasks</h2>
-                    <button id="add-task-btn" class="btn-primary" style="width: auto;" onclick="openTaskModal()">+ New Task</button>
+                    <button id="add-task-btn" class="btn-primary" style="width: auto;" onclick="openTaskModal()">+ New
+                        Task</button>
                 </div>
 
                 <div class="kanban-board">
                     <div class="kanban-column">
-                        <div class="column-header">To Do 
+                        <div class="column-header">To Do
                             <span id="count-todo" style="color: var(--text-muted); font-size: 0.8rem;">0</span>
                         </div>
                         <div class="task-list" id="todo-list"></div>
@@ -144,7 +146,7 @@
 
                     <div class="kanban-column">
                         <div class="column-header">
-                            <span>Done 
+                            <span>Done
                                 <span id="count-done" style="color: var(--text-muted); font-size: 0.8rem;">0</span>
                             </span>
                             <button class="btn-clear-completed" onclick="clearCompletedTasks()">
@@ -165,8 +167,10 @@
                         <button class="nav-btn" onclick="nextDay()"><i data-lucide="chevron-right"></i></button>
                     </div>
                     <div class="calendar-actions">
-                        <button class="btn-secondary" onclick="goToToday()"><i data-lucide="calendar"></i><span>Today</span></button>
-                        <button class="btn-primary" onclick="autoSchedule()"><i data-lucide="sparkles"></i><span>Magic Schedule</span></button>
+                        <button class="btn-secondary" onclick="goToToday()"><i
+                                data-lucide="calendar"></i><span>Today</span></button>
+                        <button class="btn-primary" onclick="autoSchedule()"><i data-lucide="sparkles"></i><span>Magic
+                                Schedule</span></button>
                     </div>
                 </div>
 
@@ -251,7 +255,8 @@
 
             <div style="display:flex; gap:1rem; margin-top:1rem;">
                 <button class="btn-primary" onclick="saveSettings()">Save</button>
-                <button class="btn-primary" style="background:transparent; border:1px solid var(--border-color);" onclick="closeSettings()">Cancel</button>
+                <button class="btn-primary" style="background:transparent; border:1px solid var(--border-color);"
+                    onclick="closeSettings()">Cancel</button>
             </div>
         </div>
     </div>
@@ -290,7 +295,8 @@
 
             <div style="display:flex; gap:1rem; margin-top:1rem;">
                 <button class="btn-primary" onclick="saveTask()">Save Task</button>
-                <button class="btn-primary" style="background:transparent; border:1px solid var(--border-color);" onclick="closeTaskModal()">Cancel</button>
+                <button class="btn-primary" style="background:transparent; border:1px solid var(--border-color);"
+                    onclick="closeTaskModal()">Cancel</button>
             </div>
         </div>
     </div>
@@ -308,4 +314,5 @@
     </script>
 
 </body>
+
 </html>
