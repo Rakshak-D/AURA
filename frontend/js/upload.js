@@ -118,24 +118,76 @@ async function loadUploadedFiles() {
         
         const data = await response.json();
 
+        // Support both legacy shape { files: [] } and new envelope { success, data: { files: [] } }
+        const files = (data && Array.isArray(data.files))
+            ? data.files
+            : (data && data.data && Array.isArray(data.data.files))
+                ? data.data.files
+                : [];
+
         filesList.innerHTML = '';
-        if (!data.files || data.files.length === 0) {
+        if (!files || files.length === 0) {
             filesList.innerHTML = '<div style="text-align: center; padding: 2rem; color: var(--text-muted);">No documents yet. Upload some files to build your knowledge base!</div>';
             return;
         }
 
-        data.files.forEach(file => {
+        files.forEach(file => {
             const div = document.createElement('div');
             div.className = 'file-item';
             div.style.cssText = 'padding: 1rem; margin-bottom: 0.5rem; background: var(--surface-color); border-radius: var(--radius-md); display: flex; align-items: center; gap: 0.75rem;';
             div.innerHTML = `
                 <span style="font-size: 1.5rem;">📄</span>
                 <span style="flex: 1; color: var(--text-primary);">${file.filename || file.name || 'Unknown file'}</span>
+                <button class="icon-btn kb-delete-btn" title="Delete document" onclick="deleteDocument(${file.id})">
+                    <i data-lucide="trash-2"></i>
+                </button>
             `;
             filesList.appendChild(div);
         });
+
+        if (typeof lucide !== 'undefined') {
+            lucide.createIcons();
+        }
     } catch (error) {
         console.error('Error loading files:', error);
         filesList.innerHTML = '<div style="text-align: center; padding: 2rem; color: var(--danger);">Failed to load files</div>';
+    }
+}
+
+async function deleteDocument(docId) {
+    if (!confirm('Are you sure you want to delete this document from your knowledge base?')) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`${API_URL}/upload/${docId}`, {
+            method: 'DELETE'
+        });
+
+        const result = await response.json().catch(() => null);
+
+        if (!response.ok || (result && result.success === false)) {
+            const message =
+                (result && (result.message || (result.error && result.error.message))) ||
+                'Failed to delete document';
+            if (typeof showToast === 'function') {
+                showToast(message, 'error');
+            } else {
+                alert(message);
+            }
+            return;
+        }
+
+        if (typeof showToast === 'function') {
+            showToast('Document deleted', 'success');
+        }
+
+        // Refresh the list
+        loadUploadedFiles();
+    } catch (error) {
+        console.error('Error deleting document:', error);
+        if (typeof showToast === 'function') {
+            showToast('Error deleting document', 'error');
+        }
     }
 }

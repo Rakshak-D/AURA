@@ -318,7 +318,21 @@ async function deleteTask(id) {
         const response = await fetch(`${API_URL}/tasks/${id}`, { method: 'DELETE' });
         if (response.ok) {
             showToast("Task deleted successfully");
-            loadTasks(); // Refresh the board
+            // Remove from local state and DOM without refetching everything
+            allTasks = allTasks.filter(t => t.id !== id);
+            const card = document.querySelector(`.task-card[data-task-id="${id}"]`);
+            if (card && card.parentElement) {
+                card.parentElement.removeChild(card);
+            }
+            // Update counts
+            const todoCountEl = document.getElementById('count-todo');
+            const doneCountEl = document.getElementById('count-done');
+            if (todoCountEl || doneCountEl) {
+                let todo = 0, done = 0;
+                allTasks.forEach(t => t.completed ? done++ : todo++);
+                if (todoCountEl) todoCountEl.textContent = todo;
+                if (doneCountEl) doneCountEl.textContent = done;
+            }
         } else {
             const err = await response.json();
             const msg = err.detail || err.details || "Failed to delete task";
@@ -340,7 +354,56 @@ async function toggleComplete(id, status) {
 
         if (response.ok) {
             showToast(status ? "Task completed" : "Task reopened");
-            loadTasks(); // Refresh the board
+
+            // Update local state
+            allTasks = allTasks.map(t => t.id === id ? { ...t, completed: status } : t);
+
+            // Move card between columns without full re-render
+            const card = document.querySelector(`.task-card[data-task-id="${id}"]`);
+            const todoList = document.getElementById('todo-list') || document.getElementById('list-todo');
+            const doneList = document.getElementById('done-list') || document.getElementById('list-done');
+
+            if (card && (todoList || doneList)) {
+                if (status && doneList) {
+                    doneList.appendChild(card);
+                } else if (!status && todoList) {
+                    todoList.appendChild(card);
+                }
+            }
+
+            // Update styles on the card
+            if (card) {
+                const titleEl = card.querySelector('.task-title');
+                const bodyP = card.querySelector('.task-body p');
+                const checkbox = card.querySelector('.task-checkbox');
+                if (titleEl) {
+                    if (status) {
+                        titleEl.classList.add('completed');
+                    } else {
+                        titleEl.classList.remove('completed');
+                    }
+                }
+                if (bodyP) {
+                    if (status) {
+                        bodyP.classList.add('completed');
+                    } else {
+                        bodyP.classList.remove('completed');
+                    }
+                }
+                if (checkbox) {
+                    checkbox.classList.toggle('checked', status);
+                }
+            }
+
+            // Update counts
+            const todoCountEl = document.getElementById('count-todo');
+            const doneCountEl = document.getElementById('count-done');
+            if (todoCountEl || doneCountEl) {
+                let todo = 0, done = 0;
+                allTasks.forEach(t => t.completed ? done++ : todo++);
+                if (todoCountEl) todoCountEl.textContent = todo;
+                if (doneCountEl) doneCountEl.textContent = done;
+            }
         } else {
             const err = await response.json();
             const msg = err.detail || err.details || "Failed to update task";

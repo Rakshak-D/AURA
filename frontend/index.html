@@ -46,6 +46,22 @@
                 </button>
             </nav>
 
+            <div class="nav-section">
+                <div class="nav-section-title">Features</div>
+                <button class="nav-item sub-item">
+                    <i data-lucide="clock"></i>
+                    <span class="nav-text">Recents</span>
+                </button>
+                <button class="nav-item sub-item">
+                    <i data-lucide="bookmark"></i>
+                    <span class="nav-text">Saved</span>
+                </button>
+                <button class="nav-item sub-item">
+                    <i data-lucide="folder"></i>
+                    <span class="nav-text">Projects</span>
+                </button>
+            </div>
+
             <div class="nav-menu" style="margin-top: auto; flex: 0;">
                 <button class="nav-item" onclick="openSettings()">
                     <i data-lucide="settings"></i>
@@ -57,16 +73,17 @@
         <!-- Main Content -->
         <main class="main-content">
 
+            <!-- Mobile Menu Button -->
+            <button class="icon-btn mobile-menu-btn" onclick="toggleSidebar()"
+                style="position: absolute; top: 1rem; left: 1rem; z-index: 100; display: none;">
+                <i data-lucide="menu"></i>
+            </button>
+
             <!-- Chat View -->
             <div id="view-chat" class="view active">
                 <div class="chat-container">
                     <div class="chat-history" id="chat-history">
-                        <!-- Messages injected here -->
-                        <div class="message assistant">
-                            <div class="message-content">
-                                Hello, I am AURA. How can I assist you today?
-                            </div>
-                        </div>
+                        <!-- Welcome panel and messages injected here -->
                     </div>
 
                     <div class="input-area">
@@ -75,6 +92,9 @@
                                 <i data-lucide="mic"></i>
                             </button>
                             <textarea id="chat-input" placeholder="Ask me anything..." rows="1"></textarea>
+                            <button class="icon-btn" onclick="clearChatHistory()" title="Clear chat">
+                                <i data-lucide="trash-2"></i>
+                            </button>
                             <button class="send-btn" onclick="sendMessage()">
                                 <i data-lucide="send"></i>
                             </button>
@@ -87,7 +107,8 @@
             <div id="view-tasks" class="view">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
                     <h2>Tasks</h2>
-                    <button id="add-task-btn" class="btn-primary" style="width: auto;" onclick="openTaskModal()">+ New Task</button>
+                    <button id="add-task-btn" class="btn-primary" style="width: auto;" onclick="openTaskModal()">+ New
+                        Task</button>
                 </div>
 
                 <div class="kanban-board">
@@ -105,7 +126,8 @@
                         <div class="column-header">
                             <span>Done <span id="count-done"
                                     style="color: var(--text-muted); font-size: 0.8rem;">0</span></span>
-                            <button class="btn-clear-completed" onclick="clearCompletedTasks()" title="Clear Completed Tasks">
+                            <button class="btn-clear-completed" onclick="clearCompletedTasks()"
+                                title="Clear Completed Tasks">
                                 <i data-lucide="trash-2" style="width: 14px; height: 14px;"></i>
                             </button>
                         </div>
@@ -173,7 +195,8 @@
                         <p>Drag & Drop documents here or click to upload</p>
                         <input type="file" id="file-upload" multiple style="display: none;">
                     </div>
-                    <button id="upload-btn" class="btn-primary" style="width: auto; margin-bottom: 1.5rem;">Upload to Brain</button>
+                    <button id="upload-btn" class="btn-primary" style="width: auto; margin-bottom: 1.5rem;">Upload to
+                        Brain</button>
                 </div>
                 <div id="file-list" style="margin-top: 2rem;"></div>
             </div>
@@ -215,11 +238,7 @@
             <label style="display: block; margin-bottom: 0.5rem; color: var(--text-secondary);">Username</label>
             <input type="text" class="modal-input" id="setting-username">
 
-            <label style="display: block; margin-bottom: 0.5rem; color: var(--text-secondary);">Theme</label>
-            <select class="modal-input" id="setting-theme">
-                <option value="dark">Dark</option>
-                <option value="light">Light</option>
-            </select>
+
 
             <label style="display: block; margin-bottom: 0.5rem; color: var(--text-secondary);">Voice Input</label>
             <select class="modal-input" id="setting-voice">

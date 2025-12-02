@@ -68,10 +68,12 @@ class LLM:
             logger.exception(f"[ERROR] Error loading Embeddings: {e}")
             logger.warning("[WARNING] System will work without semantic search")
 
-    def generate(self, prompt: str, max_tokens: int = None) -> str:
+    def generate(self, prompt: str, max_tokens: int = None, *, temperature: float = None) -> str:
         """Generate text using LLM with error handling"""
         if max_tokens is None:
             max_tokens = config.LLM_MAX_TOKENS
+        if temperature is None:
+            temperature = config.LLM_TEMPERATURE
             
         if self.fallback_mode or not self.llm:
             logger.warning("[WARNING] Running in offline mode - model not available")
@@ -84,7 +86,7 @@ class LLM:
                 max_tokens=max_tokens,
                 stop=["<|end|>", "<|user|>", "<|assistant|>"],
                 echo=False,
-                temperature=config.LLM_TEMPERATURE,
+                temperature=temperature,
                 top_p=0.8,
                 repeat_penalty=1.2,
                 top_k=40

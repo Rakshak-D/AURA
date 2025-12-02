@@ -77,3 +77,4 @@ class SettingsUpdate(BaseModel):
     notifications_enabled: Optional[bool] = None
     default_reminder_time: Optional[str] = None
     username: Optional[str] = None
+    ai_temperature: Optional[float] = None

@@ -6,9 +6,12 @@ import chromadb
 Base = declarative_base()
 
 # Database Connection
+# For SQLite we keep a single file-based database with check_same_thread disabled
+# so sessions can be used across FastAPI workers safely.
 engine = create_engine(
-    f'sqlite:///{config.DB_PATH}',
-    connect_args={"check_same_thread": False}
+    f"sqlite:///{config.DB_PATH}",
+    connect_args={"check_same_thread": False},
+    pool_pre_ping=True,
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

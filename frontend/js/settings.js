@@ -1,6 +1,4 @@
-// Settings Management
-
-// Settings Management
+// Settings Management (Dark mode only)
 
 // API_URL is defined in main.js
 
@@ -8,23 +6,23 @@
 window.addEventListener('load', loadSettings);
 document.addEventListener('DOMContentLoaded', loadSettings);
 
+// Dark mode is permanent now; keep this for backwards compatibility.
+function applyTheme() {
+    // no-op
+}
+
 async function loadSettings() {
     try {
         const response = await fetch(`${API_URL}/settings`);
         if (response.ok) {
             const settings = await response.json();
 
-            // Apply Theme
-            // (Currently theme is CSS-based, but we could toggle classes if needed)
-
             // Populate Modal Inputs - support both old and new IDs
             const usernameInput = document.getElementById('setting-username') || document.getElementById('settings-username');
-            const themeInput = document.getElementById('setting-theme');
             const voiceInput = document.getElementById('setting-voice');
             const tempInput = document.getElementById('settings-temp');
 
             if (usernameInput) usernameInput.value = settings.username || 'User';
-            if (themeInput) themeInput.value = settings.theme || 'dark';
             if (voiceInput) voiceInput.value = settings.voice || 'enabled';
             if (tempInput) tempInput.value = settings.ai_temperature || 0.7;
 
@@ -48,28 +46,31 @@ function closeSettings() {
 async function saveSettings() {
     // Support both old and new IDs
     const usernameInput = document.getElementById('setting-username') || document.getElementById('settings-username');
-    const themeInput = document.getElementById('setting-theme');
     const voiceInput = document.getElementById('setting-voice');
     const tempInput = document.getElementById('settings-temp');
 
     if (!usernameInput || !tempInput) {
-        showToast("Settings form elements not found", "error");
+        if (typeof showToast === 'function') {
+            showToast("Settings form elements not found", "error");
+        }
         return;
     }
 
     const username = usernameInput.value.trim();
-    const theme = themeInput ? themeInput.value : 'dark';
+    const theme = 'dark';
     const voice = voiceInput ? voiceInput.value : 'enabled';
     const temp = parseFloat(tempInput.value);
 
     if (!username) {
-        showToast("Username is required", "error");
+        if (typeof showToast === 'function') {
+            showToast("Username is required", "error");
+        }
         return;
     }
 
     try {
         const response = await fetch(`${API_URL}/settings`, {
-            method: 'PUT',  // Fixed: Use PUT instead of POST
+            method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 username: username,
@@ -79,18 +80,19 @@ async function saveSettings() {
         });
 
         if (response.ok) {
-            showToast("Settings saved!");
+            if (typeof showToast === 'function') {
+                showToast("Settings saved!");
+            }
             closeSettings();
-            // Reload to apply changes (e.g. username in chat)
-            location.reload();
         } else {
-            showToast("Failed to save settings", "error");
+            if (typeof showToast === 'function') {
+                showToast("Failed to save settings", "error");
+            }
         }
     } catch (error) {
         console.error("Error saving settings:", error);
-        showToast("Error saving settings", "error");
+        if (typeof showToast === 'function') {
+            showToast("Error saving settings", "error");
+        }
     }
 }
-
-// Helper for Toasts (assuming main.js has showToast, but defining here just in case or relying on main.js)
-// We will assume main.js provides showToast.

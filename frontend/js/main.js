@@ -32,7 +32,12 @@ function switchView(viewId) {
     // Find button that calls this view
     const btn = document.querySelector(`button[onclick="switchView('${viewId}')"]`);
     if (btn) btn.classList.add('active');
-    
+
+    // Close sidebar on mobile after selection
+    if (window.innerWidth <= 768) {
+        document.getElementById('sidebar').classList.remove('open');
+    }
+
     // Trigger view-specific initialization
     if (viewId === 'calendar') {
         // Wait a bit for DOM to be ready, then render
@@ -53,6 +58,12 @@ function switchView(viewId) {
     } else if (viewId === 'tasks' && typeof loadTasks === 'function') {
         setTimeout(() => loadTasks(), 100);
     }
+}
+
+// Sidebar Toggle (Mobile)
+function toggleSidebar() {
+    const sidebar = document.getElementById('sidebar');
+    sidebar.classList.toggle('open');
 }
 
 // Toast Notifications

@@ -4,6 +4,7 @@ from ..models.llm_models import llm
 from .rag_service import query_rag
 from .schedule_service import generate_daily_schedule, generate_routine
 from .intent_service import detect_intent
+from .personalization import update_user_name
 from datetime import datetime, timedelta
 import json
 import re
@@ -11,6 +12,41 @@ import asyncio
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+def _get_user_temperature(db: Session, user_id: int) -> float:
+    """
+    Resolve the effective temperature for the current user from the DB,
+    falling back to the global configuration default when not set.
+    """
+    from ..config import config
+
+    try:
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user or not user.settings:
+            return getattr(config, "LLM_TEMPERATURE", 0.1)
+        return float(user.settings.get("ai_temperature", getattr(config, "LLM_TEMPERATURE", 0.1)))
+    except Exception as e:
+        logger.error(f"Error resolving user temperature: {e}", exc_info=True)
+        return getattr(config, "LLM_TEMPERATURE", 0.1)
+
+
+def _get_user_name(db: Session, user_id: int) -> str:
+    """
+    Resolve the display name for the user from User.name / settings.
+    """
+    try:
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            return "User"
+        if user.name and user.name.strip():
+            return user.name.strip()
+        settings = user.settings or {}
+        return settings.get("username") or "User"
+    except Exception as e:
+        logger.error(f"Error resolving user name: {e}", exc_info=True)
+        return "User"
+
 
 class ChatService:
     def __init__(self):
@@ -25,6 +61,7 @@ class ChatService:
             'day_summary': self.handle_day_summary,
             'reminder': self.handle_reminder,
             'search': self.handle_search,
+            'change_name': self.handle_change_name,
             'general_chat': self.handle_general_chat
         }
     
@@ -132,7 +169,10 @@ Extract task details.
 <|assistant|>"""
                 
                 try:
-                    extraction = await asyncio.to_thread(llm.generate, extract_prompt, max_tokens=200)
+                    temperature = _get_user_temperature(db, user_id)
+                    extraction = await asyncio.to_thread(
+                        llm.generate, extract_prompt, max_tokens=200, temperature=temperature
+                    )
                     # Try to parse JSON from extraction
                     import json
                     extracted_data = json.loads(extraction.strip().replace('```json', '').replace('```', ''))
@@ -212,7 +252,7 @@ Extract task details.
                     Task.due_date >= datetime.now().replace(hour=0, minute=0, second=0),
                     Task.due_date < datetime.now().replace(hour=23, minute=59, second=59)
                 ).all()
-                response = f"You have {len(tasks)} tasks due today:"
+                header = "tasks due today"
             elif any(word in message_lower for word in ['tomorrow']):
                 tomorrow = datetime.now() + timedelta(days=1)
                 tasks = db.query(Task).filter(
@@ -221,7 +261,7 @@ Extract task details.
                     Task.due_date >= tomorrow.replace(hour=0, minute=0, second=0),
                     Task.due_date < tomorrow.replace(hour=23, minute=59, second=59)
                 ).all()
-                response = f"You have {len(tasks)} tasks due tomorrow:"
+                header = "tasks due tomorrow"
             elif any(word in message_lower for word in ['week', 'this week']):
                 tasks = db.query(Task).filter(
                     Task.user_id == user_id,
@@ -229,13 +269,25 @@ Extract task details.
                     Task.due_date >= datetime.now(),
                     Task.due_date < datetime.now() + timedelta(days=7)
                 ).all()
-                response = f"You have {len(tasks)} tasks this week:"
+                header = "tasks this week"
             else:
                 tasks = db.query(Task).filter(
                     Task.user_id == user_id,
                     Task.completed == False
                 ).order_by(Task.due_date.asc()).limit(10).all()
-                response = f"You have {len(tasks)} pending tasks:"
+                header = "pending tasks"
+            
+            if not tasks:
+                return {
+                    "response": "You don’t have any tasks that match that query right now.",
+                    "action_taken": "task_query",
+                    "data": {
+                        "title": "No tasks found",
+                        "tasks": []
+                    }
+                }
+
+            response = f"You have {len(tasks)} {header}:"
             
             # Format for text response
             for task in tasks:
@@ -416,19 +468,33 @@ Extract task details.
             
             # Use LLM to generate a natural response based on RAG context
             prompt = f"""<|system|>
-You are AURA, a helpful AI assistant. Answer the user's question based on the following context from their knowledge base.
+You are Aura, an advanced personal AI assistant. You are warm, clear, and practical.
+
+You have access to the user's uploaded documents and prior messages, but you NEVER mention
+your internal tools, retrieval systems, or implementation details (for example: RAG,
+vector stores, embeddings, or \"tools\"). If you draw on their documents, refer to them
+naturally (e.g. \"from your notes\" or \"from the document you shared\"), not by
+describing how you retrieved them.
+
+When the user greets you (e.g. \"hi\", \"hello\"), respond naturally and conversationally
+without over-explaining your capabilities. Keep answers focused on what they asked.
+
+Use the following extracted context from their documents only as supporting material.
+If it doesn't fully answer the question, say so and clearly separate any reasonable
+inference from what is explicitly stated.
 
 Context from Knowledge Base:
 {rag_context}
-
-Provide a clear, concise answer. If the context doesn't fully answer the question, say so.
 <|end|>
 <|user|>
 {message}
 <|end|>
 <|assistant|>"""
             
-            response = await asyncio.to_thread(llm.generate, prompt, max_tokens=500)
+            temperature = _get_user_temperature(db, user_id)
+            response = await asyncio.to_thread(
+                llm.generate, prompt, max_tokens=500, temperature=temperature
+            )
             response = response.replace("<|end|>", "").replace("<|user|>", "").replace("<|assistant|>", "").strip()
             
             return {
@@ -464,7 +530,10 @@ Provide a clear, concise answer. If the context doesn't fully answer the questio
             Keep it encouraging and concise."""
             
             # Run LLM in thread
-            summary = await asyncio.to_thread(llm.generate, prompt, max_tokens=200)
+            temperature = _get_user_temperature(db, user_id)
+            summary = await asyncio.to_thread(
+                llm.generate, prompt, max_tokens=200, temperature=temperature
+            )
             
             return {
                 "response": summary,
@@ -534,6 +603,39 @@ Provide a clear, concise answer. If the context doesn't fully answer the questio
             logger.error(f"Search error: {str(e)}", exc_info=True)
             return {"response": "I couldn't complete the search.", "action_taken": "error"}
     
+    async def handle_change_name(self, user_id: int, message: str, db: Session, intent_data: dict = None):
+        """
+        Handle requests like 'Call me Rylix from now on'.
+        """
+        try:
+            entities = intent_data.get("entities", {}) if intent_data else {}
+            candidate = entities.get("username")
+
+            if not candidate:
+                # Simple regex fallback
+                match = re.search(r"call me ([A-Za-z][A-Za-z0-9_\-\s']{0,40})", message, re.IGNORECASE)
+                if match:
+                    candidate = match.group(1).strip()
+
+            if not candidate:
+                return {
+                    "response": "What should I call you?",
+                    "action_taken": "ask_name"
+                }
+
+            new_name = update_user_name(user_id, candidate, db)
+            return {
+                "response": f"Got it, I’ll call you {new_name} from now on.",
+                "action_taken": "name_updated",
+                "data": {"username": new_name}
+            }
+        except Exception as e:
+            logger.error(f"Change name error: {str(e)}", exc_info=True)
+            return {
+                "response": "I couldn't update your name right now.",
+                "action_taken": "error"
+            }
+    
     def get_user_context(self, user_id: int, db: Session) -> str:
         """Get user's tasks and routine for context"""
         try:
@@ -583,6 +685,37 @@ Provide a clear, concise answer. If the context doesn't fully answer the questio
             logger.error(f"Context Error: {str(e)}", exc_info=True)
             return ""
     
+    def get_recent_history(self, user_id: int, db: Session, limit: int = 10) -> str:
+        """
+        Return a short, linearized view of the most recent conversation turns.
+        This helps the LLM stay grounded in the current thread without exceeding
+        the context window.
+        """
+        try:
+            history = (
+                db.query(ChatHistory)
+                .filter(ChatHistory.user_id == user_id)
+                .order_by(ChatHistory.timestamp.desc())
+                .limit(limit)
+                .all()
+            )
+            if not history:
+                return ""
+
+            # Reverse to chronological order
+            history = list(reversed(history))
+            lines = []
+            for h in history:
+                role = "User" if h.role == "user" else "Aura"
+                content = (h.content or "").strip()
+                if not content:
+                    continue
+                lines.append(f"{role}: {content}")
+            return "\n".join(lines)
+        except Exception as e:
+            logger.error(f"History context error: {str(e)}", exc_info=True)
+            return ""
+    
     async def handle_general_chat(self, user_id: int, message: str, db: Session, context: dict = None):
         try:
             # Get user context (tasks)
@@ -591,22 +724,45 @@ Provide a clear, concise answer. If the context doesn't fully answer the questio
             
             # Get RAG Context
             rag_context = query_rag(message)
+            # Get recent conversation history
+            conversation_history = self.get_recent_history(user_id, db, limit=10)
             
             # Phi-3 prompt format
-            prompt = f"<|system|>\nYou are AURA, a helpful AI assistant. You are talking to {user_name}. Be concise and direct.\n"
-            prompt += "Do NOT output internal tokens like BEGININPUT or ENDINPUT.\n"
-            
+            prompt = "<|system|>\n"
+            prompt += (
+                f"You are Aura, an advanced, context-aware AI assistant talking to {user_name}.\n"
+                "Your personality: thoughtful, calm, and efficient. You explain things clearly without rambling,\n"
+                "and you adapt your tone to be encouraging but not overly formal.\n\n"
+                "HARD RULES:\n"
+                "- Never mention your internal tools, retrieval system, model name, vector stores, or embeddings.\n"
+                "- If you use information from the user's documents, refer to it naturally (e.g. "
+                "\"from your notes\" or \"in what you shared\") without describing how you accessed it.\n"
+                "- For simple greetings (\"hi\", \"hello\"), respond naturally and briefly.\n"
+                "- Prefer concrete, helpful suggestions over vague advice.\n"
+                "- Do NOT output internal tokens like BEGININPUT or ENDINPUT.\n\n"
+            )
+
             if task_context:
-                prompt += f"Task Context: {task_context}\n"
-            
+                prompt += f"User schedule/tasks context: {task_context}\n"
+
+            if conversation_history:
+                prompt += "Recent conversation (most recent last):\n"
+                prompt += conversation_history + "\n"
+
             if rag_context:
-                prompt += f"Knowledge Base Context: {rag_context}\n"
-                
+                prompt += (
+                    "Additional context from the user's documents (use only if relevant):\n"
+                    f"{rag_context}\n"
+                )
+
             prompt += "<|end|>\n"
             prompt += f"<|user|>\n{message}<|end|>\n<|assistant|>"
             
             # Run LLM in thread
-            response = await asyncio.to_thread(llm.generate, prompt, max_tokens=500)
+            temperature = _get_user_temperature(db, user_id)
+            response = await asyncio.to_thread(
+                llm.generate, prompt, max_tokens=500, temperature=temperature
+            )
             
             # Post-processing: Strip tags
             response = response.replace("<|end|>", "").replace("<|user|>", "").replace("<|assistant|>", "").strip()

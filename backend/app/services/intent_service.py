@@ -27,7 +27,7 @@ def detect_intent(message: str) -> Dict:
     base_prompt = f"""<|system|>
 You are an intent classification engine. Output ONLY valid JSON.
 Extract:
-- intent: One of: query_schedule, add_task, query_knowledge, general_chat, task_query, day_summary, search
+- intent: One of: query_schedule, add_task, query_knowledge, general_chat, task_query, day_summary, search, change_name
 - entities: title, time (YYYY-MM-DD HH:MM), duration (minutes), category (Personal, Work, College, Health)
 - sentiment: positive, neutral, negative
 
@@ -50,6 +50,9 @@ Example Output: {{"intent": "add_task", "entities": {{"title": "Call John", "tim
 
 Example Input: "Summarize the PDF I uploaded"
 Example Output: {{"intent": "query_knowledge", "entities": {{}}, "sentiment": "neutral"}}
+
+Example Input: "Call me Rylix from now on"
+Example Output: {{"intent": "change_name", "entities": {{"username": "Rylix"}}, "sentiment": "positive"}}
 <|end|>
 <|user|>
 {message}
