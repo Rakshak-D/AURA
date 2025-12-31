@@ -1,7 +1,7 @@
 # 🌌 AURA (Augmented Understanding And Response Agent)
 
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.110.0-brightgreen)](https://fastapi.tiangolo.com/)
-[![Google Gemini](https://img.shields.io/badge/Google%20Gemini-2.0--flash-blue)](https://ai.google.dev/)
+[![Model: Phi-3](https://img.shields.io/badge/Model-Phi--3_Mini-blueviolet)](https://huggingface.co/microsoft/Phi-3-mini-4k-instruct-gguf)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://www.python.org/)
 
@@ -12,7 +12,7 @@
 ## ✨ Key Features
 
 ### 💬 Intelligent Chat Interface
-- **Context-Aware AI**: Powered by Google Gemini for natural, context-rich conversations.
+- **Context-Aware AI**: Powered by **Local LLM (Phi-3 Mini via LlamaCPP)** for privacy-first, offline-capable, and context-rich conversations.
 - **Markdown & Code Support**: Beautiful rendering of code blocks, tables, and formatted text.
 - **Real-time Streaming**: Instant responses with typing indicators and smooth animations.
 - **Memory & Context**: Remembers previous interactions for a continuous dialogue flow.
@@ -46,8 +46,8 @@
 | Component | Technologies |
 |-----------|--------------|
 | **Backend API** | FastAPI, Uvicorn, SQLAlchemy, Pydantic |
-| **AI Engine** | Google Gemini 2.0 Flash, LangChain (RAG) |
-| **Database** | SQLite (Local), Vector Store (ChromaDB/FAISS) |
+| **AI Engine** | Local LLM (Phi-3 Mini), LlamaCPP, SentenceTransformers |
+| **Database** | SQLite (Local), ChromaDB (Vector Store) |
 | **Frontend** | HTML5, Vanilla CSS (Glassmorphism), JavaScript (ES6+) |
 | **Visualization** | Chart.js, Lucide Icons |
 | **Deployment** | Docker (Optional), Python-dotenv |
@@ -58,7 +58,7 @@
 
 ### Prerequisites
 - Python 3.10+
-- Google Gemini API Key
+- 4GB+ RAM (8GB+ recommended for best performance)
 - Modern Web Browser
 
 ### Installation
@@ -81,14 +81,22 @@ venv\Scripts\activate    # Windows
 pip install -r requirements.txt
 ```
 
-3. **Configure Environment Variables**
+3. **Download Models**
+Run the model downloader to fetch the GGUF model and embeddings:
+```bash
+python backend/download_models.py
+```
+
+4. **Configure Environment Variables**
 Create a `.env` file in the root directory:
 ```env
-GEMINI_API_KEY=your_gemini_api_key_here
+# Optional: Customize model usage
+USE_GPU=true
+MODEL_FILENAME=Phi-3-mini-4k-instruct-q4.gguf
 DATABASE_URL=sqlite:///./aura.db
 ```
 
-4. **Start the Backend Server**
+5. **Start the Backend Server**
 ```bash
 python backend/run_backend.py
 # Server will start at http://localhost:8000
@@ -140,7 +148,7 @@ graph TD
     A[User Interface] -->|HTTP/WebSocket| B[FastAPI Backend]
     B -->|Query| C[SQLite Database]
     B -->|Vector Search| D[Knowledge Base]
-    B -->|Prompt| E[Gemini AI]
+    B -->|Prompt| E[Local LLM (Phi-3)]
     E -->|Response| B
     B -->|JSON/Stream| A
 ```
@@ -148,7 +156,7 @@ graph TD
 ### Magic Schedule Flow
 1. **Task Collection**: Aggregates pending tasks from the Kanban board.
 2. **Constraint Analysis**: Checks existing calendar events and user preferences.
-3. **AI Optimization**: Gemini generates an optimal schedule.
+3. **AI Optimization**: Local LLM generates an optimal schedule.
 4. **Allocation**: Tasks are assigned specific time slots in the database.
 5. **Visualization**: The Calendar view updates in real-time.
 

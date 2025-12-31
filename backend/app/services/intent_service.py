@@ -33,12 +33,12 @@ Extract:
 
 Intent Classification Rules:
 - query_schedule: Questions about schedule, calendar, availability (e.g., "What am I doing today?", "Do I have free time at 4?", "What's on my schedule?")
-- add_task: Creating/adding tasks or reminders (e.g., "Remind me to call John at 5pm", "Add a task to buy groceries")
-- query_knowledge: Questions about uploaded documents, knowledge base (e.g., "Summarize the PDF I uploaded", "What did the document say about X?")
+- add_task: Creating/adding tasks or reminders (e.g., "Remind me to call John at 5pm", "Add a task to buy groceries", "Help me organize my work")
+- query_knowledge: Questions about uploaded documents OR general knowledge questions (e.g., "Summarize the PDF", "Who won the world cup?", "Explain Python", "What is the capital of France?")
 - task_query: Asking about existing tasks (e.g., "What tasks do I have?", "Show my tasks")
 - day_summary: Requesting daily summary or overview
 - search: Searching for specific information
-- general_chat: General conversation, greetings, jokes
+- general_chat: General conversation, greetings, jokes (e.g. "Hi", "How are you", "Tell me a joke")
 
 Current Time: {current_time}
 
@@ -48,8 +48,11 @@ Example Output: {{"intent": "query_schedule", "entities": {{}}, "sentiment": "ne
 Example Input: "Remind me to call John at 5pm"
 Example Output: {{"intent": "add_task", "entities": {{"title": "Call John", "time": "2025-11-23 17:00"}}, "sentiment": "neutral"}}
 
-Example Input: "Summarize the PDF I uploaded"
+Example Input: "Who won the 2022 World Cup?"
 Example Output: {{"intent": "query_knowledge", "entities": {{}}, "sentiment": "neutral"}}
+
+Example Input: "Help me organize my work"
+Example Output: {{"intent": "add_task", "entities": {{"title": "Organize work"}}, "sentiment": "neutral"}}
 
 Example Input: "Call me Rylix from now on"
 Example Output: {{"intent": "change_name", "entities": {{"username": "Rylix"}}, "sentiment": "positive"}}

@@ -214,10 +214,13 @@ body {
 }
 
 @keyframes pulse {
-    0%, 100% {
+
+    0%,
+    100% {
         opacity: 1;
         transform: scale(1);
     }
+
     50% {
         opacity: 0.7;
         transform: scale(1.05);
@@ -241,6 +244,7 @@ body {
         opacity: 0;
         transform: translateY(10px);
     }
+
     to {
         opacity: 1;
         transform: translateY(0);
@@ -352,6 +356,7 @@ body {
         opacity: 0;
         transform: translateY(5px);
     }
+
     to {
         opacity: 1;
         transform: translateY(0);
@@ -854,12 +859,10 @@ textarea {
     position: relative;
     min-height: 2880px;
     height: 2880px;
-    background: repeating-linear-gradient(
-        to bottom,
-        transparent 0px,
-        transparent 119px,
-        var(--border-color) 120px
-    );
+    background: repeating-linear-gradient(to bottom,
+            transparent 0px,
+            transparent 119px,
+            var(--border-color) 120px);
     cursor: pointer;
 }
 
@@ -972,9 +975,12 @@ textarea {
 }
 
 @keyframes pulse-urgent {
-    0%, 100% {
+
+    0%,
+    100% {
         box-shadow: 0 2px 8px rgba(239, 68, 68, 0.15);
     }
+
     50% {
         box-shadow: 0 2px 12px rgba(239, 68, 68, 0.3);
     }
@@ -1295,10 +1301,14 @@ textarea {
 }
 
 @keyframes typing {
-    0%, 60%, 100% {
+
+    0%,
+    60%,
+    100% {
         transform: translateY(0);
         opacity: 0.5;
     }
+
     30% {
         transform: translateY(-10px);
         opacity: 1;
@@ -1316,7 +1326,7 @@ textarea {
     .app-container {
         flex-direction: column;
     }
-    
+
     .sidebar {
         transform: translateX(-100%);
         width: 100%;
@@ -1325,52 +1335,52 @@ textarea {
         border-bottom: 1px solid var(--border-color);
         padding: 1rem;
     }
-    
+
     .sidebar.open {
         transform: translateX(0);
     }
-    
+
     .main-content {
         margin-left: 0;
         width: 100%;
     }
-    
+
     .nav-menu {
         flex-direction: row;
         overflow-x: auto;
         gap: 0.25rem;
     }
-    
+
     .nav-item {
         white-space: nowrap;
         min-width: fit-content;
     }
-    
+
     .nav-text {
         display: none;
     }
-    
+
     .view {
         padding: 1rem;
     }
-    
+
     .kanban-board {
         grid-template-columns: 1fr;
         gap: 1rem;
     }
-    
+
     .calendar-grid {
         height: calc(100vh - 300px);
     }
-    
+
     .insights-grid {
         grid-template-columns: 1fr;
     }
-    
+
     .chat-container {
         max-width: 100%;
     }
-    
+
     .input-area {
         width: 95%;
         bottom: 1rem;
@@ -1385,12 +1395,12 @@ textarea {
     .view {
         padding: 0.75rem;
     }
-    
+
     .modal-content {
         padding: 1.5rem;
         margin: 1rem;
     }
-    
+
     .focus-score-value {
         font-size: 3rem;
     }

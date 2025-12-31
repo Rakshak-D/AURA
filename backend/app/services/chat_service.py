@@ -90,7 +90,8 @@ class ChatService:
             
             # 1. Schedule/Calendar Query Detection
             schedule_keywords = ['schedule', 'calendar', 'what am i doing', 'what\'s on my schedule', 
-                                'what do i have', 'am i free', 'free time', 'what am i scheduled']
+                                'what do i have', 'am i free', 'free time', 'what am i scheduled',
+                                'my day', 'appointments', 'meetings']
             if any(keyword in message_lower for keyword in schedule_keywords):
                 logger.info(f"Detected schedule query: {message}")
                 result = await self.handle_query_schedule(user_id, message, db, None)
@@ -100,7 +101,8 @@ class ChatService:
             
             # 2. Task Creation Detection
             task_keywords = ['remind me', 'add task', 'create task', 'schedule a task', 
-                           'add to my list', 'set a reminder', 'i need to']
+                           'add to my list', 'set a reminder', 'i need to', 'help me', 'remind',
+                           'todo', 'to-do', 'buy', 'get', 'finish']
             if any(keyword in message_lower for keyword in task_keywords):
                 logger.info(f"Detected task creation: {message}")
                 # Use intent detection to extract task details
@@ -112,7 +114,8 @@ class ChatService:
             
             # 3. Knowledge Base Query Detection (Question patterns)
             question_patterns = ['how', 'what is', 'what are', 'explain', 'tell me about', 
-                               'summarize', 'what did', 'what does', 'describe']
+                               'summarize', 'what did', 'what does', 'describe', 'who', 'when', 
+                               'where', 'why', 'can you', 'do you know']
             if any(message_lower.startswith(pattern) or f' {pattern} ' in message_lower 
                    for pattern in question_patterns):
                 logger.info(f"Detected knowledge query: {message}")
@@ -460,28 +463,23 @@ Extract task details.
             rag_context = query_rag(query if query else message)
             
             if not rag_context or rag_context.strip() == "":
-                return {
-                    "response": "I couldn't find any relevant information in your knowledge base. Try uploading documents first or rephrase your question.",
-                    "action_taken": "query_knowledge",
-                    "data": {"found": False}
-                }
+                # Fallback to general knowledge if no documents found
+                rag_context = "No specific documents found in knowledge base."
+                found_docs = False
+            else:
+                found_docs = True
             
             # Use LLM to generate a natural response based on RAG context
             prompt = f"""<|system|>
 You are Aura, an advanced personal AI assistant. You are warm, clear, and practical.
 
-You have access to the user's uploaded documents and prior messages, but you NEVER mention
-your internal tools, retrieval systems, or implementation details (for example: RAG,
-vector stores, embeddings, or \"tools\"). If you draw on their documents, refer to them
-naturally (e.g. \"from your notes\" or \"from the document you shared\"), not by
-describing how you retrieved them.
+You have access to the user's uploaded documents and prior messages.
+If the user asks about something in their documents (Context provided below), use that information.
+If the Context says "No specific documents found", or if the documents don't contain the answer, 
+ANSWER FROM YOUR GENERAL KNOWLEDGE. Do not say "I couldn't find it in your documents" unless 
+the user specifically asked "what does my document say about X".
 
-When the user greets you (e.g. \"hi\", \"hello\"), respond naturally and conversationally
-without over-explaining your capabilities. Keep answers focused on what they asked.
-
-Use the following extracted context from their documents only as supporting material.
-If it doesn't fully answer the question, say so and clearly separate any reasonable
-inference from what is explicitly stated.
+When the user greets you (e.g. "hi", "hello"), respond naturally and conversationally.
 
 Context from Knowledge Base:
 {rag_context}
@@ -500,7 +498,7 @@ Context from Knowledge Base:
             return {
                 "response": response,
                 "action_taken": "query_knowledge",
-                "data": {"found": True, "context_length": len(rag_context)}
+                "data": {"found": found_docs, "context_length": len(rag_context)}
             }
             
         except Exception as e:
