@@ -18,6 +18,7 @@ def test_configuration_defaults_are_deterministic():
     assert settings.port == 8000
     assert settings.use_gpu is False
     assert settings.model_path == settings.models_dir / settings.model_filename
+    assert settings.embedding_model_path == settings.models_dir / "embeddings" / "sentence-transformers--all-MiniLM-L6-v2"
     assert settings.resolved_database_url.startswith("sqlite:///")
 
 
@@ -44,6 +45,9 @@ def test_configuration_environment_overrides(monkeypatch, tmp_path):
         ("PORT", "0"),
         ("CONTEXT_WINDOW", "0"),
         ("LLM_TEMPERATURE", "3"),
+        ("N_GPU_LAYERS", "-1"),
+        ("LLM_MAX_TOKENS", "3000"),
+        ("RAG_CHUNK_OVERLAP", "500"),
     ],
 )
 def test_invalid_configuration_is_rejected(monkeypatch, name, value):

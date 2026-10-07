@@ -1,0 +1,29 @@
+{
+  "manifest_version": 1,
+  "integrity_policy": {
+    "sha256_authoritative": false,
+    "note": "The current upstream references do not provide an authoritative checksum verified by this repository. The provisioning tool always calculates and reports a local SHA-256. A missing checksum is never treated as checksum-verified."
+  },
+  "artifacts": [
+    {
+      "logical_name": "phi-3-mini-4k-instruct-q4",
+      "artifact_type": "llm_gguf",
+      "filename": "phi-3-mini-4k-instruct-q4.gguf",
+      "source": "https://huggingface.co/microsoft/Phi-3-mini-4k-instruct-gguf/resolve/main/Phi-3-mini-4k-instruct-q4.gguf",
+      "source_revision": null,
+      "expected_size_bytes": null,
+      "expected_size_label": "approximately 3.8 GB according to the existing project metadata",
+      "sha256": null
+    },
+    {
+      "logical_name": "all-MiniLM-L6-v2",
+      "artifact_type": "embedding_sentence_transformer",
+      "filename": "all-MiniLM-L6-v2",
+      "source": "sentence-transformers/all-MiniLM-L6-v2",
+      "source_revision": null,
+      "expected_size_bytes": null,
+      "expected_size_label": "approximately 80 MB according to the existing project metadata",
+      "sha256": null
+    }
+  ]
+}

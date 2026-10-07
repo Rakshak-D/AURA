@@ -7,22 +7,5 @@ pydantic==2.5.0
 pydantic-settings==2.1.0
 python-dotenv==1.0.0
 sqlalchemy==2.0.23
-
-# Optional scheduling/rate-limit dependencies.
-# apscheduler==3.10.4
-# slowapi==0.1.9
-
-# Optional local AI/RAG dependencies. Install these only for those features.
-# chromadb==0.4.18
-# sentence-transformers==2.2.2
-# llama-cpp-python==0.2.20
-# huggingface-hub==0.19.4
-
-# Optional document parsing/OCR dependencies.
-# PyPDF2==3.0.1
-# python-docx==1.1.0
-# pytesseract==0.3.10
-# Pillow==10.1.0
-
-# Optional model downloader dependency.
-# requests==2.31.0
+apscheduler==3.10.4
+slowapi==0.1.9

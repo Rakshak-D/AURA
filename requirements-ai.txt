@@ -1,0 +1,4 @@
+-r requirements.txt
+
+# Optional local LLM runtime.
+llama-cpp-python==0.2.20

@@ -65,6 +65,8 @@ Copy .env.example to .env for local configuration. The real .env is ignored by G
 
 The core API can be imported and started without a GGUF model, GPU, ChromaDB data, embedding downloads, OCR binaries, or user documents. Local AI/RAG and document features require the optional dependencies and model/system prerequisites documented in requirements.txt.
 
+See docs/runtime.md for the core, AI, and RAG install profiles, explicit model/embedding provisioning, verification, CPU/GPU behavior, and health/readiness diagnostics.
+
 ### Installation
 
 1. **Clone the Repository**

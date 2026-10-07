@@ -3,7 +3,7 @@
 import logging
 from pathlib import Path
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 PROJECT_DIR = Path(__file__).resolve().parents[2]
@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     chroma_path: Path | None = Field(default=None, validation_alias="CHROMA_PATH")
     uploads_dir: Path | None = Field(default=None, validation_alias="UPLOADS_DIR")
     logs_dir: Path | None = Field(default=None, validation_alias="LOGS_DIR")
+    embedding_model_path_override: Path | None = Field(default=None, validation_alias="EMBEDDING_MODEL_PATH")
 
     model_filename: str = Field(default="phi-3-mini-4k-instruct-q4.gguf", validation_alias="MODEL_FILENAME")
     embedding_model: str = Field(
@@ -59,6 +60,22 @@ class Settings(BaseSettings):
             raise ValueError("ENVIRONMENT must be development, test, or production")
         return value
 
+    @field_validator("model_filename")
+    @classmethod
+    def validate_model_filename(cls, value: str) -> str:
+        if not value or value in {".", ".."} or Path(value).name != value:
+            raise ValueError("MODEL_FILENAME must be a safe filename, not a path")
+        if "/" in value or "\\" in value:
+            raise ValueError("MODEL_FILENAME must not contain path separators")
+        return value
+
+    @field_validator("n_gpu_layers")
+    @classmethod
+    def validate_gpu_layers(cls, value: int) -> int:
+        if value < 0:
+            raise ValueError("N_GPU_LAYERS cannot be negative")
+        return value
+
     @field_validator("port")
     @classmethod
     def validate_port(cls, value: int) -> int:
@@ -87,6 +104,16 @@ class Settings(BaseSettings):
             raise ValueError("LLM_TEMPERATURE must be between 0 and 2")
         return value
 
+    @model_validator(mode="after")
+    def validate_combinations(self) -> "Settings":
+        if self.llm_max_tokens > self.llm_context_window:
+            raise ValueError("LLM_MAX_TOKENS cannot exceed CONTEXT_WINDOW")
+        if self.rag_chunk_overlap >= self.rag_chunk_size:
+            raise ValueError("RAG_CHUNK_OVERLAP must be smaller than RAG_CHUNK_SIZE")
+        if self.environment == "production" and self.secret_key == "dev-only-change-me":
+            raise ValueError("SECRET_KEY must be changed in production")
+        return self
+
     def model_post_init(self, __context: object, /) -> None:
         base = self.base_dir.resolve()
         data = (self.data_dir or base / "data").resolve()
@@ -102,6 +129,21 @@ class Settings(BaseSettings):
     @property
     def model_path(self) -> Path:
         return self.models_dir / self.model_filename
+
+    @property
+    def manifest_path(self) -> Path:
+        return self.base_dir / "backend" / "model_manifest.json"
+
+    @property
+    def embedding_cache_dir(self) -> Path:
+        return self.models_dir / "embedding-cache"
+
+    @property
+    def embedding_model_path(self) -> Path:
+        if self.embedding_model_path_override:
+            return self.embedding_model_path_override.resolve()
+        safe_name = self.embedding_model.replace("/", "--")
+        return self.models_dir / "embeddings" / safe_name
 
     # Compatibility aliases for existing feature code. These are read-only
     # views over the typed settings and can be removed in a later migration.

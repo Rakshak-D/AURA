@@ -61,6 +61,11 @@ class LLM:
                     "The embedding model is unavailable. Install optional RAG dependencies and provision the embedding model."
                 )
             self._embedding_attempted = True
+            if not config.embedding_model_path.is_dir():
+                raise RuntimeError(
+                    f"The embedding model is not provisioned at {config.embedding_model_path}. "
+                    "Run the explicit embedding provisioning command before using RAG features."
+                )
             try:
                 from sentence_transformers import SentenceTransformer
             except ImportError as exc:
@@ -69,7 +74,7 @@ class LLM:
                 ) from exc
             try:
                 self.embedding_model = SentenceTransformer(
-                    config.embedding_model,
+                    str(config.embedding_model_path),
                     device="cuda" if config.use_gpu else "cpu",
                 )
                 return self.embedding_model

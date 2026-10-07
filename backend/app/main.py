@@ -11,6 +11,7 @@ from .routes import (
     chat,
     dashboard,
     export,
+    health,
     insights,
     reminders,
     routine,
@@ -20,6 +21,7 @@ from .routes import (
     tasks,
     upload,
 )
+from .runtime_diagnostics import startup_summary
 from .websocket_manager import manager
 
 app = FastAPI(title="AURA API", version="1.0.0")
@@ -49,6 +51,7 @@ async def startup_event():
     # Initialize DB
     init_db()
     logging.getLogger(__name__).info("Serving static files from %s", config.frontend_dir)
+    logging.getLogger(__name__).info("Capability summary: %s", startup_summary())
     
     import asyncio
     manager.set_loop(asyncio.get_running_loop())
@@ -65,6 +68,7 @@ app.include_router(schedule.router, prefix="/api")
 app.include_router(insights.router, prefix="/api/insights")
 app.include_router(settings.router, prefix="/api")
 app.include_router(routine.router, prefix="/api")
+app.include_router(health.router)
 
 # Static Files
 app.mount("/static", StaticFiles(directory=str(config.FRONTEND_DIR)), name="static")
