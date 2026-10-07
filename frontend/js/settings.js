@@ -13,7 +13,7 @@ function applyTheme() {
 
 async function loadSettings() {
     try {
-        const response = await fetch(`${API_URL}/settings`);
+        const response = await apiFetch(`${API_URL}/settings`);
         if (response.ok) {
             const settings = await response.json();
 
@@ -69,7 +69,7 @@ async function saveSettings() {
     }
 
     try {
-        const response = await fetch(`${API_URL}/settings`, {
+        const response = await apiFetch(`${API_URL}/settings`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({

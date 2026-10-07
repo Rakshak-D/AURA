@@ -16,7 +16,75 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Initialize Voice
     setupVoice();
+    ensureAuthenticated();
 });
+
+const AUTH_TOKEN_KEY = 'aura_access_token';
+
+function getAuthToken() {
+    return sessionStorage.getItem(AUTH_TOKEN_KEY);
+}
+
+function clearAuthToken() {
+    sessionStorage.removeItem(AUTH_TOKEN_KEY);
+}
+
+async function apiFetch(url, options = {}) {
+    const headers = new Headers(options.headers || {});
+    const token = getAuthToken();
+    if (token) headers.set('Authorization', `Bearer ${token}`);
+    const response = await fetch(url, { ...options, headers });
+    if (response.status === 401) {
+        clearAuthToken();
+        showAuthPanel();
+    }
+    return response;
+}
+
+function showAuthPanel() {
+    const panel = document.getElementById('aura-auth-panel');
+    if (panel) panel.hidden = false;
+}
+
+function hideAuthPanel() {
+    const panel = document.getElementById('aura-auth-panel');
+    if (panel) panel.hidden = true;
+}
+
+async function authenticate(action = 'login') {
+    const identifier = document.getElementById('aura-auth-identifier').value;
+    const password = document.getElementById('aura-auth-password').value;
+    const response = await fetch(`${API_URL}/auth/${action}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifier, password })
+    });
+    const data = await response.json();
+    if (!response.ok) return showToast(data.detail || 'Authentication failed', 'error');
+    if (action === 'register') {
+        return authenticate('login');
+    }
+    sessionStorage.setItem(AUTH_TOKEN_KEY, data.access_token);
+    hideAuthPanel();
+    showToast('Signed in');
+}
+
+function logout() {
+    clearAuthToken();
+    showAuthPanel();
+}
+
+function ensureAuthenticated() {
+    if (document.getElementById('aura-auth-panel')) return;
+    const panel = document.createElement('section');
+    panel.id = 'aura-auth-panel';
+    panel.hidden = Boolean(getAuthToken());
+    panel.style.cssText = 'position:fixed;inset:0;background:rgba(10,15,30,.96);z-index:2000;display:grid;place-items:center;color:white';
+    panel.innerHTML = `<form style="display:grid;gap:12px;width:min(360px,90vw);padding:24px;background:#172033;border-radius:12px" onsubmit="event.preventDefault(); authenticate('login')">
+        <h2>Sign in to AURA</h2><input id="aura-auth-identifier" required minlength="3" placeholder="Username or email">
+        <input id="aura-auth-password" required minlength="8" type="password" placeholder="Password">
+        <button type="submit">Sign in</button><button type="button" onclick="authenticate('register')">Create account</button></form>`;
+    document.body.appendChild(panel);
+}
 
 // View Switching
 function switchView(viewId) {
@@ -161,7 +229,7 @@ async function apiCall(endpoint, method = 'GET', body = null) {
         };
         if (body) options.body = JSON.stringify(body);
 
-        const response = await fetch(`${API_URL}${endpoint}`, options);
+        const response = await apiFetch(`${API_URL}${endpoint}`, options);
         return await response.json();
     } catch (error) {
         console.error(`API Error (${endpoint}):`, error);

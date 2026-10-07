@@ -107,7 +107,7 @@ async function renderCalendar() {
     console.log('Making API request to:', `${apiUrl}/schedule/routine?date=${dateStr}`);
 
     try {
-        const response = await fetch(`${apiUrl}/schedule/routine?date=${dateStr}`);
+        const response = await apiFetch(`${apiUrl}/schedule/routine?date=${dateStr}`);
 
         console.log('API Response status:', response.status);
 
@@ -402,7 +402,7 @@ async function autoSchedule() {
     }
 
     try {
-        const response = await fetch(`${apiUrl}/schedule/auto-assign?date=${dateStr}`, {
+        const response = await apiFetch(`${apiUrl}/schedule/auto-assign?date=${dateStr}`, {
             method: 'POST'
         });
 
@@ -503,7 +503,7 @@ window.testCalendar = function () {
     const apiUrl = typeof API_URL !== 'undefined' ? API_URL : '/api';
     console.log('API URL:', `${apiUrl}/schedule/routine?date=${dateStr}`);
 
-    fetch(`${apiUrl}/schedule/routine?date=${dateStr}`)
+    apiFetch(`${apiUrl}/schedule/routine?date=${dateStr}`)
         .then(r => {
             console.log('Response status:', r.status);
             return r.json();

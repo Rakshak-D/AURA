@@ -1,18 +1,19 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from ..database import get_chroma_collection, get_db, get_development_user_id
+from ..database import get_chroma_collection, get_db
+from ..auth import get_current_user_id
 from ..models.sql_models import ChatHistory, Task
 
 router = APIRouter()
 
 @router.get("/search")
-def search_all(q: str, db: Session = Depends(get_db)):  # noqa: B008 - FastAPI dependency injection
+def search_all(q: str, db: Session = Depends(get_db), current_user_id: int = Depends(get_current_user_id)):  # noqa: B008 - FastAPI dependency injection
     if not q:
         return {"tasks": [], "knowledge": []}
     
     query = q.lower()
-    user_id = get_development_user_id(db)
+    user_id = current_user_id
     results = {"tasks": [], "knowledge": []}
     
     # 1. Search Tasks (SQL Fuzzy)
@@ -36,7 +37,7 @@ def search_all(q: str, db: Session = Depends(get_db)):  # noqa: B008 - FastAPI d
     # A. Documents (Vector Search)
     try:
         collection = get_chroma_collection()
-        vector_results = collection.query(query_texts=[q], n_results=5)
+        vector_results = collection.query(query_texts=[q], n_results=5, where={"user_id": user_id})
         if vector_results["documents"]:
             for i, doc_text in enumerate(vector_results["documents"][0]):
                 meta = vector_results["metadatas"][0][i]

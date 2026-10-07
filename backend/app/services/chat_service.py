@@ -461,7 +461,7 @@ Extract task details.
             query = query.strip()
             
             # Call RAG Service to query knowledge base
-            rag_context = query_rag(query if query else message)
+            rag_context = query_rag(user_id, query if query else message)
             
             if not rag_context or rag_context.strip() == "":
                 # Fallback to general knowledge if no documents found
@@ -722,7 +722,7 @@ Context from Knowledge Base:
             user_name = context.get('user_name', 'User') if context else 'User'
             
             # Get RAG Context
-            rag_context = query_rag(message)
+            rag_context = query_rag(user_id, message)
             # Get recent conversation history
             conversation_history = self.get_recent_history(user_id, db, limit=10)
             

@@ -56,7 +56,7 @@ def _enable_sqlite_foreign_keys(dbapi_connection, _connection_record):
         cursor.close()
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-REQUIRED_SCHEMA_VERSION = 2
+REQUIRED_SCHEMA_VERSION = 3
 
 _chroma_client = None
 _collection = None
@@ -64,24 +64,6 @@ _collection = None
 
 class DatabaseIntegrityError(RuntimeError):
     """Raised when required database state is missing or inconsistent."""
-
-
-def get_development_user(db):
-    """Resolve the seeded development user until Phase 3 authentication exists.
-
-    This is an ownership boundary, not a global current-user constant. Phase 3
-    can replace this resolver with an authenticated-user dependency.
-    """
-    from .models.sql_models import User
-
-    user = db.query(User).order_by(User.id.asc()).first()
-    if user is None:
-        raise DatabaseIntegrityError("No development user exists in the database")
-    return user
-
-
-def get_development_user_id(db) -> int:
-    return get_development_user(db).id
 
 
 @contextmanager
@@ -208,6 +190,7 @@ def _apply_schema_migrations(target_engine=engine) -> None:
             _rebuild_reminders(connection, first_user)
             _rebuild_documents(connection, first_user)
             _create_integrity_indexes(connection)
+            _migrate_user_authentication(connection)
             connection.execute(text("UPDATE schema_version SET version = :version"), {"version": REQUIRED_SCHEMA_VERSION})
             transaction.commit()
         except Exception:
@@ -218,13 +201,15 @@ def _apply_schema_migrations(target_engine=engine) -> None:
 
     result = schema_status(target_engine)
     if not result["ready"]:
-        raise DatabaseIntegrityError("Database migration completed without a valid Phase 2 schema")
+        raise DatabaseIntegrityError("Database migration completed without a valid authentication schema")
 
 
 def _rebuild_tasks(connection, first_user: int) -> None:
     from sqlalchemy import text
 
     if "tasks" not in {row[0] for row in connection.execute(text("SELECT name FROM sqlite_master WHERE type='table'"))}:
+        return
+    if "tasks_legacy" not in {row[0] for row in connection.execute(text("SELECT name FROM sqlite_master WHERE type='table'"))} and _table_has_sql(connection, "tasks", "fk_tasks_parent_same_user"):
         return
     if "tasks_legacy" in {row[0] for row in connection.execute(text("SELECT name FROM sqlite_master WHERE type='table'"))} and _table_has_sql(connection, "tasks", "fk_tasks_parent_same_user"):
         if connection.execute(text("SELECT COUNT(*) FROM tasks_legacy")).scalar() != connection.execute(text("SELECT COUNT(*) FROM tasks")).scalar():
@@ -289,6 +274,8 @@ def _rebuild_reminders(connection, first_user: int) -> None:
 
     if "reminders" not in {row[0] for row in connection.execute(text("SELECT name FROM sqlite_master WHERE type='table'"))}:
         return
+    if "reminders_legacy" not in {row[0] for row in connection.execute(text("SELECT name FROM sqlite_master WHERE type='table'"))} and _table_has_sql(connection, "reminders", "fk_reminders_task_same_user"):
+        return
     if "reminders_legacy" in {row[0] for row in connection.execute(text("SELECT name FROM sqlite_master WHERE type='table'"))} and _table_has_sql(connection, "reminders", "fk_reminders_task_same_user"):
         if connection.execute(text("SELECT COUNT(*) FROM reminders_legacy")).scalar() != connection.execute(text("SELECT COUNT(*) FROM reminders")).scalar():
             raise DatabaseIntegrityError("Unfinished reminder migration contains data that cannot be safely discarded")
@@ -335,6 +322,8 @@ def _rebuild_documents(connection, first_user: int) -> None:
     from sqlalchemy import text
 
     if "documents" not in {row[0] for row in connection.execute(text("SELECT name FROM sqlite_master WHERE type='table'"))}:
+        return
+    if "documents_legacy" not in {row[0] for row in connection.execute(text("SELECT name FROM sqlite_master WHERE type='table'"))} and _table_has_sql(connection, "documents", "ck_documents_indexing_state"):
         return
     if "documents_legacy" in {row[0] for row in connection.execute(text("SELECT name FROM sqlite_master WHERE type='table'"))} and _table_has_sql(connection, "documents", "ck_documents_indexing_state"):
         if connection.execute(text("SELECT COUNT(*) FROM documents_legacy")).scalar() != connection.execute(text("SELECT COUNT(*) FROM documents")).scalar():
@@ -390,6 +379,20 @@ def _table_has_sql(connection, table: str, fragment: str) -> bool:
     return row is not None and fragment.lower() in (row[0] or "").lower()
 
 
+def _migrate_user_authentication(connection) -> None:
+    """Add credential columns without changing legacy user identity or data."""
+    columns = _table_columns(connection, "users")
+    if "login_identifier" not in columns:
+        connection.exec_driver_sql("ALTER TABLE users ADD COLUMN login_identifier VARCHAR(255)")
+    if "password_hash" not in columns:
+        connection.exec_driver_sql("ALTER TABLE users ADD COLUMN password_hash VARCHAR(255)")
+    if "is_active" not in columns:
+        connection.exec_driver_sql("ALTER TABLE users ADD COLUMN is_active BOOLEAN NOT NULL DEFAULT 1")
+    connection.exec_driver_sql(
+        "CREATE UNIQUE INDEX IF NOT EXISTS ux_users_login_identifier ON users (login_identifier)"
+    )
+
+
 def schema_status(target_engine=engine) -> dict:
     """Validate the actual active SQLite schema, not only ORM declarations."""
     from sqlalchemy import inspect, text
@@ -415,6 +418,9 @@ def schema_status(target_engine=engine) -> dict:
     for table, column in (("tasks", "user_id"), ("reminders", "user_id"), ("documents", "user_id")):
         if column not in columns(table) or not columns(table)[column]["nullable"] is False:
             missing.append(f"{table}:{column}_not_null")
+    for column in ("login_identifier", "password_hash", "is_active"):
+        if column not in columns("users"):
+            missing.append(f"users:{column}")
 
     with target_engine.connect() as connection:
         for table, target, expected_from in (

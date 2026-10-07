@@ -1,7 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
-from ..database import get_db, get_development_user_id, utc_now
+from ..database import get_db, utc_now
+from ..auth import get_current_user_id
 from ..models.sql_models import Task
 from ..models.pydantic_models import TaskCreate, TaskResponse, TaskUpdate
 from ..services.schedule_service import generate_routine
@@ -15,10 +16,11 @@ def get_tasks(
     completed: Optional[bool] = None,
     priority: Optional[str] = None,
     tag: Optional[str] = None,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user_id: int = Depends(get_current_user_id)
 ):
     try:
-        user_id = get_development_user_id(db)
+        user_id = current_user_id
         query = db.query(Task).filter_by(user_id=user_id)
         
         if completed is not None:
@@ -103,12 +105,12 @@ def check_conflict(db: Session, user_id: int, start_time: datetime, duration_min
         )
 
 @router.post("/tasks", response_model=TaskResponse)
-def create_task(task: TaskCreate, db: Session = Depends(get_db)):
+def create_task(task: TaskCreate, db: Session = Depends(get_db), current_user_id: int = Depends(get_current_user_id)):
     import logging
     logger = logging.getLogger(__name__)
     
     try:
-        user_id = get_development_user_id(db)
+        user_id = current_user_id
         # Sanitize and validate inputs with strict defaults
         if not task.title or not task.title.strip():
             raise HTTPException(status_code=400, detail="Task title is required")
@@ -224,8 +226,8 @@ def create_task(task: TaskCreate, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=f"Failed to create task: {str(e)}")
 
 @router.get("/tasks/{task_id}", response_model=TaskResponse)
-def get_task(task_id: int, db: Session = Depends(get_db)):
-    user_id = get_development_user_id(db)
+def get_task(task_id: int, db: Session = Depends(get_db), current_user_id: int = Depends(get_current_user_id)):
+    user_id = current_user_id
     task = db.query(Task).filter_by(id=task_id, user_id=user_id).first()
     
     if not task:
@@ -247,9 +249,9 @@ def get_task(task_id: int, db: Session = Depends(get_db)):
     )
 
 @router.put("/tasks/{task_id}", response_model=TaskResponse)
-def update_task(task_id: int, update: TaskUpdate, db: Session = Depends(get_db)):
+def update_task(task_id: int, update: TaskUpdate, db: Session = Depends(get_db), current_user_id: int = Depends(get_current_user_id)):
     try:
-        user_id = get_development_user_id(db)
+        user_id = current_user_id
         task = db.query(Task).filter_by(id=task_id, user_id=user_id).first()
         
         if not task:
@@ -343,9 +345,9 @@ def update_task(task_id: int, update: TaskUpdate, db: Session = Depends(get_db))
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.delete("/tasks/{task_id}")
-def delete_task(task_id: int, db: Session = Depends(get_db)):
+def delete_task(task_id: int, db: Session = Depends(get_db), current_user_id: int = Depends(get_current_user_id)):
     try:
-        user_id = get_development_user_id(db)
+        user_id = current_user_id
         task = db.query(Task).filter_by(id=task_id, user_id=user_id).first()
         
         if not task:
@@ -356,15 +358,17 @@ def delete_task(task_id: int, db: Session = Depends(get_db)):
         
         return {"status": "deleted", "task_id": task_id}
     
+    except HTTPException:
+        raise
     except Exception as e:
         db.rollback()
         print(f"Error deleting task: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/tasks/search/{query}")
-def search_tasks(query: str, db: Session = Depends(get_db)):
+def search_tasks(query: str, db: Session = Depends(get_db), current_user_id: int = Depends(get_current_user_id)):
     try:
-        user_id = get_development_user_id(db)
+        user_id = current_user_id
         tasks = db.query(Task).filter(
             Task.user_id == user_id,
             (Task.title.ilike(f'%{query}%') | Task.description.ilike(f'%{query}%'))

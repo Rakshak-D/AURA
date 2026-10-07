@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from ..database import get_db, get_development_user_id
+from ..database import get_db
+from ..auth import get_current_user_id
 from ..services.schedule_service import generate_routine, auto_schedule_tasks
 from datetime import datetime
 from typing import Optional
@@ -19,7 +20,8 @@ class EventCreate(BaseModel):
 @router.get("/schedule/routine")
 def get_routine(
     date: Optional[str] = Query(None, description="Date in YYYY-MM-DD format"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user_id: int = Depends(get_current_user_id)
 ):
     try:
         target_date = None
@@ -29,7 +31,7 @@ def get_routine(
             except ValueError:
                 raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
         
-        return generate_routine(get_development_user_id(db), db, target_date)
+        return generate_routine(current_user_id, db, target_date)
     except HTTPException:
         raise
     except Exception as e:
@@ -41,7 +43,8 @@ def get_routine(
 @router.post("/schedule/auto-assign")
 def auto_assign_tasks(
     date: Optional[str] = Query(None, description="Date in YYYY-MM-DD format"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user_id: int = Depends(get_current_user_id)
 ):
     try:
         target_date = None
@@ -51,7 +54,7 @@ def auto_assign_tasks(
             except ValueError:
                 raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
         
-        return auto_schedule_tasks(get_development_user_id(db), db, target_date)
+        return auto_schedule_tasks(current_user_id, db, target_date)
     except HTTPException:
         raise
     except Exception as e:
@@ -61,7 +64,7 @@ def auto_assign_tasks(
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/schedule/events")
-def create_event(event: EventCreate, db: Session = Depends(get_db)):
+def create_event(event: EventCreate, db: Session = Depends(get_db), current_user_id: int = Depends(get_current_user_id)):
     """
     Create a fixed event (like classes or meetings) that is not a task.
     This creates a RoutineEvent for recurring events or a one-time event.
@@ -82,7 +85,7 @@ def create_event(event: EventCreate, db: Session = Depends(get_db)):
         start_time_str = start_dt.strftime("%H:%M")
         
         new_event = RoutineEvent(
-            user_id=get_development_user_id(db),
+            user_id=current_user_id,
             title=event.title,
             start_time=start_time_str,
             duration_minutes=duration_minutes,
@@ -110,14 +113,14 @@ def create_event(event: EventCreate, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/schedule/conflicts")
-def check_conflicts(start_time: str, end_time: str, db: Session = Depends(get_db)):
+def check_conflicts(start_time: str, end_time: str, db: Session = Depends(get_db), current_user_id: int = Depends(get_current_user_id)):
     """Check for conflicts in a specific time range"""
     try:
         start = datetime.fromisoformat(start_time)
         end = datetime.fromisoformat(end_time)
         
         # Get routine for the day
-        routine = generate_routine(get_development_user_id(db), db, start)
+        routine = generate_routine(current_user_id, db, start)
         timeline = routine.get("timeline", [])
         
         conflicts = []

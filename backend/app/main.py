@@ -5,9 +5,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from .auth import authenticate_websocket
 from .config import config
-from .database import init_db
+from .database import SessionLocal, init_db
 from .routes import (
+    auth,
     chat,
     dashboard,
     export,
@@ -38,8 +40,8 @@ async def global_exception_handler(request: Request, exc: Exception):
 # CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=config.cors_allowed_origins,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -58,6 +60,7 @@ async def startup_event():
 
 # Routers
 app.include_router(chat.router, prefix="/api")
+app.include_router(auth.router, prefix="/api")
 app.include_router(tasks.router, prefix="/api")
 app.include_router(upload.router, prefix="/api")
 app.include_router(dashboard.router, prefix="/api")
@@ -76,7 +79,14 @@ app.mount("/static", StaticFiles(directory=str(config.FRONTEND_DIR)), name="stat
 # WebSocket
 @app.websocket("/ws/notifications")
 async def websocket_endpoint(websocket: WebSocket):
-    await manager.connect(websocket)
+    db = SessionLocal()
+    try:
+        user = await authenticate_websocket(websocket, db)
+        await manager.connect(websocket, user.id)
+    except Exception:
+        db.close()
+        return
+    db.close()
     try:
         while True:
             # Keep connection alive

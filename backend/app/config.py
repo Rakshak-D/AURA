@@ -45,6 +45,13 @@ class Settings(BaseSettings):
     log_level: str = Field(default="INFO", validation_alias="LOG_LEVEL")
     wake_word: str = Field(default="hey aura", validation_alias="WAKE_WORD")
     secret_key: str = Field(default="dev-only-change-me", validation_alias="SECRET_KEY")
+    auth_secret_key: str = Field(default="dev-only-change-me", validation_alias="AUTH_SECRET_KEY")
+    auth_bootstrap_token: str | None = Field(default=None, validation_alias="AUTH_BOOTSTRAP_TOKEN")
+    access_token_expire_minutes: int = Field(default=30, validation_alias="ACCESS_TOKEN_EXPIRE_MINUTES")
+    allowed_origins: str = Field(
+        default="http://127.0.0.1:8000,http://localhost:8000",
+        validation_alias="ALLOWED_ORIGINS",
+    )
 
     max_upload_size: int = 50 * 1024 * 1024
     allowed_extensions: set[str] = {".pdf", ".txt", ".docx", ".md"}
@@ -83,7 +90,10 @@ class Settings(BaseSettings):
             raise ValueError("PORT must be between 1 and 65535")
         return value
 
-    @field_validator("llm_context_window", "llm_max_tokens", "max_upload_size", "rag_chunk_size", "rag_top_k")
+    @field_validator(
+        "llm_context_window", "llm_max_tokens", "max_upload_size", "rag_chunk_size", "rag_top_k",
+        "access_token_expire_minutes",
+    )
     @classmethod
     def validate_positive(cls, value: int) -> int:
         if value <= 0:
@@ -110,8 +120,11 @@ class Settings(BaseSettings):
             raise ValueError("LLM_MAX_TOKENS cannot exceed CONTEXT_WINDOW")
         if self.rag_chunk_overlap >= self.rag_chunk_size:
             raise ValueError("RAG_CHUNK_OVERLAP must be smaller than RAG_CHUNK_SIZE")
-        if self.environment == "production" and self.secret_key == "dev-only-change-me":
-            raise ValueError("SECRET_KEY must be changed in production")
+        if self.environment == "production":
+            if self.auth_secret_key == "dev-only-change-me" or len(self.auth_secret_key) < 32:
+                raise ValueError("AUTH_SECRET_KEY must be a unique value of at least 32 characters in production")
+            if not self.allowed_origins.strip() or "*" in self.allowed_origins:
+                raise ValueError("ALLOWED_ORIGINS must explicitly list origins in production")
         return self
 
     def model_post_init(self, __context: object, /) -> None:
@@ -144,6 +157,10 @@ class Settings(BaseSettings):
             return self.embedding_model_path_override.resolve()
         safe_name = self.embedding_model.replace("/", "--")
         return self.models_dir / "embeddings" / safe_name
+
+    @property
+    def cors_allowed_origins(self) -> list[str]:
+        return [origin.strip() for origin in self.allowed_origins.split(",") if origin.strip()]
 
     # Compatibility aliases for existing feature code. These are read-only
     # views over the typed settings and can be removed in a later migration.

@@ -14,17 +14,16 @@ it is not a global identity. Document indexing is represented in SQL with
 `pending`, `indexed`, or `failed` and an optional non-sensitive failure marker.
 SQLite and Chroma are separate systems and are not part of one transaction.
 
-The required database schema version is `2`. Readiness validates the actual
+The required database schema version is `3`. Readiness validates the actual
 SQLite schema and does not report the database as ready when this version or
 its required constraints are missing.
 
 ## Ownership model
 
-Authentication is intentionally not implemented yet. Until Phase 3, routes use
-`get_development_user()` / `get_development_user_id()` as the single ownership
-boundary. The resolver selects the first seeded user rather than scattering a
-literal current-user ID through route code. Phase 3 can replace this resolver
-with an authenticated-user dependency without changing the owned tables.
+Authentication is now the ownership boundary. Routes use the authenticated
+user dependency rather than a development-user resolver. Legacy data remains
+owned by its existing user and can be claimed through the documented bootstrap
+flow without changing table ownership.
 
 ## Timestamp policy
 

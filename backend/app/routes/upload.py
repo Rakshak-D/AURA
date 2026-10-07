@@ -1,6 +1,7 @@
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session
-from ..database import get_db, get_development_user_id
+from ..database import get_db
+from ..auth import get_current_user_id
 from ..models.sql_models import Document
 from ..services.rag_service import delete_document_embeddings, index_document
 from ..utils.parser import parse_document
@@ -14,13 +15,14 @@ async def upload_file(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
+    current_user_id: int = Depends(get_current_user_id),
 ):
     """
     Upload a document, store it in SQL, and enqueue background RAG indexing.
     Uses a consistent response envelope for success/error.
     """
     try:
-        user_id = get_development_user_id(db)
+        user_id = current_user_id
         content = parse_document(file.file, file.content_type)
 
         # Check if file already exists to avoid duplicates (optional, but good practice)
@@ -45,7 +47,7 @@ async def upload_file(
         db.refresh(doc)
 
         # Process RAG in background
-        background_tasks.add_task(index_document, doc.id, file.filename or "unnamed", content)
+        background_tasks.add_task(index_document, doc.id, user_id, file.filename or "unnamed", content)
 
         return success_response(
             data={
@@ -65,12 +67,12 @@ async def upload_file(
 
 
 @router.get("/upload/files")
-async def list_files(db: Session = Depends(get_db)):
+async def list_files(db: Session = Depends(get_db), current_user_id: int = Depends(get_current_user_id)):
     """
     List all uploaded documents for the current user.
     """
     try:
-        docs = db.query(Document).filter(Document.user_id == get_development_user_id(db)).all()
+        docs = db.query(Document).filter(Document.user_id == current_user_id).all()
         files = [
             {
                 "id": doc.id,
@@ -89,7 +91,7 @@ async def list_files(db: Session = Depends(get_db)):
 
 
 @router.delete("/upload/{doc_id}")
-async def delete_file(doc_id: int, db: Session = Depends(get_db)):
+async def delete_file(doc_id: int, db: Session = Depends(get_db), current_user_id: int = Depends(get_current_user_id)):
     """
     Delete a document from SQL and remove its embeddings from ChromaDB.
 
@@ -97,7 +99,7 @@ async def delete_file(doc_id: int, db: Session = Depends(get_db)):
     """
     try:
         doc = db.query(Document).filter(
-            Document.id == doc_id, Document.user_id == get_development_user_id(db)
+            Document.id == doc_id, Document.user_id == current_user_id
         ).first()
         if not doc:
             return error_response(
@@ -109,7 +111,7 @@ async def delete_file(doc_id: int, db: Session = Depends(get_db)):
         filename = doc.filename
 
         # Remove embeddings from ChromaDB
-        deleted_count = delete_document_embeddings(filename)
+        deleted_count = delete_document_embeddings(current_user_id, filename)
 
         # Delete SQL record
         db.delete(doc)

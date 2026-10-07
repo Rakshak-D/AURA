@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from ..database import get_db, get_development_user_id
+from ..database import get_db
+from ..auth import get_current_user_id
 from ..models.sql_models import Reminder, Task
 from ..services.reminder_service import schedule_reminder
 from ..models.pydantic_models import ReminderCreate
@@ -8,8 +9,8 @@ from ..models.pydantic_models import ReminderCreate
 router = APIRouter()
 
 @router.post("/reminders")
-def add_reminder(rem: ReminderCreate, db: Session = Depends(get_db)):
-    user_id = get_development_user_id(db)
+def add_reminder(rem: ReminderCreate, db: Session = Depends(get_db), current_user_id: int = Depends(get_current_user_id)):
+    user_id = current_user_id
     task = db.query(Task).filter(Task.id == rem.task_id, Task.user_id == user_id).first()
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found")
@@ -18,7 +19,7 @@ def add_reminder(rem: ReminderCreate, db: Session = Depends(get_db)):
     try:
         db.commit()
         db.refresh(reminder)
-        schedule_reminder(task.id, rem.reminder_time)
+        schedule_reminder(task.id, user_id, rem.reminder_time)
     except Exception:
         db.rollback()
         if reminder.id is not None:

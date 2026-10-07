@@ -75,7 +75,7 @@ async function uploadFile(file) {
         }
 
         const apiUrl = typeof API_URL !== 'undefined' ? API_URL : '/api';
-        const response = await fetch(`${apiUrl}/upload`, {
+        const response = await apiFetch(`${apiUrl}/upload`, {
             method: 'POST',
             body: formData
         });
@@ -111,7 +111,7 @@ async function loadUploadedFiles() {
     filesList.innerHTML = '<div class="loading">Loading...</div>';
 
     try {
-        const response = await fetch(`${API_URL}/upload/files`);
+        const response = await apiFetch(`${API_URL}/upload/files`);
         if (!response.ok) {
             throw new Error('Failed to fetch files');
         }
@@ -160,7 +160,7 @@ async function deleteDocument(docId) {
     }
 
     try {
-        const response = await fetch(`${API_URL}/upload/${docId}`, {
+        const response = await apiFetch(`${API_URL}/upload/${docId}`, {
             method: 'DELETE'
         });
 

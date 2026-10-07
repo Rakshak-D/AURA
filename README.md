@@ -63,7 +63,7 @@
 
 Copy .env.example to .env for local configuration. The real .env is ignored by Git; never commit credentials or machine-specific settings.
 
-The core API can be imported and started without a GGUF model, GPU, ChromaDB data, embedding downloads, OCR binaries, or user documents. Local AI/RAG and document features require the optional dependencies and model/system prerequisites documented in requirements.txt.
+The core API can be imported and started without a GGUF model, GPU, ChromaDB data, embedding downloads, OCR binaries, or user documents. Local AI/RAG and document features require the optional dependencies and model/system prerequisites documented in `docs/runtime.md`. Protected API operations require registration/login; see `docs/authentication.md`.
 
 See docs/runtime.md for the core, AI, and RAG install profiles, explicit model/embedding provisioning, verification, CPU/GPU behavior, and health/readiness diagnostics.
 
@@ -94,7 +94,7 @@ python backend/download_models.py
 ```
 
 4. **Configure Environment Variables**
-Create a `.env` file in the root directory:
+Create a `.env` file in the root directory by copying `.env.example`; never commit that local file. Set a unique `AUTH_SECRET_KEY` before exposing the API and configure explicit `ALLOWED_ORIGINS`.
 ```env
 # Optional: Customize model usage
 USE_GPU=true

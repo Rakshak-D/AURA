@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from ..database import get_db, get_development_user_id
+from ..database import get_db
+from ..auth import get_current_user_id
 from ..models.sql_models import RoutineEvent
 from pydantic import BaseModel
 from typing import List, Optional
@@ -22,12 +23,12 @@ class RoutineEventResponse(RoutineEventCreate):
         from_attributes = True
 
 @router.get("/routine", response_model=List[RoutineEventResponse])
-def get_routine(db: Session = Depends(get_db)):
-    return db.query(RoutineEvent).filter_by(user_id=get_development_user_id(db)).all()
+def get_routine(db: Session = Depends(get_db), current_user_id: int = Depends(get_current_user_id)):
+    return db.query(RoutineEvent).filter_by(user_id=current_user_id).all()
 
 @router.post("/routine", response_model=RoutineEventResponse)
-def create_routine_event(event: RoutineEventCreate, db: Session = Depends(get_db)):
-    user_id = get_development_user_id(db)
+def create_routine_event(event: RoutineEventCreate, db: Session = Depends(get_db), current_user_id: int = Depends(get_current_user_id)):
+    user_id = current_user_id
     new_event = RoutineEvent(
         user_id=user_id,
         title=event.title,
@@ -42,8 +43,8 @@ def create_routine_event(event: RoutineEventCreate, db: Session = Depends(get_db
     return new_event
 
 @router.delete("/routine/{event_id}")
-def delete_routine_event(event_id: int, db: Session = Depends(get_db)):
-    event = db.query(RoutineEvent).filter_by(id=event_id, user_id=get_development_user_id(db)).first()
+def delete_routine_event(event_id: int, db: Session = Depends(get_db), current_user_id: int = Depends(get_current_user_id)):
+    event = db.query(RoutineEvent).filter_by(id=event_id, user_id=current_user_id).first()
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
     

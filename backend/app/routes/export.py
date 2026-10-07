@@ -1,15 +1,15 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from ..database import get_db, get_development_user
+from ..database import get_db
+from ..auth import get_current_user
 from ..models.sql_models import ChatHistory, Document, Reminder, RoutineEvent, Task
 
 router = APIRouter()
 
 @router.get("/export")
-def export_data(db: Session = Depends(get_db)):
+def export_data(db: Session = Depends(get_db), user=Depends(get_current_user)):
     # Fetch all data
-    user = get_development_user(db)
     tasks = db.query(Task).filter_by(user_id=user.id).all()
     chat_history = db.query(ChatHistory).filter_by(user_id=user.id).all()
     documents = db.query(Document).filter_by(user_id=user.id).all()

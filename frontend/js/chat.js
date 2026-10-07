@@ -21,7 +21,7 @@ async function sendMessage() {
     const loadingId = addLoadingIndicator();
 
     try {
-        const response = await fetch(`${API_URL}/chat`, {
+        const response = await apiFetch(`${API_URL}/chat`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -314,7 +314,7 @@ async function clearChatHistory() {
     if (!confirm('Clear the current chat history?')) return;
 
     try {
-        const response = await fetch(`${API_URL}/chat/history`, {
+        const response = await apiFetch(`${API_URL}/chat/history`, {
             method: 'DELETE'
         });
         // We ignore body shape; just clear UI on any 2xx

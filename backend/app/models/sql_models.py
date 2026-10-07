@@ -23,6 +23,9 @@ class User(Base):
     preferences = Column(Text, nullable=False, default='{}')
     settings = Column(JSON, nullable=False, default=dict)
     created_at = Column(UTCDateTime, nullable=False, default=utc_now)
+    login_identifier = Column(String(255), nullable=True, unique=True, index=True)
+    password_hash = Column(String(255), nullable=True)
+    is_active = Column(Boolean, nullable=False, default=True, server_default="1")
     
     tasks = relationship("Task", back_populates="user", order_by="Task.due_date", passive_deletes=True)
     reminders = relationship("Reminder", back_populates="user", cascade="all, delete-orphan", passive_deletes=True)

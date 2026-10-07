@@ -19,14 +19,14 @@ async function loadAnalytics() {
         const apiUrl = typeof API_URL !== 'undefined' ? API_URL : '/api';
         
         // 1. Fetch Focus Score
-        const scoreRes = await fetch(`${apiUrl}/insights/focus-score`);
+        const scoreRes = await apiFetch(`${apiUrl}/insights/focus-score`);
         if (!scoreRes.ok) throw new Error('Failed to fetch focus score');
         const scoreData = await scoreRes.json();
 
         renderFocusScore(scoreData);
 
         // 2. Fetch Trends
-        const trendsRes = await fetch(`${apiUrl}/insights/trends`);
+        const trendsRes = await apiFetch(`${apiUrl}/insights/trends`);
         if (!trendsRes.ok) throw new Error('Failed to fetch trends');
         const trendsData = await trendsRes.json();
 

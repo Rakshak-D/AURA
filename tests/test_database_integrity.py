@@ -10,7 +10,6 @@ from backend.app.database import (
     Base,
     UTCDateTime,
     _apply_schema_migrations,
-    get_development_user_id,
     schema_status,
     session_scope,
     utc_now,
@@ -63,7 +62,6 @@ def test_isolated_database_uses_temp_path_and_multiple_users_are_separate(db_ses
     assert [task.title for task in db_session.query(Task).filter_by(user_id=user_a.id)] == ["A task"]
     assert db_session.query(Task).filter_by(user_id=user_a.id).count() == 1
     assert db_session.query(Document).filter_by(user_id=user_a.id).count() == 0
-    assert get_development_user_id(db_session) == user_a.id
 
 
 def test_transaction_rolls_back_partial_mutation(db_session):
@@ -203,6 +201,9 @@ def test_legacy_migration_preserves_data_enforces_constraints_and_is_idempotent(
         assert connection.execute(text("SELECT parent_task_id FROM tasks WHERE id=11")).scalar() is None
         assert connection.execute(text("SELECT completed_at IS NOT NULL FROM tasks WHERE id=12")).scalar() == 1
         assert "sent" not in {column["name"] for column in __import__("sqlalchemy").inspect(engine).get_columns("reminders")}
+        assert {"login_identifier", "password_hash", "is_active"}.issubset(
+            {column["name"] for column in __import__("sqlalchemy").inspect(engine).get_columns("users")}
+        )
 
     assert schema_status(engine)["ready"] is True
     _apply_schema_migrations(engine)

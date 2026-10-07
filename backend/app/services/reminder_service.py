@@ -23,10 +23,10 @@ def _get_scheduler():
     scheduler = BackgroundScheduler()
     return scheduler
 
-def send_notification(task_id: int):
+def send_notification(task_id: int, user_id: int):
     db = SessionLocal()
     try:
-        task = db.query(Task).filter(Task.id == task_id).first()
+        task = db.query(Task).filter(Task.id == task_id, Task.user_id == user_id).first()
         if task:
             message = json.dumps({
                 "type": "reminder",
@@ -34,13 +34,13 @@ def send_notification(task_id: int):
                 "task_id": task.id
             })
             logger.info("Reminder notification dispatched for task id=%s", task.id)
-            manager.broadcast_sync(message)
+            manager.broadcast_sync(message, user_id)
     except Exception:
         logger.exception("Error sending reminder notification")
     finally:
         db.close()
 
-def schedule_reminder(task_id: int, reminder_time: datetime):
+def schedule_reminder(task_id: int, user_id: int, reminder_time: datetime):
     active_scheduler = _get_scheduler()
     if not active_scheduler.running:
         start_scheduler()
@@ -49,7 +49,7 @@ def schedule_reminder(task_id: int, reminder_time: datetime):
         send_notification, 
         'date', 
         run_date=reminder_time, 
-        args=[task_id]
+        args=[task_id, user_id]
     )
     print(f"🕒 Scheduled reminder for Task {task_id} at {reminder_time}")
 

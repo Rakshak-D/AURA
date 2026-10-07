@@ -7,7 +7,7 @@ document.addEventListener('DOMContentLoaded', loadTasks);
 
 async function loadTasks() {
     try {
-        const response = await fetch(`${API_URL}/tasks`);
+        const response = await apiFetch(`${API_URL}/tasks`);
         if (response.ok) {
             const data = await response.json();
             // Handle both array and object responses
@@ -287,7 +287,7 @@ async function saveTask() {
             method = 'PUT';
         }
 
-        const response = await fetch(url, {
+        const response = await apiFetch(url, {
             method: method,
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
@@ -315,7 +315,7 @@ async function deleteTask(id) {
     if (!confirm("Are you sure you want to delete this task?")) return;
 
     try {
-        const response = await fetch(`${API_URL}/tasks/${id}`, { method: 'DELETE' });
+        const response = await apiFetch(`${API_URL}/tasks/${id}`, { method: 'DELETE' });
         if (response.ok) {
             showToast("Task deleted successfully");
             // Remove from local state and DOM without refetching everything
@@ -346,7 +346,7 @@ async function deleteTask(id) {
 
 async function toggleComplete(id, status) {
     try {
-        const response = await fetch(`${API_URL}/tasks/${id}`, {
+        const response = await apiFetch(`${API_URL}/tasks/${id}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ completed: status })
@@ -436,7 +436,7 @@ async function clearCompletedTasks() {
     try {
         // Delete all completed tasks
         const deletePromises = completedTasks.map(task => 
-            fetch(`${API_URL}/tasks/${task.id}`, { method: 'DELETE' })
+            apiFetch(`${API_URL}/tasks/${task.id}`, { method: 'DELETE' })
         );
         
         await Promise.all(deletePromises);

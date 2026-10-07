@@ -7,7 +7,7 @@ from ..models.llm_models import llm
 from ..models.sql_models import Document
 
 
-def add_to_rag(filename: str, content: str):
+def add_to_rag(user_id: int, filename: str, content: str):
     """
     Chunk a document, embed chunks, and add them to the Chroma collection.
     Uses configuration values for chunking to avoid magic numbers.
@@ -29,8 +29,8 @@ def add_to_rag(filename: str, content: str):
                 start += max(chunk_size - overlap, 1)
 
         # Generate unique IDs
-        ids = [f"{filename}_{i}_{uuid.uuid4().hex[:8]}" for i in range(len(chunks))]
-        metadatas = [{"filename": filename, "chunk_index": i} for i in range(len(chunks))]
+        ids = [f"{user_id}_{filename}_{i}_{uuid.uuid4().hex[:8]}" for i in range(len(chunks))]
+        metadatas = [{"user_id": user_id, "filename": filename, "chunk_index": i} for i in range(len(chunks))]
 
         # Get embeddings
         embeddings = [llm.embed(chunk) for chunk in chunks]
@@ -50,14 +50,14 @@ def add_to_rag(filename: str, content: str):
         raise RuntimeError("Document indexing failed") from e
 
 
-def index_document(document_id: int, filename: str, content: str) -> None:
+def index_document(document_id: int, user_id: int, filename: str, content: str) -> None:
     """Index a document and persist SQL-side indexing state separately.
 
     Chroma and SQLite cannot share a transaction. The SQL record therefore
     moves from pending to indexed/failed after the external operation.
     """
     try:
-        add_to_rag(filename, content)
+        add_to_rag(user_id, filename, content)
         state = "indexed"
         error = None
     except Exception:
@@ -66,7 +66,7 @@ def index_document(document_id: int, filename: str, content: str) -> None:
         logging.getLogger(__name__).exception("Document indexing failed for id=%s", document_id)
     db = SessionLocal()
     try:
-        document = db.query(Document).filter(Document.id == document_id).first()
+        document = db.query(Document).filter(Document.id == document_id, Document.user_id == user_id).first()
         if document:
             document.indexing_state = state
             document.indexing_error = error
@@ -80,7 +80,7 @@ def index_document(document_id: int, filename: str, content: str) -> None:
         raise RuntimeError("Document indexing failed")
 
 
-def delete_document_embeddings(filename: str) -> int:
+def delete_document_embeddings(user_id: int, filename: str) -> int:
     """
     Remove all embeddings from the Chroma collection that belong to a document.
 
@@ -91,7 +91,7 @@ def delete_document_embeddings(filename: str) -> int:
     try:
         collection = get_chroma_collection()
         # Some Chroma backends may not return a count; in that case just perform delete.
-        result = collection.delete(where={"filename": filename})
+        result = collection.delete(where={"$and": [{"user_id": user_id}, {"filename": filename}]})
         # result can be None or a dict depending on backend version
         if isinstance(result, dict):
             return int(result.get("count", 0))
@@ -102,12 +102,12 @@ def delete_document_embeddings(filename: str) -> int:
         raise RuntimeError("Document vector deletion failed") from e
 
 
-def query_rag(query: str, k: int | None = None) -> str:
+def query_rag(user_id: int, query: str, k: int | None = None) -> str:
     try:
         collection = get_chroma_collection()
         top_k = k if k is not None else getattr(config, "RAG_TOP_K", 3)
         query_emb = llm.embed(query)
-        results = collection.query(query_embeddings=[query_emb], n_results=top_k)
+        results = collection.query(query_embeddings=[query_emb], n_results=top_k, where={"user_id": user_id})
 
         if results.get("documents") and results["documents"][0]:
             return "\n".join(results["documents"][0])

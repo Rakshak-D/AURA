@@ -1,7 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
-from ..database import get_db, get_development_user_id, utc_now
+from ..database import get_db, utc_now
+from ..auth import get_current_user_id
 from ..services.schedule_service import get_analytics
 from ..models.sql_models import Task
 from datetime import datetime, timedelta
@@ -9,13 +10,13 @@ from datetime import datetime, timedelta
 router = APIRouter()
 
 @router.get("/focus-score")
-def get_focus_score(db: Session = Depends(get_db)):
+def get_focus_score(db: Session = Depends(get_db), current_user_id: int = Depends(get_current_user_id)):
     """
     Calculate productivity focus score.
     Focus Score = (Completed Tasks / Total Tasks) * 100 * (Consistency Factor)
     """
     try:
-        user_id = get_development_user_id(db)
+        user_id = current_user_id
         analytics = get_analytics(user_id, db, days=7)
         
         completion_rate = analytics.get("completion_rate", 0)
@@ -95,12 +96,12 @@ def get_focus_score(db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail="Failed to calculate focus score") from e
 
 @router.get("/trends")
-def get_trends(db: Session = Depends(get_db)):
+def get_trends(db: Session = Depends(get_db), current_user_id: int = Depends(get_current_user_id)):
     """
     Get data for line/pie charts.
     """
     try:
-        analytics = get_analytics(get_development_user_id(db), db, days=7)
+        analytics = get_analytics(current_user_id, db, days=7)
         
         # Prepare data for Chart.js
         tasks_by_day = analytics.get("tasks_by_day", {})

@@ -1,5 +1,9 @@
 # AURA Runtime Provisioning
 
+Protected API calls require a bearer token from `/api/auth/login`; see
+`docs/authentication.md`. Core startup still does not require local AI/RAG
+artifacts, but normal user-owned operations require an authenticated user.
+
 ## Supported environment
 
 AURA targets Python 3.10 or newer. The core API is usable on CPU-only machines and does not require a GGUF model, CUDA, SentenceTransformers, ChromaDB, OCR binaries, or user documents to import or start.
