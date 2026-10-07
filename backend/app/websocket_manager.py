@@ -83,7 +83,13 @@ class ConnectionManager:
                 del self.active_connections[user_id]
         if state is not None:
             self._fail_queued_items(state.queue)
-            if cancel_sender and state.sender_task is not asyncio.current_task():
+            try:
+                current_task = asyncio.current_task()
+            except RuntimeError:
+                # Synchronous callers (including scheduler/test cleanup) may
+                # run outside an event loop.
+                current_task = None
+            if cancel_sender and state.sender_task is not current_task:
                 state.sender_task.cancel()
 
     async def shutdown(self):

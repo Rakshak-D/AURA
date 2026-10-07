@@ -9,7 +9,6 @@ from sqlalchemy.orm import sessionmaker
 from backend.app import database, main
 from backend.app.config import config
 from backend.app.models.sql_models import Base, Reminder, Task, User
-from backend.app.websocket_manager import manager
 
 
 @pytest.fixture
@@ -25,6 +24,7 @@ def auth_client(tmp_path, monkeypatch):
     Base.metadata.create_all(engine)
     factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
     monkeypatch.setattr(database, "SessionLocal", factory)
+    monkeypatch.setattr(main, "SessionLocal", factory)
     monkeypatch.setattr(main, "init_db", lambda: None)
     monkeypatch.setattr(
         "backend.app.routes.reminders.schedule_reminder", lambda *args: None
@@ -225,8 +225,10 @@ def test_cors_is_explicit_and_unauthenticated_websocket_is_rejected(auth_client)
     register(client, "socket@example.com")
     _, headers = login(client, "socket@example.com")
     token = headers["Authorization"].split(" ", 1)[1]
-    with client.websocket_connect(f"/ws/notifications?token={token}"):
-        assert 1 in manager.active_connections
+    with client.websocket_connect(f"/ws/notifications?token={token}") as websocket:
+        # Validate the public protocol rather than racing the manager's
+        # process-local bookkeeping from the TestClient thread.
+        assert websocket.receive_json()["type"] == "ready"
 
 
 def test_reminder_and_document_routes_require_auth(auth_client):

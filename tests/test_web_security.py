@@ -21,6 +21,7 @@ def auth_client(tmp_path, monkeypatch):
     Base.metadata.create_all(engine)
     factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
     monkeypatch.setattr(database, "SessionLocal", factory)
+    monkeypatch.setattr(main, "SessionLocal", factory)
     monkeypatch.setattr(main, "init_db", lambda: None)
     monkeypatch.setattr("backend.app.routes.reminders.schedule_reminder", lambda *args: None)
     monkeypatch.setattr(config, "auth_secret_key", "test-auth-secret-which-is-long-enough-123456")

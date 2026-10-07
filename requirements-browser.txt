@@ -1,0 +1,2 @@
+# Optional browser job dependencies. These are not required by the core API.
+playwright==1.45.1
