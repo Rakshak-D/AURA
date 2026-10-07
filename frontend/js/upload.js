@@ -75,19 +75,12 @@ async function uploadFile(file) {
         }
 
         const apiUrl = typeof API_URL !== 'undefined' ? API_URL : '/api';
-        const response = await apiFetch(`${apiUrl}/upload`, {
+        const result = await apiJson(`${apiUrl}/upload`, {
             method: 'POST',
             body: formData
         });
-
-        if (!response.ok) {
-            const errorData = await response.json().catch(() => ({ detail: 'Upload failed' }));
-            throw new Error(errorData.detail || 'Upload failed');
-        }
-
-        const result = await response.json();
         if (typeof showToast === 'function') {
-            showToast(`✅ ${file.name} uploaded successfully!`, 'success');
+            showToast(`✅ ${result?.message || `${file.name} uploaded successfully!`}`, 'success');
         } else {
             alert(`✅ ${file.name} uploaded successfully!`);
         }
@@ -111,19 +104,9 @@ async function loadUploadedFiles() {
     AuraSafe.clear(filesList).appendChild(AuraSafe.element('div', 'loading', 'Loading...'));
 
     try {
-        const response = await apiFetch(`${API_URL}/upload/files`);
-        if (!response.ok) {
-            throw new Error('Failed to fetch files');
-        }
-        
-        const data = await response.json();
-
-        // Support both legacy shape { files: [] } and new envelope { success, data: { files: [] } }
-        const files = (data && Array.isArray(data.files))
-            ? data.files
-            : (data && data.data && Array.isArray(data.data.files))
-                ? data.data.files
-                : [];
+        const data = await apiJson(`${API_URL}/upload/files`);
+        const files = Array.isArray(data?.data?.files) ? data.data.files : [];
+        if (!data || !Array.isArray(data.data?.files)) throw new Error('Invalid file-list response');
 
         AuraSafe.clear(filesList);
         if (!files || files.length === 0) {
@@ -167,23 +150,7 @@ async function deleteDocument(docId) {
     }
 
     try {
-        const response = await apiFetch(`${API_URL}/upload/${docId}`, {
-            method: 'DELETE'
-        });
-
-        const result = await response.json().catch(() => null);
-
-        if (!response.ok || (result && result.success === false)) {
-            const message =
-                (result && (result.message || (result.error && result.error.message))) ||
-                'Failed to delete document';
-            if (typeof showToast === 'function') {
-                showToast(message, 'error');
-            } else {
-                alert(message);
-            }
-            return;
-        }
+        const result = await apiJson(`${API_URL}/upload/${docId}`, { method: 'DELETE' });
 
         if (typeof showToast === 'function') {
             showToast('Document deleted', 'success');

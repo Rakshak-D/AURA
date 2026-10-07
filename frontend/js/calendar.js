@@ -8,27 +8,6 @@ const TIMELINE_END_HOUR = 24; // End at midnight next day
 // Ensure API_URL is available (fallback if main.js hasn't loaded)
 const CALENDAR_API_URL = typeof API_URL !== 'undefined' ? API_URL : '/api';
 
-// Update date header immediately when script loads (if element exists)
-(function () {
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', () => {
-            setTimeout(() => {
-                const header = document.getElementById('calendar-date-header');
-                if (header && header.textContent === 'Loading...') {
-                    updateDateHeader();
-                }
-            }, 10);
-        });
-    } else {
-        setTimeout(() => {
-            const header = document.getElementById('calendar-date-header');
-            if (header && header.textContent === 'Loading...') {
-                updateDateHeader();
-            }
-        }, 10);
-    }
-})();
-
 // Initialize calendar when view becomes active
 document.addEventListener('DOMContentLoaded', () => {
     console.log('Calendar.js: DOMContentLoaded fired');
@@ -66,19 +45,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }, 200);
         }
 
-        // Fallback: Check every second if view becomes active (for 10 seconds)
-        let checkCount = 0;
-        const fallbackCheck = setInterval(() => {
-            checkCount++;
-            if (calendarView.classList.contains('active')) {
-                console.log('Calendar view detected as active via fallback check');
-                updateDateHeader();
-                renderCalendar();
-                clearInterval(fallbackCheck);
-            } else if (checkCount >= 10) {
-                clearInterval(fallbackCheck);
-            }
-        }, 1000);
     } else {
         console.error('Calendar view element not found - #view-calendar does not exist');
     }
@@ -98,7 +64,7 @@ async function renderCalendar() {
     updateDateHeader();
 
     // Show loading state
-    container.innerHTML = '<div class="loading-state" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; color: var(--text-muted);"><div style="margin-bottom: 1rem;">Loading calendar...</div></div>';
+    AuraSafe.clear(container).appendChild(AuraSafe.element('div', 'loading-state', 'Loading calendar...'));
 
     // Format date for API
     const dateStr = formatDateForAPI(currentCalendarDate);
@@ -107,17 +73,8 @@ async function renderCalendar() {
     console.log('Making API request to:', `${apiUrl}/schedule/routine?date=${dateStr}`);
 
     try {
-        const response = await apiFetch(`${apiUrl}/schedule/routine?date=${dateStr}`);
-
-        console.log('API Response status:', response.status);
-
-        if (!response.ok) {
-            const errorText = await response.text();
-            console.error('API Error Response:', response.status, errorText);
-            throw new Error(`Failed to fetch schedule: ${response.status} - ${errorText.substring(0, 100)}`);
-        }
-
-        const routine = await response.json();
+        const routine = await apiJson(`${apiUrl}/schedule/routine?date=${dateStr}`);
+        if (!routine || !Array.isArray(routine.timeline)) throw new Error('Invalid schedule response');
         console.log('Calendar data received:', routine);
         calendarEvents = routine.timeline || [];
         console.log('Number of events:', calendarEvents.length);
@@ -125,7 +82,7 @@ async function renderCalendar() {
         renderTimelineView(container, calendarEvents);
     } catch (error) {
         console.error('Error fetching calendar:', error);
-        const errorMsg = error.message || 'Failed to load schedule';
+        const errorMsg = 'Failed to load schedule';
         const errorState = AuraSafe.element('div', 'error-state');
         errorState.style.cssText = 'position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;color:var(--text-muted);padding:2rem';
         errorState.appendChild(AuraSafe.element('p', null, errorMsg));
@@ -170,7 +127,7 @@ function formatDateForAPI(date) {
 
 function renderTimelineView(container, events) {
     // Clear container
-    container.innerHTML = '';
+    AuraSafe.clear(container);
 
     // Generate time labels
     generateTimeLabels();
@@ -201,11 +158,10 @@ function renderTimelineView(container, events) {
         const emptyState = document.createElement('div');
         emptyState.className = 'empty-state';
         emptyState.style.cssText = 'position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; color: var(--text-muted); padding: 2rem;';
-        emptyState.innerHTML = `
-            <i data-lucide="calendar-x" style="width: 48px; height: 48px; margin-bottom: 1rem; opacity: 0.5;"></i>
-            <p>No events scheduled for this day</p>
-            <p style="font-size: 0.85rem; margin-top: 0.5rem;">Click anywhere on the timeline to add an event</p>
-        `;
+        const icon = AuraSafe.element('i');
+        icon.dataset.lucide = 'calendar-x';
+        icon.style.cssText = 'width:48px;height:48px;margin-bottom:1rem;opacity:0.5';
+        emptyState.append(icon, AuraSafe.element('p', null, 'No events scheduled for this day'), AuraSafe.element('p', null, 'Click anywhere on the timeline to add an event'));
         container.appendChild(emptyState);
     }
 
@@ -405,13 +361,9 @@ async function autoSchedule() {
     }
 
     try {
-        const response = await apiFetch(`${apiUrl}/schedule/auto-assign?date=${dateStr}`, {
+        const result = await apiJson(`${apiUrl}/schedule/auto-assign?date=${dateStr}`, {
             method: 'POST'
         });
-
-        if (!response.ok) throw new Error('Auto-schedule failed');
-
-        const result = await response.json();
 
         // Animate new tasks
         if (typeof showToast === 'function') {
@@ -439,7 +391,7 @@ function generateTimeLabels() {
         return;
     }
 
-    labelsContainer.innerHTML = '';
+    AuraSafe.clear(labelsContainer);
 
     // Generate labels for each hour, matching grid line positions exactly
     for (let hour = TIMELINE_START_HOUR; hour < TIMELINE_END_HOUR; hour++) {
@@ -475,16 +427,6 @@ window.autoSchedule = autoSchedule;
 window.renderCalendar = renderCalendar;
 window.updateDateHeader = updateDateHeader;
 
-// Force initialization check
-setTimeout(() => {
-    const calendarView = document.getElementById('view-calendar');
-    if (calendarView && calendarView.classList.contains('active')) {
-        console.log('Calendar view is active, forcing render...');
-        updateDateHeader();
-        renderCalendar();
-    }
-}, 500);
-
 // Debug function - call from browser console: testCalendar()
 window.testCalendar = function () {
     console.log('=== CALENDAR DEBUG TEST ===');
@@ -506,11 +448,7 @@ window.testCalendar = function () {
     const apiUrl = typeof API_URL !== 'undefined' ? API_URL : '/api';
     console.log('API URL:', `${apiUrl}/schedule/routine?date=${dateStr}`);
 
-    apiFetch(`${apiUrl}/schedule/routine?date=${dateStr}`)
-        .then(r => {
-            console.log('Response status:', r.status);
-            return r.json();
-        })
+    apiJson(`${apiUrl}/schedule/routine?date=${dateStr}`)
         .then(data => {
             console.log('API Response:', data);
             console.log('Timeline events:', data.timeline?.length || 0);

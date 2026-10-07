@@ -16,24 +16,32 @@ async function performGlobalSearch(query) {
     AuraSafe.clear(resultsContainer).appendChild(AuraSafe.element('div', 'loading', 'Searching...'));
 
     try {
-        const response = await apiFetch(`${API_URL}/search?q=${encodeURIComponent(query)}`);
-        const data = await response.json();
-
-        if (Array.isArray(data.results) && data.results.length > 0) {
-            AuraSafe.clear(resultsContainer);
-            data.results.forEach((item) => {
+        const data = await apiJson(`${API_URL}/search?q=${encodeURIComponent(query.trim())}`);
+        const groups = [
+            ['Tasks', Array.isArray(data?.tasks) ? data.tasks : [], 'task'],
+            ['Knowledge', Array.isArray(data?.knowledge) ? data.knowledge : [], 'knowledge']
+        ];
+        const total = groups.reduce((count, group) => count + group[1].length, 0);
+        AuraSafe.clear(resultsContainer);
+        if (total > 0) {
+            groups.forEach(([label, items, groupType]) => {
+                if (!items.length) return;
+                resultsContainer.appendChild(AuraSafe.element('h3', 'search-result-group', label));
+                items.forEach((item) => {
                 const result = AuraSafe.element('div', 'search-result-item');
-                result.addEventListener('click', () => handleResultClick(item.type, item.id));
-                result.appendChild(AuraSafe.element('div', 'result-icon', getResultIcon(item.type)));
+                const type = item.type || groupType;
+                if (item.id != null) result.addEventListener('click', () => handleResultClick(type, item.id));
+                result.appendChild(AuraSafe.element('div', 'result-icon', getResultIcon(type)));
                 const content = AuraSafe.element('div', 'result-content');
                 content.appendChild(AuraSafe.element('div', 'result-title', item.title));
                 content.appendChild(AuraSafe.element('div', 'result-snippet', item.snippet));
                 content.appendChild(AuraSafe.element('div', 'result-meta', `${item.type || ''} • ${item.date || ''}`));
                 result.appendChild(content);
                 resultsContainer.appendChild(result);
+                });
             });
         } else {
-            AuraSafe.clear(resultsContainer).appendChild(AuraSafe.element('div', 'no-results', 'No results found'));
+            resultsContainer.appendChild(AuraSafe.element('div', 'no-results', 'No results found'));
         }
 
     } catch (error) {

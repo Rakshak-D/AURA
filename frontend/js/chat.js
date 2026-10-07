@@ -1,11 +1,17 @@
 // Chat Functionality
 let currentChatContext = {};
+let chatRequestActive = false;
 
 async function sendMessage() {
     const input = document.getElementById('chat-input');
     const message = input.value.trim();
 
     if (!message) return;
+    if (chatRequestActive) {
+        showToast('Please wait for the current response to finish.', 'error');
+        return;
+    }
+    chatRequestActive = true;
 
     // Clear input and reset height to base size
     input.value = '';
@@ -21,7 +27,7 @@ async function sendMessage() {
     const loadingId = addLoadingIndicator();
 
     try {
-        const response = await apiFetch(`${API_URL}/chat`, {
+        const data = await apiJson(`${API_URL}/chat`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -29,11 +35,6 @@ async function sendMessage() {
                 context: currentChatContext
             })
         });
-
-        const data = await response.json();
-
-        // Remove typing indicator
-        removeLoadingIndicator(loadingId);
 
         // Handle Widget Response
         if (data.type === 'widget') {
@@ -65,9 +66,11 @@ async function sendMessage() {
         }
 
     } catch (error) {
-        removeLoadingIndicator(loadingId);
         addMessage('I encountered an error. Please check your connection.', 'assistant', true);
-        console.error('Chat Error:', error);
+        showToast(error.message || 'Chat request failed', 'error');
+    } finally {
+        removeLoadingIndicator(loadingId);
+        chatRequestActive = false;
     }
 }
 
@@ -205,30 +208,22 @@ function renderWelcomeIfEmpty() {
 
     const wrapper = document.createElement('div');
     wrapper.className = 'chat-welcome';
-    wrapper.innerHTML = `
-        <div class="chat-welcome-title">Welcome to Aura</div>
-        <div class="chat-welcome-subtitle">
-            Your personal, context-aware assistant for planning, focus, and learning.
-        </div>
-        <div class="chat-suggestions">
-            <button class="chat-suggestion-card" onclick="useSuggestion('Plan my day with my current tasks.')">
-                <div class="chat-suggestion-title">Plan my day</div>
-                <div class="chat-suggestion-body">Ask Aura to generate a focused schedule around your tasks.</div>
-            </button>
-            <button class="chat-suggestion-card" onclick="useSuggestion('Summarize what I did this week from my tasks.')">
-                <div class="chat-suggestion-title">Weekly summary</div>
-                <div class="chat-suggestion-body">Get a quick summary of your recent work and progress.</div>
-            </button>
-            <button class="chat-suggestion-card" onclick="useSuggestion('Help me break down a big project into smaller tasks.')">
-                <div class="chat-suggestion-title">Break down a project</div>
-                <div class="chat-suggestion-body">Turn a big goal into clear, actionable steps.</div>
-            </button>
-            <button class="chat-suggestion-card" onclick="useSuggestion('What can I do today to stay on track?')">
-                <div class="chat-suggestion-title">Stay on track</div>
-                <div class="chat-suggestion-body">Let Aura suggest what to focus on next.</div>
-            </button>
-        </div>
-    `;
+    wrapper.appendChild(AuraSafe.element('div', 'chat-welcome-title', 'Welcome to Aura'));
+    wrapper.appendChild(AuraSafe.element('div', 'chat-welcome-subtitle', 'Your personal, context-aware assistant for planning, focus, and learning.'));
+    const suggestions = AuraSafe.element('div', 'chat-suggestions');
+    [
+        ['Plan my day', 'Plan my day with my current tasks.'],
+        ['Weekly summary', 'Summarize what I did this week from my tasks.'],
+        ['Break down a project', 'Help me break down a big project into smaller tasks.'],
+        ['Stay on track', 'What can I do today to stay on track?']
+    ].forEach(([title, prompt]) => {
+        const button = AuraSafe.element('button', 'chat-suggestion-card');
+        button.type = 'button';
+        button.append(AuraSafe.element('div', 'chat-suggestion-title', title), AuraSafe.element('div', 'chat-suggestion-body', prompt));
+        button.addEventListener('click', () => useSuggestion(prompt));
+        suggestions.appendChild(button);
+    });
+    wrapper.appendChild(suggestions);
     history.appendChild(wrapper);
 }
 
@@ -259,16 +254,14 @@ async function clearChatHistory() {
         const response = await apiFetch(`${API_URL}/chat/history`, {
             method: 'DELETE'
         });
-        // We ignore body shape; just clear UI on any 2xx
         if (!response.ok) {
-            console.error('Failed to clear history', response.status);
+            throw new Error('Failed to clear chat history');
         }
+        AuraSafe.clear(history);
+        renderWelcomeIfEmpty();
     } catch (err) {
-        console.error('Error clearing history', err);
+        showToast(err.message || 'Failed to clear chat history', 'error');
     }
-
-    history.innerHTML = '';
-    renderWelcomeIfEmpty();
 }
 
 function handleAction(action, data) {

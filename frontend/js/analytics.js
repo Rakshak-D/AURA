@@ -19,34 +19,34 @@ async function loadAnalytics() {
         const apiUrl = typeof API_URL !== 'undefined' ? API_URL : '/api';
         
         // 1. Fetch Focus Score
-        const scoreRes = await apiFetch(`${apiUrl}/insights/focus-score`);
-        if (!scoreRes.ok) throw new Error('Failed to fetch focus score');
-        const scoreData = await scoreRes.json();
+        const scoreData = await apiJson(`${apiUrl}/insights/focus-score`);
 
         renderFocusScore(scoreData);
 
         // 2. Fetch Trends
-        const trendsRes = await apiFetch(`${apiUrl}/insights/trends`);
-        if (!trendsRes.ok) throw new Error('Failed to fetch trends');
-        const trendsData = await trendsRes.json();
+        const trendsData = await apiJson(`${apiUrl}/insights/trends`);
 
         renderCharts(trendsData);
 
     } catch (error) {
         console.error('Error loading analytics:', error);
+        activityChart?.destroy();
+        distributionChart?.destroy();
+        activityChart = null;
+        distributionChart = null;
         if (typeof showToast === 'function') {
             showToast('Failed to load analytics', 'error');
         }
+        document.getElementById('focus-score')?.replaceChildren(AuraSafe.element('span', 'error-state', 'Unavailable'));
     }
 }
-
 function renderFocusScore(data) {
     const scoreEl = document.getElementById('focus-score');
     const labelEl = document.getElementById('focus-score-label');
     const trendEl = document.getElementById('focus-score-trend');
 
     if (scoreEl) {
-        scoreEl.textContent = data.score || '--';
+        scoreEl.textContent = data.score ?? '--';
     }
     
     if (labelEl) {
@@ -77,7 +77,7 @@ function renderCharts(data) {
 
         activityChart = new Chart(activityCtx, {
             type: 'line',
-            data: data.activity || { labels: [], datasets: [] },
+            data: data.activity,
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
@@ -132,7 +132,7 @@ function renderCharts(data) {
 
         distributionChart = new Chart(priorityCtx, {
             type: 'doughnut',
-            data: data.distribution || { labels: [], datasets: [] },
+            data: data.distribution,
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
@@ -163,41 +163,3 @@ function renderCharts(data) {
     }
 }
 
-// Initialize when view is active
-document.addEventListener('DOMContentLoaded', () => {
-    // If analytics view is active by default
-    const view = document.getElementById('view-insights');
-    if (view && view.classList.contains('active')) {
-        // Small delay to ensure DOM is ready
-        setTimeout(() => loadAnalytics(), 100);
-    }
-});
-
-// Listen for view changes
-const observer = new MutationObserver((mutations) => {
-    mutations.forEach((mutation) => {
-        if (mutation.target.id === 'view-insights' && mutation.target.classList.contains('active')) {
-            // Small delay to ensure DOM is ready, especially for charts
-            setTimeout(() => loadAnalytics(), 100);
-        }
-    });
-});
-
-const analyticsView = document.getElementById('view-insights');
-if (analyticsView) {
-    observer.observe(analyticsView, { attributes: true, attributeFilter: ['class'] });
-}
-
-// Also listen for view switching via main.js
-if (typeof window !== 'undefined') {
-    // Store original switchView if it exists
-    const originalSwitchView = window.switchView;
-    if (originalSwitchView) {
-        window.switchView = function(viewId) {
-            originalSwitchView(viewId);
-            if (viewId === 'insights') {
-                setTimeout(() => loadAnalytics(), 200);
-            }
-        };
-    }
-}

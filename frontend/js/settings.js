@@ -2,9 +2,9 @@
 
 // API_URL is defined in main.js
 
-// Load settings on window load (ensures all elements exist)
-window.addEventListener('load', loadSettings);
-document.addEventListener('DOMContentLoaded', loadSettings);
+document.addEventListener('DOMContentLoaded', () => {
+    loadSettings();
+});
 
 // Dark mode is permanent now; keep this for backwards compatibility.
 function applyTheme() {
@@ -13,23 +13,15 @@ function applyTheme() {
 
 async function loadSettings() {
     try {
-        const response = await apiFetch(`${API_URL}/settings`);
-        if (response.ok) {
-            const settings = await response.json();
-
-            // Populate Modal Inputs - support both old and new IDs
-            const usernameInput = document.getElementById('setting-username') || document.getElementById('settings-username');
-            const voiceInput = document.getElementById('setting-voice');
-            const tempInput = document.getElementById('settings-temp');
-
-            if (usernameInput) usernameInput.value = settings.username || 'User';
-            if (voiceInput) voiceInput.value = settings.voice || 'enabled';
-            if (tempInput) tempInput.value = settings.ai_temperature || 0.7;
-
-            console.log("Settings loaded:", settings);
-        }
+        const settings = await apiJson(`${API_URL}/settings`);
+        const usernameInput = document.getElementById('setting-username') || document.getElementById('settings-username');
+        const themeInput = document.getElementById('setting-theme');
+        const tempInput = document.getElementById('settings-temp');
+        if (usernameInput && settings?.username != null) usernameInput.value = settings.username;
+        if (themeInput && settings?.theme != null) themeInput.value = settings.theme;
+        if (tempInput && settings?.ai_temperature != null) tempInput.value = settings.ai_temperature;
     } catch (error) {
-        console.error("Error loading settings:", error);
+        showToast(error.message || 'Failed to load settings', 'error');
     }
 }
 
@@ -46,7 +38,7 @@ function closeSettings() {
 async function saveSettings() {
     // Support both old and new IDs
     const usernameInput = document.getElementById('setting-username') || document.getElementById('settings-username');
-    const voiceInput = document.getElementById('setting-voice');
+    const themeInput = document.getElementById('setting-theme');
     const tempInput = document.getElementById('settings-temp');
 
     if (!usernameInput || !tempInput) {
@@ -57,8 +49,7 @@ async function saveSettings() {
     }
 
     const username = usernameInput.value.trim();
-    const theme = 'dark';
-    const voice = voiceInput ? voiceInput.value : 'enabled';
+    const theme = themeInput?.value;
     const temp = parseFloat(tempInput.value);
 
     if (!username) {
@@ -69,26 +60,21 @@ async function saveSettings() {
     }
 
     try {
-        const response = await apiFetch(`${API_URL}/settings`, {
+        const settings = await apiJson(`${API_URL}/settings`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 username: username,
-                theme: theme,
+                ...(theme ? { theme } : {}),
                 ai_temperature: temp
             })
         });
 
-        if (response.ok) {
-            if (typeof showToast === 'function') {
-                showToast("Settings saved!");
-            }
-            closeSettings();
-        } else {
-            if (typeof showToast === 'function') {
-                showToast("Failed to save settings", "error");
-            }
-        }
+        const usernameValue = settings?.username ?? username;
+        if (usernameInput) usernameInput.value = usernameValue;
+        if (tempInput && settings?.ai_temperature != null) tempInput.value = settings.ai_temperature;
+        showToast("Settings saved!");
+        closeSettings();
     } catch (error) {
         console.error("Error saving settings:", error);
         if (typeof showToast === 'function') {

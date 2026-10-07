@@ -7,31 +7,24 @@ document.addEventListener('DOMContentLoaded', loadTasks);
 
 async function loadTasks() {
     try {
-        const response = await apiFetch(`${API_URL}/tasks`);
-        if (response.ok) {
-            const data = await response.json();
-            // Handle both array and object responses
-            allTasks = Array.isArray(data) ? data : (data.tasks || []);
-            renderKanban(allTasks);
-        } else {
-            const errorText = await response.text();
-            console.error("Failed to load tasks:", response.status, errorText);
-            // Show empty state gracefully
-            allTasks = [];
-            renderKanban([]);
-            if (typeof showToast === 'function') {
-                showToast("Failed to load tasks. Please refresh.", "error");
-            }
-        }
+        const data = await apiJson(`${API_URL}/tasks`);
+        allTasks = Array.isArray(data) ? data : [];
+        renderKanban(allTasks);
     } catch (error) {
         console.error("Error loading tasks:", error);
-        // Show empty state gracefully
-        allTasks = [];
-        renderKanban([]);
+        renderTaskState(error.message || 'Failed to load tasks');
         if (typeof showToast === 'function') {
-            showToast("Connection error. Please check your network.", "error");
+            showToast("Failed to load tasks. Please refresh.", "error");
         }
     }
+}
+
+function renderTaskState(message) {
+    const todoList = document.getElementById('todo-list') || document.getElementById('list-todo');
+    const doneList = document.getElementById('done-list') || document.getElementById('list-done');
+    [todoList, doneList].forEach((list) => {
+        if (list) AuraSafe.clear(list).appendChild(AuraSafe.element('div', 'error-state', message));
+    });
 }
 
 function renderKanban(tasks) {
@@ -40,8 +33,8 @@ function renderKanban(tasks) {
     const doneList = document.getElementById('done-list') || document.getElementById('list-done');
 
     // Clear lists
-    if (todoList) todoList.innerHTML = '';
-    if (doneList) doneList.innerHTML = '';
+    if (todoList) AuraSafe.clear(todoList);
+    if (doneList) AuraSafe.clear(doneList);
 
     // Handle empty or invalid tasks array
     if (!tasks || !Array.isArray(tasks)) {
@@ -53,10 +46,10 @@ function renderKanban(tasks) {
     // Show "No tasks yet" message if array is empty
     if (tasks.length === 0) {
         if (todoList) {
-            todoList.innerHTML = '<div style="text-align: center; padding: 2rem; color: var(--text-muted);">No tasks yet. Click "+ New Task" to get started!</div>';
+            todoList.appendChild(AuraSafe.element('div', 'empty-state', 'No tasks yet. Click "+ New Task" to get started!'));
         }
         if (doneList) {
-            doneList.innerHTML = '<div style="text-align: center; padding: 2rem; color: var(--text-muted);">No completed tasks</div>';
+            doneList.appendChild(AuraSafe.element('div', 'empty-state', 'No completed tasks'));
         }
     } else {
         tasks.forEach(task => {
@@ -97,7 +90,7 @@ function createTaskCard(task) {
     div.draggable = true;
     div.dataset.taskId = task.id;
     div.dataset.priority = task.priority;
-    div.ondragstart = (e) => drag(e, task.id);
+    div.addEventListener('dragstart', (e) => drag(e, task.id));
 
     // Truncate title if too long
     const title = task.title.length > 50 ? task.title.substring(0, 47) + '...' : task.title;
@@ -123,6 +116,7 @@ function createTaskCard(task) {
     const checkbox = AuraSafe.element('button', `task-checkbox ${task.completed ? 'checked' : ''}`);
     checkbox.type = 'button';
     checkbox.title = task.completed ? 'Mark as Incomplete' : 'Mark as Complete';
+    checkbox.setAttribute('aria-label', checkbox.title);
     checkbox.addEventListener('click', () => toggleComplete(task.id, !task.completed));
     const icon = AuraSafe.element('i');
     icon.dataset.lucide = task.completed ? 'check-circle-2' : 'circle';
@@ -134,6 +128,7 @@ function createTaskCard(task) {
     const edit = AuraSafe.element('button', 'action-btn');
     edit.type = 'button';
     edit.title = 'Edit';
+    edit.setAttribute('aria-label', 'Edit task');
     edit.addEventListener('click', () => openEditModal(task.id));
     const editIcon = AuraSafe.element('i');
     editIcon.dataset.lucide = 'edit-2';
@@ -141,6 +136,7 @@ function createTaskCard(task) {
     const remove = AuraSafe.element('button', 'action-btn delete');
     remove.type = 'button';
     remove.title = 'Delete';
+    remove.setAttribute('aria-label', 'Delete task');
     remove.addEventListener('click', () => deleteTask(task.id));
     const removeIcon = AuraSafe.element('i');
     removeIcon.dataset.lucide = 'trash-2';
@@ -281,22 +277,15 @@ async function saveTask() {
             method = 'PUT';
         }
 
-        const response = await apiFetch(url, {
+        await apiJson(url, {
             method: method,
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
         });
 
-        if (response.ok) {
-            showToast(currentEditId ? "Task updated successfully" : "Task created successfully");
-            closeTaskModal();
-            loadTasks(); // Refresh the board
-        } else {
-            const err = await response.json();
-            // Handle both 'detail' (FastAPI default) and 'details' (Global Handler)
-            const msg = err.detail || err.details || "Failed to save task";
-            showToast(msg, "error");
-        }
+        showToast(currentEditId ? "Task updated successfully" : "Task created successfully");
+        closeTaskModal();
+        await loadTasks();
     } catch (error) {
         console.error("Error saving task:", error);
         showToast(error.message || "Error saving task", "error");
@@ -309,29 +298,9 @@ async function deleteTask(id) {
     if (!confirm("Are you sure you want to delete this task?")) return;
 
     try {
-        const response = await apiFetch(`${API_URL}/tasks/${id}`, { method: 'DELETE' });
-        if (response.ok) {
-            showToast("Task deleted successfully");
-            // Remove from local state and DOM without refetching everything
-            allTasks = allTasks.filter(t => t.id !== id);
-            const card = document.querySelector(`.task-card[data-task-id="${id}"]`);
-            if (card && card.parentElement) {
-                card.parentElement.removeChild(card);
-            }
-            // Update counts
-            const todoCountEl = document.getElementById('count-todo');
-            const doneCountEl = document.getElementById('count-done');
-            if (todoCountEl || doneCountEl) {
-                let todo = 0, done = 0;
-                allTasks.forEach(t => t.completed ? done++ : todo++);
-                if (todoCountEl) todoCountEl.textContent = todo;
-                if (doneCountEl) doneCountEl.textContent = done;
-            }
-        } else {
-            const err = await response.json();
-            const msg = err.detail || err.details || "Failed to delete task";
-            showToast(msg, "error");
-        }
+        await apiJson(`${API_URL}/tasks/${id}`, { method: 'DELETE' });
+        showToast("Task deleted successfully");
+        await loadTasks();
     } catch (error) {
         console.error("Error deleting:", error);
         showToast("Error deleting task", "error");
@@ -340,69 +309,14 @@ async function deleteTask(id) {
 
 async function toggleComplete(id, status) {
     try {
-        const response = await apiFetch(`${API_URL}/tasks/${id}`, {
+        await apiJson(`${API_URL}/tasks/${id}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ completed: status })
         });
 
-        if (response.ok) {
-            showToast(status ? "Task completed" : "Task reopened");
-
-            // Update local state
-            allTasks = allTasks.map(t => t.id === id ? { ...t, completed: status } : t);
-
-            // Move card between columns without full re-render
-            const card = document.querySelector(`.task-card[data-task-id="${id}"]`);
-            const todoList = document.getElementById('todo-list') || document.getElementById('list-todo');
-            const doneList = document.getElementById('done-list') || document.getElementById('list-done');
-
-            if (card && (todoList || doneList)) {
-                if (status && doneList) {
-                    doneList.appendChild(card);
-                } else if (!status && todoList) {
-                    todoList.appendChild(card);
-                }
-            }
-
-            // Update styles on the card
-            if (card) {
-                const titleEl = card.querySelector('.task-title');
-                const bodyP = card.querySelector('.task-body p');
-                const checkbox = card.querySelector('.task-checkbox');
-                if (titleEl) {
-                    if (status) {
-                        titleEl.classList.add('completed');
-                    } else {
-                        titleEl.classList.remove('completed');
-                    }
-                }
-                if (bodyP) {
-                    if (status) {
-                        bodyP.classList.add('completed');
-                    } else {
-                        bodyP.classList.remove('completed');
-                    }
-                }
-                if (checkbox) {
-                    checkbox.classList.toggle('checked', status);
-                }
-            }
-
-            // Update counts
-            const todoCountEl = document.getElementById('count-todo');
-            const doneCountEl = document.getElementById('count-done');
-            if (todoCountEl || doneCountEl) {
-                let todo = 0, done = 0;
-                allTasks.forEach(t => t.completed ? done++ : todo++);
-                if (todoCountEl) todoCountEl.textContent = todo;
-                if (doneCountEl) doneCountEl.textContent = done;
-            }
-        } else {
-            const err = await response.json();
-            const msg = err.detail || err.details || "Failed to update task";
-            showToast(msg, "error");
-        }
+        showToast(status ? "Task completed" : "Task reopened");
+        await loadTasks();
     } catch (error) {
         console.error("Error toggling complete:", error);
         showToast("Error updating task", "error");
@@ -429,13 +343,12 @@ async function clearCompletedTasks() {
 
     try {
         // Delete all completed tasks
-        const deletePromises = completedTasks.map(task => 
-            apiFetch(`${API_URL}/tasks/${task.id}`, { method: 'DELETE' })
+        const deletePromises = completedTasks.map(task =>
+            apiJson(`${API_URL}/tasks/${task.id}`, { method: 'DELETE' })
         );
-        
         await Promise.all(deletePromises);
         showToast(`Cleared ${completedTasks.length} completed task(s)`);
-        loadTasks(); // Refresh the board
+        await loadTasks();
     } catch (error) {
         console.error("Error clearing completed tasks:", error);
         showToast("Error clearing completed tasks", "error");

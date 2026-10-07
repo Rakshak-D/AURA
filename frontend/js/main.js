@@ -40,6 +40,25 @@ async function apiFetch(url, options = {}) {
     return response;
 }
 
+async function apiJson(url, options = {}) {
+    const response = await apiFetch(url, options);
+    const contentType = response.headers.get('content-type') || '';
+    let body = null;
+    if (contentType.includes('application/json')) {
+        body = await response.json().catch(() => null);
+    } else if (!response.ok) {
+        await response.text().catch(() => '');
+    }
+    if (!response.ok) {
+        const detail = body?.detail || body?.message || body?.error?.message || `Request failed (${response.status})`;
+        throw new Error(String(detail));
+    }
+    if (body && body.success === false) {
+        throw new Error(String(body.message || body.error?.message || 'Request failed'));
+    }
+    return body;
+}
+
 function showAuthPanel() {
     const panel = document.getElementById('aura-auth-panel');
     if (panel) panel.hidden = false;
@@ -51,21 +70,25 @@ function hideAuthPanel() {
 }
 
 async function authenticate(action = 'login') {
-    const identifier = document.getElementById('aura-auth-identifier').value;
-    const password = document.getElementById('aura-auth-password').value;
-    const response = await fetch(`${API_URL}/auth/${action}`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ identifier, password })
-    });
-    const data = await response.json();
-    if (!response.ok) return showToast(data.detail || 'Authentication failed', 'error');
-    if (action === 'register') {
-        return authenticate('login');
+    try {
+        const identifier = document.getElementById('aura-auth-identifier').value;
+        const password = document.getElementById('aura-auth-password').value;
+        const data = await apiJson(`${API_URL}/auth/${action}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ identifier, password })
+        });
+        if (action === 'register') return authenticate('login');
+        if (!data?.access_token) throw new Error('Authentication response was invalid');
+        sessionStorage.setItem(AUTH_TOKEN_KEY, data.access_token);
+        hideAuthPanel();
+        AuraNotifications.start();
+        if (typeof loadSettings === 'function') loadSettings();
+        if (typeof loadTasks === 'function') loadTasks();
+        showToast('Signed in');
+    } catch (error) {
+        showToast(error.message || 'Authentication failed', 'error');
     }
-    sessionStorage.setItem(AUTH_TOKEN_KEY, data.access_token);
-    hideAuthPanel();
-    AuraNotifications.start();
-    showToast('Signed in');
 }
 
 function logout() {
@@ -130,22 +153,8 @@ function switchView(viewId) {
     }
 
     // Trigger view-specific initialization
-    if (viewId === 'calendar') {
-        // Wait a bit for DOM to be ready, then render
-        setTimeout(() => {
-            console.log('Switching to calendar view, initializing...');
-            // Force update date header
-            if (typeof updateDateHeader === 'function') {
-                updateDateHeader();
-            }
-            // Render calendar
-            if (typeof renderCalendar === 'function') {
-                console.log('Calling renderCalendar()');
-                renderCalendar();
-            } else {
-                console.warn('renderCalendar function not found');
-            }
-        }, 200);
+    if (viewId === 'insights' && typeof loadAnalytics === 'function') {
+        loadAnalytics();
     } else if (viewId === 'tasks' && typeof loadTasks === 'function') {
         setTimeout(() => loadTasks(), 100);
     }

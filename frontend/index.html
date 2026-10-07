@@ -112,11 +112,11 @@
 
                     <div class="input-area">
                         <div class="input-container">
-                            <button class="icon-btn" onclick="toggleVoice()">
+                            <button class="icon-btn" onclick="toggleVoice()" aria-label="Use voice input" title="Use voice input">
                                 <i data-lucide="mic"></i>
                             </button>
                             <textarea id="chat-input" placeholder="Ask me anything..." rows="1"></textarea>
-                            <button class="icon-btn" onclick="clearChatHistory()" title="Clear chat">
+                            <button class="icon-btn" onclick="clearChatHistory()" aria-label="Clear chat" title="Clear chat">
                                 <i data-lucide="trash-2"></i>
                             </button>
                             <button class="send-btn" onclick="sendMessage()">
@@ -161,9 +161,9 @@
             <div id="view-calendar" class="view">
                 <div class="calendar-header">
                     <div class="calendar-nav">
-                        <button class="nav-btn" onclick="prevDay()"><i data-lucide="chevron-left"></i></button>
+                        <button class="nav-btn" onclick="prevDay()" aria-label="Previous day"><i data-lucide="chevron-left"></i></button>
                         <h2 id="calendar-date-header" class="calendar-date-title">Loading...</h2>
-                        <button class="nav-btn" onclick="nextDay()"><i data-lucide="chevron-right"></i></button>
+                        <button class="nav-btn" onclick="nextDay()" aria-label="Next day"><i data-lucide="chevron-right"></i></button>
                     </div>
                     <div class="calendar-actions">
                         <button class="btn-secondary" onclick="goToToday()"><i
@@ -194,7 +194,7 @@
                         style="border: 2px dashed var(--border-color); padding: 3rem; text-align: center; border-radius: var(--radius-lg); margin-bottom: 1.5rem;">
                         <i data-lucide="upload-cloud" style="width: 48px; height: 48px; margin-bottom: 1rem;"></i>
                         <p>Drag & Drop documents here or click to upload</p>
-                        <input type="file" id="file-upload" multiple style="display: none;">
+                        <input type="file" id="file-upload" accept=".pdf,.txt,.docx,.md" multiple style="display: none;">
                     </div>
                     <button id="upload-btn" class="btn-primary" style="width: auto;">Upload to Brain</button>
                 </div>
@@ -234,22 +234,16 @@
         <div class="modal-content">
             <h3>Settings</h3>
 
-            <label>Username</label>
+            <label for="setting-username">Username</label>
             <input type="text" class="modal-input" id="setting-username">
 
-            <label>Theme</label>
+            <label for="setting-theme">Theme</label>
             <select class="modal-input" id="setting-theme">
                 <option value="dark">Dark</option>
                 <option value="light">Light</option>
             </select>
 
-            <label>Voice Input</label>
-            <select class="modal-input" id="setting-voice">
-                <option value="enabled">Enabled</option>
-                <option value="disabled">Disabled</option>
-            </select>
-
-            <label>AI Temperature</label>
+            <label for="settings-temp">AI Temperature</label>
             <input type="range" class="modal-input" id="settings-temp" min="0" max="1" step="0.1" value="0.7">
 
             <div style="display:flex; gap:1rem; margin-top:1rem;">
@@ -268,20 +262,20 @@
             <h3 id="task-modal-title">New Task</h3>
             <input type="hidden" id="task-id">
 
-            <label>Title</label>
+            <label for="task-title">Title</label>
             <input type="text" class="modal-input" id="task-title">
 
-            <label>Description</label>
+            <label for="task-desc">Description</label>
             <textarea class="modal-input" id="task-desc" rows="3"></textarea>
 
             <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
                 <div>
-                    <label>Due Date</label>
+                    <label for="task-date">Due Date</label>
                     <input type="datetime-local" class="modal-input" id="task-date">
                 </div>
 
                 <div>
-                    <label>Priority</label>
+                    <label for="task-priority">Priority</label>
                     <select class="modal-input" id="task-priority">
                         <option value="low">Low</option>
                         <option value="medium" selected>Medium</option>
@@ -291,7 +285,7 @@
                 </div>
             </div>
 
-            <label style="margin-top:1rem;">Duration (minutes)</label>
+            <label for="task-duration" style="margin-top:1rem;">Duration (minutes)</label>
             <input type="number" class="modal-input" id="task-duration" min="1" value="30">
 
             <div style="display:flex; gap:1rem; margin-top:1rem;">

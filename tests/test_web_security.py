@@ -62,6 +62,20 @@ def test_cors_rejects_unconfigured_origin(auth_client):
     assert response.headers.get("access-control-allow-origin") is None
 
 
+def test_search_response_contract_is_grouped_for_frontend(auth_client):
+    client, _ = auth_client
+    client.post("/api/auth/register", json={"identifier": "search@example.com", "password": "correct horse battery"})
+    token = client.post("/api/auth/login", json={"identifier": "search@example.com", "password": "correct horse battery"}).json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+    client.post("/api/tasks", headers=headers, json={"title": "Searchable contract task"})
+    response = client.get("/api/search?q=Searchable", headers=headers)
+    assert response.status_code == 200
+    body = response.json()
+    assert "tasks" in body and "knowledge" in body
+    assert "results" not in body
+    assert body["tasks"][0]["title"] == "Searchable contract task"
+
+
 def test_browser_websocket_ticket_is_single_use(auth_client):
     client, _ = auth_client
     response = client.post("/api/auth/register", json={"identifier": "ws@example.com", "password": "correct horse battery"})
