@@ -56,7 +56,7 @@ def _enable_sqlite_foreign_keys(dbapi_connection, _connection_record):
         cursor.close()
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-REQUIRED_SCHEMA_VERSION = 3
+REQUIRED_SCHEMA_VERSION = 4
 
 _chroma_client = None
 _collection = None
@@ -274,9 +274,16 @@ def _rebuild_reminders(connection, first_user: int) -> None:
 
     if "reminders" not in {row[0] for row in connection.execute(text("SELECT name FROM sqlite_master WHERE type='table'"))}:
         return
-    if "reminders_legacy" not in {row[0] for row in connection.execute(text("SELECT name FROM sqlite_master WHERE type='table'"))} and _table_has_sql(connection, "reminders", "fk_reminders_task_same_user"):
+    reminder_schema_complete = (
+        _table_has_sql(connection, "reminders", "fk_reminders_task_same_user")
+        and _table_has_sql(connection, "reminders", "'processing'")
+        and {"attempt_count", "last_attempt_at", "next_attempt_at", "last_error"}.issubset(
+            _table_columns(connection, "reminders")
+        )
+    )
+    if "reminders_legacy" not in {row[0] for row in connection.execute(text("SELECT name FROM sqlite_master WHERE type='table'"))} and reminder_schema_complete:
         return
-    if "reminders_legacy" in {row[0] for row in connection.execute(text("SELECT name FROM sqlite_master WHERE type='table'"))} and _table_has_sql(connection, "reminders", "fk_reminders_task_same_user"):
+    if "reminders_legacy" in {row[0] for row in connection.execute(text("SELECT name FROM sqlite_master WHERE type='table'"))} and reminder_schema_complete:
         if connection.execute(text("SELECT COUNT(*) FROM reminders_legacy")).scalar() != connection.execute(text("SELECT COUNT(*) FROM reminders")).scalar():
             raise DatabaseIntegrityError("Unfinished reminder migration contains data that cannot be safely discarded")
         connection.execute(text("DROP TABLE reminders_legacy"))
@@ -284,7 +291,7 @@ def _rebuild_reminders(connection, first_user: int) -> None:
     columns = _table_columns(connection, "reminders")
     if "status" in columns:
         legacy_sent = " WHEN COALESCE(r.sent,0) <> 0 THEN 'sent'" if "sent" in columns else ""
-        status_expr = f"CASE WHEN r.status IN ('pending','sent','cancelled','failed') THEN r.status{legacy_sent} ELSE 'pending' END"
+        status_expr = f"CASE WHEN r.status IN ('pending','processing','sent','cancelled','failed') THEN r.status{legacy_sent} ELSE 'pending' END"
     else:
         status_expr = "CASE WHEN COALESCE(r.sent,0) <> 0 THEN 'sent' ELSE 'pending' END" if "sent" in columns else "'pending'"
     user_expr = "COALESCE(t.user_id, u.id, :first_user)" if "user_id" in columns else "COALESCE(t.user_id, :first_user)"
@@ -297,9 +304,14 @@ def _rebuild_reminders(connection, first_user: int) -> None:
             reminder_time DATETIME NOT NULL,
             status VARCHAR(20) NOT NULL DEFAULT 'pending',
             timezone VARCHAR(64) NOT NULL DEFAULT 'UTC',
+            attempt_count INTEGER NOT NULL DEFAULT 0,
+            last_attempt_at DATETIME,
+            next_attempt_at DATETIME,
+            last_error VARCHAR(500),
             created_at DATETIME NOT NULL,
             updated_at DATETIME NOT NULL,
-            CONSTRAINT ck_reminders_status CHECK (status IN ('pending','sent','cancelled','failed')),
+            CONSTRAINT ck_reminders_status CHECK (status IN ('pending','processing','sent','cancelled','failed')),
+            CONSTRAINT ck_reminders_attempt_count CHECK (attempt_count >= 0),
             CONSTRAINT fk_reminders_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
             CONSTRAINT fk_reminders_task_same_user FOREIGN KEY (task_id, user_id) REFERENCES tasks(id, user_id) ON DELETE CASCADE
         )"""
@@ -307,9 +319,11 @@ def _rebuild_reminders(connection, first_user: int) -> None:
     def col(name, fallback):
         return f'r."{name}"' if name in columns else fallback
     connection.execute(text(f"""INSERT INTO reminders
-        (id,user_id,task_id,reminder_time,status,timezone,created_at,updated_at)
+        (id,user_id,task_id,reminder_time,status,timezone,attempt_count,last_attempt_at,next_attempt_at,last_error,created_at,updated_at)
         SELECT r.id, {user_expr}, CASE WHEN t.id IS NULL THEN NULL ELSE t.id END,
             r.reminder_time, {status_expr}, COALESCE({col('timezone', "'UTC'")}, 'UTC'),
+            MAX(COALESCE({col('attempt_count', '0')}, 0), 0), {col('last_attempt_at', 'NULL')},
+            {col('next_attempt_at', 'NULL')}, {col('last_error', 'NULL')},
             COALESCE({col('created_at', 'CURRENT_TIMESTAMP')}, CURRENT_TIMESTAMP),
             COALESCE({col('updated_at', col('created_at', 'CURRENT_TIMESTAMP'))}, CURRENT_TIMESTAMP)
         FROM reminders_legacy r
@@ -415,6 +429,9 @@ def schema_status(target_engine=engine) -> dict:
         return {item["name"]: item for item in inspector.get_columns(table)} if table in tables else {}
     if columns("reminders").get("sent"):
         missing.append("reminders:sent_removed")
+    for column in ("attempt_count", "last_attempt_at", "next_attempt_at", "last_error"):
+        if column not in columns("reminders"):
+            missing.append(f"reminders:{column}")
     for table, column in (("tasks", "user_id"), ("reminders", "user_id"), ("documents", "user_id")):
         if column not in columns(table) or not columns(table)[column]["nullable"] is False:
             missing.append(f"{table}:{column}_not_null")
@@ -439,8 +456,10 @@ def schema_status(target_engine=engine) -> dict:
         sql_by_name = {row[0]: (row[1] or "").lower() for row in sql_rows}
         if "completed = 1" not in sql_by_name.get("tasks", "") or "completed_at is not null" not in sql_by_name.get("tasks", ""):
             missing.append("tasks:completion_check")
-        if "status in" not in sql_by_name.get("reminders", ""):
+        if "status in" not in sql_by_name.get("reminders", "") or "processing" not in sql_by_name.get("reminders", ""):
             missing.append("reminders:status_check")
+        if "attempt_count >= 0" not in sql_by_name.get("reminders", ""):
+            missing.append("reminders:attempt_count_check")
         if "indexing_state in" not in (connection.execute(text("SELECT sql FROM sqlite_master WHERE type='table' AND name='documents'")).scalar() or "").lower():
             missing.append("documents:indexing_state_check")
     return {"ready": not missing, "version": version, "missing": missing}

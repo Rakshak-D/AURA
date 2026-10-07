@@ -3,6 +3,7 @@
 import hashlib
 import importlib.util
 import json
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +12,8 @@ from sqlalchemy import text
 from . import database
 from .config import config
 from .database import SessionLocal
+
+logger = logging.getLogger(__name__)
 
 
 def _dependency_installed(module_name: str) -> bool:
@@ -103,7 +106,7 @@ def gpu_status() -> dict[str, Any]:
             "state": "available" if available else "unavailable",
             "requested_layers": config.n_gpu_layers,
         }
-    except Exception:  # noqa: BLE001 - diagnostics must never break readiness
+    except Exception:
         return {
             "requested": True,
             "available": False,
@@ -175,7 +178,7 @@ def database_status() -> dict[str, Any]:
     try:
         session.execute(text("SELECT 1"))
         return {"state": "ready", "schema_version": schema["version"]}
-    except Exception:  # noqa: BLE001 - diagnostics must never break readiness
+    except Exception:
         return {"state": "runtime_failure"}
     finally:
         session.close()
@@ -189,7 +192,7 @@ def rag_status() -> dict[str, Any]:
     if collection_loaded:
         try:
             vector_count = database._collection.count()
-        except Exception:  # noqa: BLE001 - Chroma is optional
+        except Exception:
             vector_count = None
     if not dependency:
         state = "optional_dependency_missing"
@@ -208,22 +211,40 @@ def rag_status() -> dict[str, Any]:
 
 def scheduler_status() -> dict[str, Any]:
     dependency = _dependency_installed("apscheduler")
+    running = False
+    last_tick = None
     try:
-        from .services.reminder_service import scheduler
+        from .services.reminder_service import last_scheduler_tick, scheduler
 
         initialized = scheduler is not None
-    except Exception:  # noqa: BLE001 - scheduler is optional
+        running = bool(initialized and scheduler.running)
+        last_tick = last_scheduler_tick.isoformat() if last_scheduler_tick else None
+    except Exception:
         initialized = False
     if not dependency:
         state = "optional_dependency_missing"
+    elif running:
+        state = "running"
     elif initialized:
-        state = "initialized"
+        state = "stopped"
     else:
         state = "not_initialized"
+    counts = {"pending_count": None, "processing_count": None, "failed_count": None}
+    try:
+        with SessionLocal() as session:
+            rows = session.execute(
+                text("SELECT status, COUNT(*) FROM reminders GROUP BY status")
+            ).all()
+            counts.update({f"{status}_count": count for status, count in rows if status in {"pending", "processing", "failed"}})
+    except Exception:
+        logger.debug("Reminder workload diagnostics unavailable", exc_info=True)
     return {
         "state": state,
         "runtime_dependency_installed": dependency,
         "initialized": initialized,
+        "running": running,
+        "last_tick": last_tick,
+        **counts,
     }
 
 

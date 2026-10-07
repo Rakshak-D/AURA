@@ -29,14 +29,16 @@ class ConnectionManager:
         for connection in list(self.active_connections.get(user_id, set())):
             try:
                 await connection.send_text(message)
-            except Exception as e:
-                print(f"Error sending to websocket: {e}")
+            except Exception:
+                self.disconnect(connection)
 
     def broadcast_sync(self, message: str, user_id: int):
         if self.loop and self.active_connections.get(user_id):
             asyncio.run_coroutine_threadsafe(
                 self.broadcast(message, user_id), self.loop
             )
+            return True
+        return False
 
 
 manager = ConnectionManager()

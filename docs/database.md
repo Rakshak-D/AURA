@@ -14,7 +14,7 @@ it is not a global identity. Document indexing is represented in SQL with
 `pending`, `indexed`, or `failed` and an optional non-sensitive failure marker.
 SQLite and Chroma are separate systems and are not part of one transaction.
 
-The required database schema version is `3`. Readiness validates the actual
+The required database schema version is `4`. Readiness validates the actual
 SQLite schema and does not report the database as ready when this version or
 its required constraints are missing.
 
@@ -57,8 +57,10 @@ common ownership plus due/completion, reminder trigger, document ownership,
 and chat-history chronology queries.
 
 Reminder `status` is the only authoritative delivery state. It is one of
-`pending`, `sent`, `cancelled`, or `failed`; the former mutable `sent` boolean
-is removed by the migration and is not used as a second source of truth.
+`pending`, `processing`, `sent`, `cancelled`, or `failed`; persistent attempt
+metadata supports bounded retries and stale-processing recovery. The former
+mutable `sent` boolean is removed by the migration and is not used as a second
+source of truth.
 
 ## Initialization and migration
 
@@ -72,6 +74,7 @@ completion combinations are normalized deterministically, and legacy reminder
 `sent` values are converted into `status`. The schema version advances only
 after the rebuilt schema validates. Re-running the migration is idempotent;
 failure leaves the version unchanged and does not silently claim completion.
+Version 4 adds reminder attempt metadata and the processing-state constraint.
 
 ## Test databases
 
@@ -81,7 +84,7 @@ the engine after each test. They never use the developer's `data/aura.db`.
 
 ## Export consistency
 
-`/api/export` reads the development user's user, tasks, chat history,
+`/api/export` reads the authenticated user's tasks, chat history,
 documents, reminders, and routine events through one SQLAlchemy session. The
 export contains document metadata and indexing state, not Chroma vectors or
 binary storage. It is a logical application-data export, not a database backup.

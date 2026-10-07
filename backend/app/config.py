@@ -58,6 +58,11 @@ class Settings(BaseSettings):
     rag_chunk_size: int = 500
     rag_chunk_overlap: int = 50
     rag_top_k: int = 3
+    reminder_scheduler_enabled: bool = Field(default=True, validation_alias="REMINDER_SCHEDULER_ENABLED")
+    reminder_poll_interval_seconds: int = Field(default=30, validation_alias="REMINDER_POLL_INTERVAL_SECONDS")
+    reminder_max_attempts: int = Field(default=3, validation_alias="REMINDER_MAX_ATTEMPTS")
+    reminder_processing_timeout_seconds: int = Field(default=300, validation_alias="REMINDER_PROCESSING_TIMEOUT_SECONDS")
+    reminder_retry_delay_seconds: int = Field(default=60, validation_alias="REMINDER_RETRY_DELAY_SECONDS")
 
     @field_validator("environment")
     @classmethod
@@ -93,6 +98,8 @@ class Settings(BaseSettings):
     @field_validator(
         "llm_context_window", "llm_max_tokens", "max_upload_size", "rag_chunk_size", "rag_top_k",
         "access_token_expire_minutes",
+        "reminder_poll_interval_seconds", "reminder_max_attempts",
+        "reminder_processing_timeout_seconds", "reminder_retry_delay_seconds",
     )
     @classmethod
     def validate_positive(cls, value: int) -> int:

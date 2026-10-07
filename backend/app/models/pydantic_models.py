@@ -1,6 +1,9 @@
-from pydantic import BaseModel, Field
-from datetime import datetime
-from typing import Optional, List
+from datetime import datetime, timezone
+from typing import List, Optional
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+from pydantic import BaseModel, field_validator
+
 
 class TaskCreate(BaseModel):
     title: str
@@ -55,6 +58,23 @@ class ChatResponse(BaseModel):
 class ReminderCreate(BaseModel):
     task_id: int
     reminder_time: datetime
+    timezone: str = "UTC"
+
+    @field_validator("reminder_time")
+    @classmethod
+    def require_aware_time(cls, value: datetime) -> datetime:
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError("reminder_time must include a timezone offset")
+        return value.astimezone(timezone.utc)
+
+    @field_validator("timezone")
+    @classmethod
+    def validate_timezone(cls, value: str) -> str:
+        try:
+            ZoneInfo(value)
+        except ZoneInfoNotFoundError as exc:
+            raise ValueError("invalid timezone") from exc
+        return value
 
 class ReminderResponse(BaseModel):
     id: int

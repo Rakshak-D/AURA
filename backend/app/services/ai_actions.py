@@ -1,7 +1,7 @@
 """Strict, server-owned action contracts for LLM-assisted operations."""
 
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Annotated, Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -60,6 +60,13 @@ class CreateReminderAction(StrictAction):
     task_id: int = Field(gt=0)
     reminder_time: datetime
     timezone: str = Field(default="UTC", min_length=1, max_length=64)
+
+    @field_validator("reminder_time")
+    @classmethod
+    def aware_reminder_time(cls, value: datetime) -> datetime:
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError("reminder_time must include a timezone offset")
+        return value.astimezone(timezone.utc)
 
     @field_validator("timezone")
     @classmethod
@@ -227,6 +234,10 @@ def execute_action(
         if not confirmed:
             raise ConfirmationRequired("cancelling a reminder requires confirmation")
         reminder = _owned_reminder(db, user_id, action.reminder_id)
+        if reminder.status == "sent":
+            raise ActionRejected("sent reminders cannot be cancelled")
+        if reminder.status == "cancelled":
+            return {"action": action.action, "reminder_id": reminder.id, "already_cancelled": True}
         reminder.status = "cancelled"
         reminder.updated_at = utc_now()
         db.flush()

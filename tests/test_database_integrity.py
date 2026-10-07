@@ -201,6 +201,14 @@ def test_legacy_migration_preserves_data_enforces_constraints_and_is_idempotent(
         assert connection.execute(text("SELECT parent_task_id FROM tasks WHERE id=11")).scalar() is None
         assert connection.execute(text("SELECT completed_at IS NOT NULL FROM tasks WHERE id=12")).scalar() == 1
         assert "sent" not in {column["name"] for column in __import__("sqlalchemy").inspect(engine).get_columns("reminders")}
+        assert {"attempt_count", "last_attempt_at", "next_attempt_at", "last_error"}.issubset(
+            {column["name"] for column in __import__("sqlalchemy").inspect(engine).get_columns("reminders")}
+        )
+        reminder_sql = connection.execute(
+            text("SELECT sql FROM sqlite_master WHERE type='table' AND name='reminders'")
+        ).scalar().lower()
+        assert "processing" in reminder_sql
+        assert "attempt_count >= 0" in reminder_sql
         assert {"login_identifier", "password_hash", "is_active"}.issubset(
             {column["name"] for column in __import__("sqlalchemy").inspect(engine).get_columns("users")}
         )

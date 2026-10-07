@@ -1,26 +1,28 @@
+import asyncio
+import logging
+import re
+from datetime import datetime, timedelta
+
 from sqlalchemy.orm import Session
-from ..models.sql_models import ChatHistory, Task, User
+
 from ..database import utc_now
 from ..models.llm_models import llm
-from .rag_service import query_rag
-from .schedule_service import generate_daily_schedule, generate_routine
-from .intent_service import detect_intent
+from ..models.sql_models import ChatHistory, Task, User
 from .ai_actions import (
     ActionRejected,
+    CompleteTaskAction,
     ConfirmationRequired,
     CreateReminderAction,
     CreateTaskAction,
     DeleteTaskAction,
-    CompleteTaskAction,
     UpdateSettingsAction,
     execute_action,
     parse_action,
     parse_json_object,
 )
-from datetime import datetime, timedelta
-import re
-import asyncio
-import logging
+from .intent_service import detect_intent
+from .rag_service import query_rag
+from .schedule_service import generate_daily_schedule, generate_routine
 
 logger = logging.getLogger(__name__)
 
@@ -659,11 +661,10 @@ END UNTRUSTED RETRIEVED DOCUMENT DATA
     async def handle_reminder(
         self, user_id: int, message: str, db: Session, intent_data: dict
     ):
-        from .reminder_service import schedule_reminder
-
         entities = intent_data.get("entities", {})
         time_str = entities.get("time")
         title = entities.get("title", "Untitled Reminder")
+        timezone_name = entities.get("timezone") or "UTC"
 
         if time_str:
             try:
@@ -682,15 +683,12 @@ END UNTRUSTED RETRIEVED DOCUMENT DATA
                     action="create_reminder",
                     task_id=task_result["task_id"],
                     reminder_time=datetime.fromisoformat(time_str),
-                    timezone="UTC",
+                    timezone=timezone_name,
                 )
                 reminder_result = execute_action(
                     reminder_action, user_id=user_id, db=db
                 )
                 db.commit()
-                schedule_reminder(
-                    task_result["task_id"], user_id, reminder_action.reminder_time
-                )
                 return {
                     "response": f"⏰ Reminder set for '{title}'",
                     "action_taken": "reminder_set",

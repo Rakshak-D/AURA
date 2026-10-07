@@ -85,11 +85,16 @@ class Reminder(Base):
     reminder_time = Column(UTCDateTime, nullable=False, index=True)
     status = Column(String(20), nullable=False, default='pending')
     timezone = Column(String(64), nullable=False, default='UTC')
+    attempt_count = Column(Integer, nullable=False, default=0, server_default="0")
+    last_attempt_at = Column(UTCDateTime, nullable=True)
+    next_attempt_at = Column(UTCDateTime, nullable=True)
+    last_error = Column(String(500), nullable=True)
     created_at = Column(UTCDateTime, nullable=False, default=utc_now)
     updated_at = Column(UTCDateTime, nullable=False, default=utc_now, onupdate=utc_now)
 
     __table_args__ = (
-        CheckConstraint("status IN ('pending', 'sent', 'cancelled', 'failed')", name="ck_reminders_status"),
+        CheckConstraint("status IN ('pending', 'processing', 'sent', 'cancelled', 'failed')", name="ck_reminders_status"),
+        CheckConstraint("attempt_count >= 0", name="ck_reminders_attempt_count"),
         ForeignKeyConstraint(
             ["task_id", "user_id"],
             ["tasks.id", "tasks.user_id"],

@@ -25,6 +25,11 @@ from .routes import (
     upload,
 )
 from .runtime_diagnostics import startup_summary
+from .services.reminder_service import (
+    recover_stale_reminders,
+    start_scheduler,
+    stop_scheduler,
+)
 from .websocket_manager import manager
 
 app = FastAPI(title="AURA API", version="1.0.0")
@@ -76,11 +81,24 @@ async def startup_event():
     config.setup_logging()
     # Initialize DB
     init_db()
+    if config.environment != "test" and config.reminder_scheduler_enabled:
+        try:
+            recover_stale_reminders()
+            start_scheduler()
+        except RuntimeError:
+            logging.getLogger(__name__).warning(
+                "Reminder scheduler unavailable; persistent reminders remain in SQLite"
+            )
     logging.getLogger(__name__).info("Serving static files from %s", config.frontend_dir)
     logging.getLogger(__name__).info("Capability summary: %s", startup_summary())
     
     import asyncio
     manager.set_loop(asyncio.get_running_loop())
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    stop_scheduler()
 
 # Routers
 app.include_router(chat.router, prefix="/api")
