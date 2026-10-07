@@ -1,8 +1,10 @@
+import logging
 import uuid
 
 from ..config import config
-from ..database import get_chroma_collection
+from ..database import SessionLocal, get_chroma_collection
 from ..models.llm_models import llm
+from ..models.sql_models import Document
 
 
 def add_to_rag(filename: str, content: str):
@@ -46,6 +48,36 @@ def add_to_rag(filename: str, content: str):
         import logging
         logging.getLogger(__name__).exception("Error adding document to RAG")
         raise RuntimeError("Document indexing failed") from e
+
+
+def index_document(document_id: int, filename: str, content: str) -> None:
+    """Index a document and persist SQL-side indexing state separately.
+
+    Chroma and SQLite cannot share a transaction. The SQL record therefore
+    moves from pending to indexed/failed after the external operation.
+    """
+    try:
+        add_to_rag(filename, content)
+        state = "indexed"
+        error = None
+    except Exception:
+        state = "failed"
+        error = "Document indexing failed"
+        logging.getLogger(__name__).exception("Document indexing failed for id=%s", document_id)
+    db = SessionLocal()
+    try:
+        document = db.query(Document).filter(Document.id == document_id).first()
+        if document:
+            document.indexing_state = state
+            document.indexing_error = error
+            db.commit()
+    except Exception:
+        db.rollback()
+        logging.getLogger(__name__).exception("Could not persist document indexing state for id=%s", document_id)
+    finally:
+        db.close()
+    if state == "failed":
+        raise RuntimeError("Document indexing failed")
 
 
 def delete_document_embeddings(filename: str) -> int:

@@ -1,5 +1,6 @@
 import json
 from datetime import datetime, timedelta
+from ..database import utc_now
 from typing import List, Dict
 from ..models.llm_models import llm
 
@@ -9,7 +10,7 @@ def generate_routine_from_text(timetable_text: str) -> List[Dict]:
     Automatically inserts 'Prep Time' (30m) before events and 'Meal Blocks'.
     """
     try:
-        current_date = datetime.now().strftime("%Y-%m-%d")
+        current_date = utc_now().strftime("%Y-%m-%d")
         prompt = f"""<|system|>
 You are a routine scheduler. Parse the user's unstructured timetable text into a JSON list of events.
 Output ONLY valid JSON.

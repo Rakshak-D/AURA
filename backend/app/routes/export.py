@@ -1,25 +1,20 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-from ..database import get_db
-from ..models.sql_models import Task, ChatHistory, User, Document
-import json
-from datetime import datetime
+
+from ..database import get_db, get_development_user
+from ..models.sql_models import ChatHistory, Document, Reminder, RoutineEvent, Task
 
 router = APIRouter()
 
 @router.get("/export")
 def export_data(db: Session = Depends(get_db)):
-    # Helper to serialize datetime
-    def json_serial(obj):
-        if isinstance(obj, datetime):
-            return obj.isoformat()
-        raise TypeError ("Type not serializable")
-
     # Fetch all data
-    user = db.query(User).filter_by(id=1).first()
-    tasks = db.query(Task).filter_by(user_id=1).all()
-    chat_history = db.query(ChatHistory).filter_by(user_id=1).all()
-    documents = db.query(Document).filter_by(user_id=1).all()
+    user = get_development_user(db)
+    tasks = db.query(Task).filter_by(user_id=user.id).all()
+    chat_history = db.query(ChatHistory).filter_by(user_id=user.id).all()
+    documents = db.query(Document).filter_by(user_id=user.id).all()
+    reminders = db.query(Reminder).filter_by(user_id=user.id).all()
+    routine_events = db.query(RoutineEvent).filter_by(user_id=user.id).all()
     
     data = {
         "user": {
@@ -46,10 +41,32 @@ def export_data(db: Session = Depends(get_db)):
         ],
         "documents": [
             {
+                "id": d.id,
                 "filename": d.filename,
+                "file_type": d.file_type,
+                "indexing_state": d.indexing_state,
                 "uploaded_at": d.uploaded_at.isoformat()
             } for d in documents
-        ]
+        ],
+        "reminders": [
+            {
+                "id": r.id,
+                "task_id": r.task_id,
+                "reminder_time": r.reminder_time.isoformat(),
+                "timezone": r.timezone,
+                "status": r.status,
+            } for r in reminders
+        ],
+        "routine_events": [
+            {
+                "id": event.id,
+                "title": event.title,
+                "event_type": event.event_type,
+                "start_time": event.start_time,
+                "duration_minutes": event.duration_minutes,
+                "days_of_week": event.days_of_week,
+            } for event in routine_events
+        ],
     }
     
     return data

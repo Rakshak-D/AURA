@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from datetime import datetime
 
-from ..database import get_db
+from ..database import get_db, get_development_user_id, utc_now
 from ..models.sql_models import ChatHistory
 from ..models.pydantic_models import ChatMessage, ChatResponse
 from ..services.chat_service import process_chat
@@ -21,22 +21,23 @@ async def chat_endpoint(request: Request, msg: ChatMessage, db: Session = Depend
     """
     # Note: Request object is needed for slowapi
     try:
+        user_id = get_development_user_id(db)
         # Sanitize input
         user_message = sanitize_input(msg.message)
 
         # Save User Message
         user_msg = ChatHistory(
-            user_id=1,
+            user_id=user_id,
             role="user",
             content=user_message,
-            timestamp=datetime.utcnow(),
+            timestamp=utc_now(),
         )
         db.add(user_msg)
         db.commit()
 
         # Process Chat
         # Based on chat_service.py, process_chat takes (user_id, message_data, db)
-        result = await process_chat(1, msg, db)
+        result = await process_chat(user_id, msg, db)
 
         return result
 
@@ -57,7 +58,8 @@ async def clear_chat_history(db: Session = Depends(get_db)):
     Clear all stored chat history for the default user.
     """
     try:
-        deleted = db.query(ChatHistory).filter(ChatHistory.user_id == 1).delete()
+        user_id = get_development_user_id(db)
+        deleted = db.query(ChatHistory).filter(ChatHistory.user_id == user_id).delete()
         db.commit()
         return success_response(data={"deleted": deleted}, message="Chat history cleared.")
     except Exception as e:

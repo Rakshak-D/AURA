@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from ..database import get_db
+from ..database import get_db, get_development_user_id
 from ..services.schedule_service import generate_routine, auto_schedule_tasks
 from datetime import datetime
 from typing import Optional
@@ -29,7 +29,7 @@ def get_routine(
             except ValueError:
                 raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
         
-        return generate_routine(1, db, target_date)
+        return generate_routine(get_development_user_id(db), db, target_date)
     except HTTPException:
         raise
     except Exception as e:
@@ -51,7 +51,7 @@ def auto_assign_tasks(
             except ValueError:
                 raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
         
-        return auto_schedule_tasks(1, db, target_date)
+        return auto_schedule_tasks(get_development_user_id(db), db, target_date)
     except HTTPException:
         raise
     except Exception as e:
@@ -82,7 +82,7 @@ def create_event(event: EventCreate, db: Session = Depends(get_db)):
         start_time_str = start_dt.strftime("%H:%M")
         
         new_event = RoutineEvent(
-            user_id=1,
+            user_id=get_development_user_id(db),
             title=event.title,
             start_time=start_time_str,
             duration_minutes=duration_minutes,
@@ -117,7 +117,7 @@ def check_conflicts(start_time: str, end_time: str, db: Session = Depends(get_db
         end = datetime.fromisoformat(end_time)
         
         # Get routine for the day
-        routine = generate_routine(1, db, start)
+        routine = generate_routine(get_development_user_id(db), db, start)
         timeline = routine.get("timeline", [])
         
         conflicts = []

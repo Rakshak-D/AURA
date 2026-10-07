@@ -1,8 +1,8 @@
-from fastapi import APIRouter, UploadFile, File, Depends, BackgroundTasks
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session
-from ..database import get_db
+from ..database import get_db, get_development_user_id
 from ..models.sql_models import Document
-from ..services.rag_service import add_to_rag, delete_document_embeddings
+from ..services.rag_service import delete_document_embeddings, index_document
 from ..utils.parser import parse_document
 from ..utils.responses import success_response, error_response
 
@@ -20,10 +20,13 @@ async def upload_file(
     Uses a consistent response envelope for success/error.
     """
     try:
+        user_id = get_development_user_id(db)
         content = parse_document(file.file, file.content_type)
 
         # Check if file already exists to avoid duplicates (optional, but good practice)
-        existing = db.query(Document).filter(Document.filename == file.filename).first()
+        existing = db.query(Document).filter(
+            Document.user_id == user_id, Document.filename == file.filename
+        ).first()
         if existing:
             return error_response(
                 message="File already exists",
@@ -31,13 +34,18 @@ async def upload_file(
                 details={"filename": file.filename},
             )
 
-        doc = Document(filename=file.filename, content=content, file_type=file.content_type)
+        doc = Document(
+            user_id=user_id,
+            filename=file.filename or "unnamed",
+            content=content,
+            file_type=file.content_type or "application/octet-stream",
+        )
         db.add(doc)
         db.commit()
         db.refresh(doc)
 
         # Process RAG in background
-        background_tasks.add_task(add_to_rag, file.filename, content)
+        background_tasks.add_task(index_document, doc.id, file.filename or "unnamed", content)
 
         return success_response(
             data={
@@ -52,7 +60,8 @@ async def upload_file(
 
         logger = logging.getLogger(__name__)
         logger.error(f"Upload error: {str(e)}", exc_info=True)
-        return error_response(message="Failed to upload file", code="UPLOAD_ERROR", details={"error": str(e)})
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Failed to upload file") from e
 
 
 @router.get("/upload/files")
@@ -61,7 +70,7 @@ async def list_files(db: Session = Depends(get_db)):
     List all uploaded documents for the current user.
     """
     try:
-        docs = db.query(Document).all()
+        docs = db.query(Document).filter(Document.user_id == get_development_user_id(db)).all()
         files = [
             {
                 "id": doc.id,
@@ -76,7 +85,7 @@ async def list_files(db: Session = Depends(get_db)):
 
         logger = logging.getLogger(__name__)
         logger.error(f"List files error: {str(e)}", exc_info=True)
-        return error_response(message="Failed to list files", code="LIST_FILES_ERROR", details={"error": str(e)})
+        raise HTTPException(status_code=500, detail="Failed to list files") from e
 
 
 @router.delete("/upload/{doc_id}")
@@ -87,7 +96,9 @@ async def delete_file(doc_id: int, db: Session = Depends(get_db)):
     This performs a hard delete of the knowledge base entry for now.
     """
     try:
-        doc = db.query(Document).filter(Document.id == doc_id).first()
+        doc = db.query(Document).filter(
+            Document.id == doc_id, Document.user_id == get_development_user_id(db)
+        ).first()
         if not doc:
             return error_response(
                 message="Document not found",
@@ -118,4 +129,4 @@ async def delete_file(doc_id: int, db: Session = Depends(get_db)):
         logger = logging.getLogger(__name__)
         logger.error(f"Delete file error: {str(e)}", exc_info=True)
         db.rollback()
-        return error_response(message="Failed to delete document", code="DELETE_DOCUMENT_ERROR", details={"error": str(e)})
+        raise HTTPException(status_code=500, detail="Failed to delete document") from e

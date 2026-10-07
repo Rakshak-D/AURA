@@ -1,5 +1,6 @@
 from sqlalchemy.orm import Session
 from ..models.sql_models import ChatHistory, Task, User
+from ..database import utc_now
 from ..models.llm_models import llm
 from .rag_service import query_rag
 from .schedule_service import generate_daily_schedule, generate_routine
@@ -164,7 +165,7 @@ class ChatService:
 Extract task information from this message. Output JSON with: title, time (YYYY-MM-DD HH:MM format), duration (minutes), priority (low/medium/high/urgent).
 
 Message: {message}
-Current Time: {datetime.now().strftime('%Y-%m-%d %H:%M')}
+Current Time: {utc_now().strftime('%Y-%m-%d %H:%M')}
 <|end|>
 <|user|>
 Extract task details.
@@ -252,12 +253,12 @@ Extract task details.
                 tasks = db.query(Task).filter(
                     Task.user_id == user_id,
                     Task.completed == False,
-                    Task.due_date >= datetime.now().replace(hour=0, minute=0, second=0),
-                    Task.due_date < datetime.now().replace(hour=23, minute=59, second=59)
+                    Task.due_date >= utc_now().replace(hour=0, minute=0, second=0),
+                    Task.due_date < utc_now().replace(hour=23, minute=59, second=59)
                 ).all()
                 header = "tasks due today"
             elif any(word in message_lower for word in ['tomorrow']):
-                tomorrow = datetime.now() + timedelta(days=1)
+                tomorrow = utc_now() + timedelta(days=1)
                 tasks = db.query(Task).filter(
                     Task.user_id == user_id,
                     Task.completed == False,
@@ -269,8 +270,8 @@ Extract task details.
                 tasks = db.query(Task).filter(
                     Task.user_id == user_id,
                     Task.completed == False,
-                    Task.due_date >= datetime.now(),
-                    Task.due_date < datetime.now() + timedelta(days=7)
+                    Task.due_date >= utc_now(),
+                    Task.due_date < utc_now() + timedelta(days=7)
                 ).all()
                 header = "tasks this week"
             else:
@@ -337,7 +338,7 @@ Extract task details.
                 for task in tasks:
                     if task.title.lower() in message_lower:
                         task.completed = True
-                        task.completed_at = datetime.now()
+                        task.completed_at = utc_now()
                         db.commit()
                         return {
                             "response": f"✅ Marked '{task.title}' as complete!",
@@ -379,14 +380,14 @@ Extract task details.
             message_lower = message.lower()
             
             # Determine which date to query
-            target_date = datetime.now()
+            target_date = utc_now()
             if 'tomorrow' in message_lower:
-                target_date = datetime.now() + timedelta(days=1)
+                target_date = utc_now() + timedelta(days=1)
             elif 'yesterday' in message_lower:
-                target_date = datetime.now() - timedelta(days=1)
+                target_date = utc_now() - timedelta(days=1)
             elif 'next week' in message_lower or 'week' in message_lower:
                 # For week queries, we'll show today's schedule
-                target_date = datetime.now()
+                target_date = utc_now()
             
             # Call ScheduleService to get today's routine
             routine = generate_routine(user_id, db, target_date)
@@ -512,7 +513,7 @@ Context from Knowledge Base:
         try:
             schedule = generate_daily_schedule(user_id, db)
             
-            today_start = datetime.now().replace(hour=0, minute=0, second=0)
+            today_start = utc_now().replace(hour=0, minute=0, second=0)
             completed_today = db.query(Task).filter(
                 Task.user_id == user_id,
                 Task.completed == True,
@@ -637,7 +638,7 @@ Context from Knowledge Base:
     def get_user_context(self, user_id: int, db: Session) -> str:
         """Get user's tasks and routine for context"""
         try:
-            now = datetime.now()
+            now = utc_now()
             today = now.date()
             
             # 1. Get Current Routine Status
@@ -782,7 +783,7 @@ Context from Knowledge Base:
                 role=role,
                 content=content,
                 intent=intent,
-                timestamp=datetime.utcnow()
+                timestamp=utc_now()
             )
             db.add(history)
             db.commit()
@@ -790,7 +791,7 @@ Context from Knowledge Base:
             logger.error(f"Error saving message: {str(e)}", exc_info=True)
 
     def format_due_date(self, due_date: datetime) -> str:
-        now = datetime.now()
+        now = utc_now()
         diff = due_date - now
         
         if diff.days == 0:

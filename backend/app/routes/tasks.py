@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
-from ..database import get_db
+from ..database import get_db, get_development_user_id, utc_now
 from ..models.sql_models import Task
 from ..models.pydantic_models import TaskCreate, TaskResponse, TaskUpdate
 from ..services.schedule_service import generate_routine
@@ -18,7 +18,8 @@ def get_tasks(
     db: Session = Depends(get_db)
 ):
     try:
-        query = db.query(Task).filter_by(user_id=1)
+        user_id = get_development_user_id(db)
+        query = db.query(Task).filter_by(user_id=user_id)
         
         if completed is not None:
             query = query.filter(Task.completed == completed)
@@ -62,9 +63,7 @@ def get_tasks(
         import logging
         logger = logging.getLogger(__name__)
         logger.error(f"Error getting tasks: {str(e)}", exc_info=True)
-        print(f"[TASK GET] Error: {str(e)}")
-        # Return empty list instead of 500 error to prevent frontend crash
-        return []
+        raise HTTPException(status_code=500, detail="Failed to load tasks") from e
 
 def check_conflict(db: Session, user_id: int, start_time: datetime, duration_minutes: int, exclude_task_id: int = None):
     from datetime import timedelta
@@ -109,6 +108,7 @@ def create_task(task: TaskCreate, db: Session = Depends(get_db)):
     logger = logging.getLogger(__name__)
     
     try:
+        user_id = get_development_user_id(db)
         # Sanitize and validate inputs with strict defaults
         if not task.title or not task.title.strip():
             raise HTTPException(status_code=400, detail="Task title is required")
@@ -167,7 +167,7 @@ def create_task(task: TaskCreate, db: Session = Depends(get_db)):
         
         # Conflict Detection (only if due_date is set)
         if due_date:
-            check_conflict(db, 1, due_date, duration_minutes)
+            check_conflict(db, user_id, due_date, duration_minutes)
 
         new_task = Task(
             title=task.title,
@@ -181,7 +181,7 @@ def create_task(task: TaskCreate, db: Session = Depends(get_db)):
             recurring_end_date=task.recurring_end_date,
             is_flexible=task.is_flexible if hasattr(task, 'is_flexible') else False,
             conflict_flag=False,
-            user_id=1
+            user_id=user_id
         )
         
         db.add(new_task)
@@ -225,7 +225,8 @@ def create_task(task: TaskCreate, db: Session = Depends(get_db)):
 
 @router.get("/tasks/{task_id}", response_model=TaskResponse)
 def get_task(task_id: int, db: Session = Depends(get_db)):
-    task = db.query(Task).filter_by(id=task_id, user_id=1).first()
+    user_id = get_development_user_id(db)
+    task = db.query(Task).filter_by(id=task_id, user_id=user_id).first()
     
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
@@ -248,7 +249,8 @@ def get_task(task_id: int, db: Session = Depends(get_db)):
 @router.put("/tasks/{task_id}", response_model=TaskResponse)
 def update_task(task_id: int, update: TaskUpdate, db: Session = Depends(get_db)):
     try:
-        task = db.query(Task).filter_by(id=task_id, user_id=1).first()
+        user_id = get_development_user_id(db)
+        task = db.query(Task).filter_by(id=task_id, user_id=user_id).first()
         
         if not task:
             raise HTTPException(status_code=404, detail="Task not found")
@@ -261,7 +263,7 @@ def update_task(task_id: int, update: TaskUpdate, db: Session = Depends(get_db))
         # And if either date or duration changed, OR if we are just verifying current state (optional, but good for UX)
         # Let's check if the new state would conflict
         if new_due_date and (update.due_date is not None or update.duration_minutes is not None):
-             check_conflict(db, 1, new_due_date, new_duration, exclude_task_id=task_id)
+             check_conflict(db, user_id, new_due_date, new_duration, exclude_task_id=task_id)
 
         if update.title is not None:
             task.title = update.title
@@ -272,7 +274,7 @@ def update_task(task_id: int, update: TaskUpdate, db: Session = Depends(get_db))
         if update.completed is not None:
             task.completed = update.completed
             if update.completed:
-                task.completed_at = datetime.now()
+                task.completed_at = utc_now()
                 
                 # Handle Recurrence
                 if task.recurring:
@@ -313,7 +315,7 @@ def update_task(task_id: int, update: TaskUpdate, db: Session = Depends(get_db))
         if update.recurring is not None:
             task.recurring = update.recurring
         
-        task.updated_at = datetime.now()
+        task.updated_at = utc_now()
         
         db.commit()
         db.refresh(task)
@@ -343,7 +345,8 @@ def update_task(task_id: int, update: TaskUpdate, db: Session = Depends(get_db))
 @router.delete("/tasks/{task_id}")
 def delete_task(task_id: int, db: Session = Depends(get_db)):
     try:
-        task = db.query(Task).filter_by(id=task_id, user_id=1).first()
+        user_id = get_development_user_id(db)
+        task = db.query(Task).filter_by(id=task_id, user_id=user_id).first()
         
         if not task:
             raise HTTPException(status_code=404, detail="Task not found")
@@ -361,8 +364,9 @@ def delete_task(task_id: int, db: Session = Depends(get_db)):
 @router.get("/tasks/search/{query}")
 def search_tasks(query: str, db: Session = Depends(get_db)):
     try:
+        user_id = get_development_user_id(db)
         tasks = db.query(Task).filter(
-            Task.user_id == 1,
+            Task.user_id == user_id,
             (Task.title.ilike(f'%{query}%') | Task.description.ilike(f'%{query}%'))
         ).all()
         

@@ -1,5 +1,6 @@
 from sqlalchemy.orm import Session
 from ..models.sql_models import Task, RoutineEvent
+from ..database import utc_now
 from datetime import datetime, timedelta
 from typing import Dict
 import json
@@ -13,7 +14,7 @@ def generate_daily_schedule(user_id: int, db: Session) -> Dict:
         completed = len([t for t in tasks if t.completed])
         pending = total - completed
         
-        now = datetime.now()
+        now = utc_now()
         today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
         today_end = now.replace(hour=23, minute=59, second=59, microsecond=999999)
         
@@ -72,7 +73,7 @@ def generate_routine(user_id: int, db: Session, date: datetime = None) -> Dict:
     Generate a daily routine combining fixed events (classes, work) and tasks.
     """
     if date is None:
-        date = datetime.now()
+        date = utc_now()
         
     base_date = date.replace(hour=0, minute=0, second=0, microsecond=0)
     day_of_week = base_date.weekday() # 0=Mon, 6=Sun
@@ -287,7 +288,7 @@ def auto_schedule_tasks(user_id: int, db: Session, date: datetime = None) -> Dic
 def get_analytics(user_id: int, db: Session, days: int = 30) -> Dict:
     """Get user analytics for the specified number of days"""
     try:
-        start_date = datetime.now() - timedelta(days=days)
+        start_date = utc_now() - timedelta(days=days)
         
         tasks = db.query(Task).filter(
             Task.user_id == user_id,
@@ -309,7 +310,7 @@ def get_analytics(user_id: int, db: Session, days: int = 30) -> Dict:
         
         tasks_by_day = {}
         for i in range(days):
-            day = (datetime.now() - timedelta(days=i)).strftime('%Y-%m-%d')
+            day = (utc_now() - timedelta(days=i)).strftime('%Y-%m-%d')
             tasks_by_day[day] = len([t for t in completed_tasks if t.completed_at and t.completed_at.strftime('%Y-%m-%d') == day])
         
         return {

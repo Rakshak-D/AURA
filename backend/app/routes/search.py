@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from ..database import get_chroma_collection, get_db
+from ..database import get_chroma_collection, get_db, get_development_user_id
 from ..models.sql_models import ChatHistory, Task
 
 router = APIRouter()
@@ -12,11 +12,12 @@ def search_all(q: str, db: Session = Depends(get_db)):  # noqa: B008 - FastAPI d
         return {"tasks": [], "knowledge": []}
     
     query = q.lower()
+    user_id = get_development_user_id(db)
     results = {"tasks": [], "knowledge": []}
     
     # 1. Search Tasks (SQL Fuzzy)
     tasks = db.query(Task).filter(
-        Task.user_id == 1,
+        Task.user_id == user_id,
         (Task.title.ilike(f'%{query}%') | Task.description.ilike(f'%{query}%'))
     ).all()
     
@@ -53,7 +54,7 @@ def search_all(q: str, db: Session = Depends(get_db)):  # noqa: B008 - FastAPI d
             
     # B. Chats (SQL Fallback/Supplement)
     chats = db.query(ChatHistory).filter(
-        ChatHistory.user_id == 1,
+        ChatHistory.user_id == user_id,
         ChatHistory.content.ilike(f'%{query}%')
     ).order_by(ChatHistory.timestamp.desc()).limit(5).all()
     

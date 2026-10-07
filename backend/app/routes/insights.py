@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
-from ..database import get_db
+from ..database import get_db, get_development_user_id, utc_now
 from ..services.schedule_service import get_analytics
 from ..models.sql_models import Task
 from datetime import datetime, timedelta
@@ -15,7 +15,8 @@ def get_focus_score(db: Session = Depends(get_db)):
     Focus Score = (Completed Tasks / Total Tasks) * 100 * (Consistency Factor)
     """
     try:
-        analytics = get_analytics(1, db, days=7)
+        user_id = get_development_user_id(db)
+        analytics = get_analytics(user_id, db, days=7)
         
         completion_rate = analytics.get("completion_rate", 0)
         total_completed = analytics.get("total_completed", 0)
@@ -23,7 +24,7 @@ def get_focus_score(db: Session = Depends(get_db)):
         
         # Calculate productivity trend (compare with previous week)
         # Get analytics for previous 7 days (days 8-14)
-        today = datetime.now()
+        today = utc_now()
         week_start = today - timedelta(days=7)
         week_end = today
         previous_week_start = today - timedelta(days=14)
@@ -32,7 +33,7 @@ def get_focus_score(db: Session = Depends(get_db)):
         # Count completed tasks in current week
         current_week_completed = db.query(Task).filter(
             and_(
-                Task.user_id == 1,
+                Task.user_id == user_id,
                 Task.completed == True,
                 Task.completed_at >= week_start,
                 Task.completed_at < week_end
@@ -42,7 +43,7 @@ def get_focus_score(db: Session = Depends(get_db)):
         # Count completed tasks in previous week
         previous_week_completed = db.query(Task).filter(
             and_(
-                Task.user_id == 1,
+                Task.user_id == user_id,
                 Task.completed == True,
                 Task.completed_at >= previous_week_start,
                 Task.completed_at < previous_week_end
@@ -91,18 +92,7 @@ def get_focus_score(db: Session = Depends(get_db)):
         import logging
         logger = logging.getLogger(__name__)
         logger.error(f"Error calculating focus score: {str(e)}", exc_info=True)
-        # Return safe defaults
-        return {
-            "score": 0,
-            "label": "No Data",
-            "trend": None,
-            "trend_text": "Start completing tasks to see your score",
-            "details": {
-                "completion_rate": 0,
-                "total_completed": 0,
-                "total_created": 0
-            }
-        }
+        raise HTTPException(status_code=500, detail="Failed to calculate focus score") from e
 
 @router.get("/trends")
 def get_trends(db: Session = Depends(get_db)):
@@ -110,7 +100,7 @@ def get_trends(db: Session = Depends(get_db)):
     Get data for line/pie charts.
     """
     try:
-        analytics = get_analytics(1, db, days=7)
+        analytics = get_analytics(get_development_user_id(db), db, days=7)
         
         # Prepare data for Chart.js
         tasks_by_day = analytics.get("tasks_by_day", {})
@@ -122,7 +112,7 @@ def get_trends(db: Session = Depends(get_db)):
         # Ensure we have data - provide defaults if empty
         if not dates:
             # Generate last 7 days with zero values
-            today = datetime.now()
+            today = utc_now()
             dates = [(today - timedelta(days=i)).strftime('%Y-%m-%d') for i in range(6, -1, -1)]
             values = [0] * 7
         
@@ -150,24 +140,4 @@ def get_trends(db: Session = Depends(get_db)):
         import logging
         logger = logging.getLogger(__name__)
         logger.error(f"Error generating trends: {str(e)}", exc_info=True)
-        # Return safe defaults
-        return {
-            "activity": {
-                "labels": [],
-                "datasets": [{
-                    "label": "Completed Tasks",
-                    "data": [],
-                    "borderColor": "#3B82F6",
-                    "backgroundColor": "rgba(59, 130, 246, 0.1)",
-                    "tension": 0.4,
-                    "fill": True
-                }]
-            },
-            "distribution": {
-                "labels": ["urgent", "high", "medium", "low"],
-                "datasets": [{
-                    "data": [0, 0, 0, 0],
-                    "backgroundColor": ["#EF4444", "#F59E0B", "#3B82F6", "#6B7280"]
-                }]
-            }
-        }
+        raise HTTPException(status_code=500, detail="Failed to generate trends") from e

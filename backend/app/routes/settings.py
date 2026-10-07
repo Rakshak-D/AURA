@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from ..database import get_db
+from ..database import get_db, get_development_user
 from ..models.sql_models import User
 from ..models.pydantic_models import SettingsUpdate
 
@@ -14,7 +14,7 @@ def get_settings(db: Session = Depends(get_db)):
     Fetch the current user's settings merged with safe defaults.
     """
     try:
-        user = db.query(User).filter_by(id=1).first()
+        user = get_development_user(db)
 
         # Return defaults if user doesn't exist or settings are empty
         if not user:
@@ -64,7 +64,7 @@ def update_settings(settings_update: SettingsUpdate, db: Session = Depends(get_d
     Persist user settings including AI knobs such as temperature.
     """
     try:
-        user = db.query(User).filter_by(id=1).first()
+        user = get_development_user(db)
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
 

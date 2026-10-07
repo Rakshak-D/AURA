@@ -2,7 +2,7 @@ import json
 import logging
 from datetime import datetime
 
-from ..database import SessionLocal
+from ..database import SessionLocal, utc_now
 from ..models.sql_models import Task
 from ..websocket_manager import manager
 
@@ -59,7 +59,7 @@ def check_reminders():
     """
     db = SessionLocal()
     try:
-        now = datetime.now()  # noqa: DTZ005 - temporal semantics are Phase 2 scope
+        now = utc_now()
         # Find tasks due within the last minute that haven't been completed
         # This is a bit simplistic, but serves as a backup
         _tasks = db.query(Task).filter(

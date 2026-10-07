@@ -1,5 +1,6 @@
 import json
 from datetime import datetime
+from ..database import utc_now
 from typing import Dict
 from ..models.llm_models import llm
 import re
@@ -22,7 +23,7 @@ def detect_intent(message: str) -> Dict:
     Returns a dictionary with 'intent', 'entities', and 'sentiment'.
     """
     max_retries = 2
-    current_time = datetime.now().strftime("%Y-%m-%d %H:%M")
+    current_time = utc_now().strftime("%Y-%m-%d %H:%M")
     
     base_prompt = f"""<|system|>
 You are an intent classification engine. Output ONLY valid JSON.
