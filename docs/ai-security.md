@@ -59,3 +59,6 @@ assistant can still produce free-form conversational text. This phase does not
 redesign RAG, scheduling, reminder delivery, or authentication. Future work
 should add stronger confirmation state and integration tests around every
 natural-language action path before enabling broad automation.
+
+Browser delivery is a separate trust boundary: model and retrieved-document
+text is rendered as text by the frontend safe-DOM helper, never as raw HTML.

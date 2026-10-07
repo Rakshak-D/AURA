@@ -1,0 +1,121 @@
+import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy import create_engine, event
+from sqlalchemy.orm import sessionmaker
+
+from backend.app import database, main
+from backend.app.config import config
+from backend.app.models.sql_models import Base, Document
+
+
+@pytest.fixture
+def auth_client(tmp_path, monkeypatch):
+    engine = create_engine(
+        f"sqlite:///{tmp_path / 'web.db'}", connect_args={"check_same_thread": False}
+    )
+
+    @event.listens_for(engine, "connect")
+    def enable_foreign_keys(connection, _record):
+        connection.execute("PRAGMA foreign_keys=ON")
+
+    Base.metadata.create_all(engine)
+    factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+    monkeypatch.setattr(database, "SessionLocal", factory)
+    monkeypatch.setattr(main, "init_db", lambda: None)
+    monkeypatch.setattr("backend.app.routes.reminders.schedule_reminder", lambda *args: None)
+    monkeypatch.setattr(config, "auth_secret_key", "test-auth-secret-which-is-long-enough-123456")
+    from backend.app.utils.security import limiter
+
+    if hasattr(limiter, "_storage"):
+        limiter._storage.reset()
+    with TestClient(main.app) as client:
+        yield client, factory
+    engine.dispose()
+
+
+def test_security_headers_and_auth_cache_policy(auth_client):
+    client, _ = auth_client
+    response = client.get("/health")
+    assert response.headers["X-Content-Type-Options"] == "nosniff"
+    assert response.headers["X-Frame-Options"] == "DENY"
+    assert response.headers["Referrer-Policy"] == "strict-origin-when-cross-origin"
+    assert "frame-ancestors 'none'" in response.headers["Content-Security-Policy"]
+
+    auth_response = client.post(
+        "/api/auth/login",
+        json={"identifier": "missing@example.com", "password": "wrong password"},
+    )
+    assert auth_response.headers["Cache-Control"] == "no-store"
+    assert "wrong password" not in auth_response.text
+    assert "access_token" not in auth_response.text
+
+
+def test_cors_rejects_unconfigured_origin(auth_client):
+    client, _ = auth_client
+    response = client.options(
+        "/api/auth/login",
+        headers={
+            "Origin": "https://attacker.example",
+            "Access-Control-Request-Method": "POST",
+        },
+    )
+    assert response.headers.get("access-control-allow-origin") is None
+
+
+def test_browser_websocket_ticket_is_single_use(auth_client):
+    client, _ = auth_client
+    response = client.post("/api/auth/register", json={"identifier": "ws@example.com", "password": "correct horse battery"})
+    assert response.status_code == 201
+    login = client.post("/api/auth/login", json={"identifier": "ws@example.com", "password": "correct horse battery"})
+    token = login.json()["access_token"]
+    ticket_response = client.post("/api/auth/ws-ticket", headers={"Authorization": f"Bearer {token}"})
+    assert ticket_response.status_code == 200
+    ticket = ticket_response.json()["ticket"]
+    with client.websocket_connect(f"/ws/notifications?ticket={ticket}"):
+        pass
+    with pytest.raises(Exception):
+        with client.websocket_connect(f"/ws/notifications?ticket={ticket}"):
+            pass
+
+
+def test_upload_rejects_path_traversal_oversize_and_unsupported_type(auth_client, monkeypatch):
+    client, factory = auth_client
+    client.post("/api/auth/register", json={"identifier": "upload@example.com", "password": "correct horse battery"})
+    login = client.post("/api/auth/login", json={"identifier": "upload@example.com", "password": "correct horse battery"})
+    headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+
+    traversal = client.post(
+        "/api/upload",
+        headers=headers,
+        files={"file": ("../escape.txt", b"safe", "text/plain")},
+    )
+    assert traversal.status_code == 400
+
+    unsupported = client.post(
+        "/api/upload",
+        headers=headers,
+        files={"file": ("run.exe", b"MZ", "application/octet-stream")},
+    )
+    assert unsupported.status_code == 415
+
+    monkeypatch.setattr(config, "max_upload_size", 3)
+    oversized = client.post(
+        "/api/upload",
+        headers=headers,
+        files={"file": ("large.txt", b"too large", "text/plain")},
+    )
+    assert oversized.status_code == 413
+    with factory() as db:
+        assert db.query(Document).count() == 0
+
+
+def test_frontend_uses_text_only_model_rendering():
+    root = main.config.frontend_dir
+    chat = (root / "js" / "chat.js").read_text(encoding="utf-8")
+    search = (root / "js" / "search.js").read_text(encoding="utf-8")
+    upload = (root / "js" / "upload.js").read_text(encoding="utf-8")
+    assert "marked.parse" not in chat
+    assert "${content}" not in chat
+    assert "${item.title}" not in search
+    assert "${file.filename}" not in upload
+    assert "safe-dom.js" in (root / "index.html").read_text(encoding="utf-8")

@@ -72,29 +72,8 @@ async function sendMessage() {
 }
 
 function renderMarkdown(text) {
-    // Use marked.js if available for markdown support, otherwise fallback to text
-    if (typeof marked !== 'undefined') {
-        try {
-            // Configure marked for safe rendering
-            marked.setOptions({
-                breaks: true,
-                gfm: true,
-                sanitize: false
-            });
-            return marked.parse(text);
-        } catch (error) {
-            console.error('Markdown parsing error:', error);
-            // Fallback to plain text with line breaks
-            return text.replace(/\n/g, '<br>');
-        }
-    }
-
-    // Fallback: convert newlines to <br> and escape HTML
-    return text
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/\n/g, '<br>');
+    // Model output is untrusted. Plain text is the deliberate safe format.
+    return text == null ? '' : String(text);
 }
 
 function addMessage(text, sender, isError = false) {
@@ -107,13 +86,9 @@ function addMessage(text, sender, isError = false) {
     const div = document.createElement('div');
     div.className = `message ${sender} ${isError ? 'error' : ''} message-enter`;
 
-    const content = renderMarkdown(text);
-
-    div.innerHTML = `
-        <div class="message-content markdown-body">
-            ${content}
-        </div>
-    `;
+    const contentEl = AuraSafe.element('div', 'message-content markdown-body');
+    AuraSafe.text(contentEl, renderMarkdown(text));
+    div.appendChild(contentEl);
 
     history.appendChild(div);
 
@@ -128,42 +103,41 @@ function renderWidget(widgetData) {
     const div = document.createElement('div');
     div.className = 'message assistant';
 
-    let content = '';
-
     if (widgetData.widget_type === 'task_list') {
         const tasks = widgetData.data.tasks || [];
-        const tasksHtml = tasks.map(t => `
-            <div class="task-card-widget">
-                <input type="checkbox" ${t.completed ? 'checked' : ''} onclick="toggleComplete(${t.id}, !this.checked)">
-                <div style="flex:1">
-                    <div class="${t.completed ? 'completed' : ''}" style="font-weight:500">${t.title}</div>
-                    <div style="font-size:0.8em; color:var(--text-secondary)">
-                        ${t.due_date ? new Date(t.due_date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
-                        ${t.category ? `• ${t.category}` : ''}
-                    </div>
-                </div>
-            </div>
-        `).join('');
-
-        content = `
-            <div class="message-content">
-                <p style="margin-bottom:10px">${widgetData.data.title || 'Here are your tasks:'}</p>
-                ${tasksHtml}
-            </div>
-        `;
+        const content = AuraSafe.element('div', 'message-content');
+        content.appendChild(AuraSafe.element('p', null, widgetData.data.title || 'Here are your tasks:'));
+        tasks.forEach((task) => {
+            const card = AuraSafe.element('div', 'task-card-widget');
+            const checkbox = AuraSafe.element('input');
+            checkbox.type = 'checkbox';
+            checkbox.checked = Boolean(task.completed);
+            checkbox.addEventListener('change', () => toggleComplete(task.id, !checkbox.checked));
+            const body = AuraSafe.element('div');
+            body.style.flex = '1';
+            const title = AuraSafe.element('div', task.completed ? 'completed' : '');
+            title.style.fontWeight = '500';
+            AuraSafe.text(title, task.title);
+            const meta = AuraSafe.element('div');
+            meta.style.cssText = 'font-size:0.8em;color:var(--text-secondary)';
+            const time = task.due_date ? new Date(task.due_date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+            AuraSafe.text(meta, `${time}${task.category ? ` • ${task.category}` : ''}`);
+            body.append(title, meta);
+            card.append(checkbox, body);
+            content.appendChild(card);
+        });
+        div.appendChild(content);
     } else if (widgetData.widget_type === 'calendar_snippet') {
-        // Placeholder for calendar snippet
-        content = `
-            <div class="message-content">
-                <p>📅 Calendar View</p>
-                <div style="background:rgba(0,0,0,0.2); padding:10px; border-radius:8px;">
-                    ${widgetData.data.events.map(e => `<div>${e.time} - ${e.title}</div>`).join('')}
-                </div>
-            </div>
-        `;
+        const content = AuraSafe.element('div', 'message-content');
+        content.appendChild(AuraSafe.element('p', null, '📅 Calendar View'));
+        const events = AuraSafe.element('div');
+        events.style.cssText = 'background:rgba(0,0,0,0.2);padding:10px;border-radius:8px';
+        (widgetData.data.events || []).forEach((event) => {
+            events.appendChild(AuraSafe.element('div', null, `${event.time || ''} - ${event.title || ''}`));
+        });
+        content.appendChild(events);
+        div.appendChild(content);
     }
-
-    div.innerHTML = content;
     history.appendChild(div);
     scrollToBottom();
 }
@@ -174,15 +148,15 @@ function addLoadingIndicator() {
     const div = document.createElement('div');
     div.id = id;
     div.className = 'message assistant loading';
-    div.innerHTML = `
-        <div class="message-content">
-            <div class="typing-indicator">
-                <div class="typing-dot"></div>
-                <div class="typing-dot"></div>
-                <div class="typing-dot"></div>
-            </div>
-        </div>
-    `;
+    const content = AuraSafe.element('div', 'message-content');
+    const indicator = AuraSafe.element('div', 'typing-indicator');
+    indicator.append(
+        AuraSafe.element('div', 'typing-dot'),
+        AuraSafe.element('div', 'typing-dot'),
+        AuraSafe.element('div', 'typing-dot')
+    );
+    content.appendChild(indicator);
+    div.appendChild(content);
     history.appendChild(div);
     scrollToBottom();
     return id;
@@ -213,13 +187,13 @@ function simulateStreaming(fullText, sender) {
     const interval = setInterval(() => {
         if (index >= tokens.length) {
             clearInterval(interval);
-            contentEl.innerHTML = renderMarkdown(fullText);
+            AuraSafe.text(contentEl, renderMarkdown(fullText));
             scrollToBottom();
             return;
         }
 
         const partial = tokens.slice(0, index + 1).join('');
-        contentEl.innerHTML = renderMarkdown(partial);
+        AuraSafe.text(contentEl, renderMarkdown(partial));
         index++;
         scrollToBottom();
     }, 25);

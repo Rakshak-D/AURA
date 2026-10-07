@@ -108,7 +108,7 @@ async function loadUploadedFiles() {
     const filesList = document.getElementById('file-list');
     if (!filesList) return;
 
-    filesList.innerHTML = '<div class="loading">Loading...</div>';
+    AuraSafe.clear(filesList).appendChild(AuraSafe.element('div', 'loading', 'Loading...'));
 
     try {
         const response = await apiFetch(`${API_URL}/upload/files`);
@@ -125,9 +125,11 @@ async function loadUploadedFiles() {
                 ? data.data.files
                 : [];
 
-        filesList.innerHTML = '';
+        AuraSafe.clear(filesList);
         if (!files || files.length === 0) {
-            filesList.innerHTML = '<div style="text-align: center; padding: 2rem; color: var(--text-muted);">No documents yet. Upload some files to build your knowledge base!</div>';
+            const empty = AuraSafe.element('div', null, 'No documents yet. Upload some files to build your knowledge base!');
+            empty.style.cssText = 'text-align:center;padding:2rem;color:var(--text-muted)';
+            filesList.appendChild(empty);
             return;
         }
 
@@ -135,13 +137,16 @@ async function loadUploadedFiles() {
             const div = document.createElement('div');
             div.className = 'file-item';
             div.style.cssText = 'padding: 1rem; margin-bottom: 0.5rem; background: var(--surface-color); border-radius: var(--radius-md); display: flex; align-items: center; gap: 0.75rem;';
-            div.innerHTML = `
-                <span style="font-size: 1.5rem;">📄</span>
-                <span style="flex: 1; color: var(--text-primary);">${file.filename || file.name || 'Unknown file'}</span>
-                <button class="icon-btn kb-delete-btn" title="Delete document" onclick="deleteDocument(${file.id})">
-                    <i data-lucide="trash-2"></i>
-                </button>
-            `;
+            const icon = AuraSafe.element('span', null, '📄');
+            icon.style.fontSize = '1.5rem';
+            const name = AuraSafe.element('span', null, file.filename || file.name || 'Unknown file');
+            name.style.cssText = 'flex:1;color:var(--text-primary)';
+            const deleteButton = AuraSafe.element('button', 'icon-btn kb-delete-btn');
+            deleteButton.type = 'button';
+            deleteButton.title = 'Delete document';
+            deleteButton.addEventListener('click', () => deleteDocument(file.id));
+            deleteButton.appendChild(AuraSafe.element('span', null, 'Delete'));
+            div.append(icon, name, deleteButton);
             filesList.appendChild(div);
         });
 
@@ -150,7 +155,9 @@ async function loadUploadedFiles() {
         }
     } catch (error) {
         console.error('Error loading files:', error);
-        filesList.innerHTML = '<div style="text-align: center; padding: 2rem; color: var(--danger);">Failed to load files</div>';
+        const errorState = AuraSafe.element('div', null, 'Failed to load files');
+        errorState.style.cssText = 'text-align:center;padding:2rem;color:var(--danger)';
+        AuraSafe.clear(filesList).appendChild(errorState);
     }
 }
 

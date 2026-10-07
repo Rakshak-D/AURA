@@ -22,11 +22,20 @@ Client `user_id` values are not authority. SQL records and Chroma chunks are
 scoped by that identity. Chroma metadata includes `user_id`, and vector reads
 and deletes include the namespace.
 
-The browser stores the short-lived token in `sessionStorage`, adds it in the
-central API layer, clears it on a 401, and provides sign-in/register/logout
-behavior. WebSockets authenticate with a bearer header or browser-compatible
-`token` query parameter and are registered under one user; notifications are
-not broadcast across users. `AUTH_SECRET_KEY` must be a unique random value of
-at least 32 characters in production. `ALLOWED_ORIGINS` is an explicit comma-
-separated list; wildcard origins with credentials are not supported. Login and
-registration use the existing SlowAPI limiter.
+The browser stores the short-lived token in `sessionStorage`, adds it only in
+the central API layer, clears it on a 401/logout, and provides
+sign-in/register/logout behavior. This limits persistence but does not protect
+against a same-origin XSS compromise; AURA therefore renders API and model
+content as text and applies a browser security policy.
+
+Browser WebSockets obtain `POST /api/auth/ws-ticket` with the bearer header.
+The returned ticket is one-use and expires after 30 seconds; it is the only
+credential placed in the browser WebSocket URL. Direct bearer headers remain
+supported for non-browser clients. The legacy `?token=` query form remains
+temporarily for compatibility and should not be used by browser code because
+URLs can appear in proxy or diagnostic logs.
+
+`AUTH_SECRET_KEY` must be a unique random value of at least 32 characters in
+production. `ALLOWED_ORIGINS` is an explicit comma-separated list; wildcard
+origins with credentials are not supported. Login, registration, and ticket
+issuance use the existing SlowAPI limiter.

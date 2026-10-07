@@ -1,6 +1,9 @@
 """Authentication primitives and the authenticated-user boundary."""
 
+import secrets
+import threading
 from datetime import datetime, timedelta, timezone
+from time import monotonic
 from typing import Annotated
 
 import jwt
@@ -15,6 +18,10 @@ from .models.sql_models import User
 
 password_hasher = PasswordHash.recommended()
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login", auto_error=False)
+
+_WS_TICKET_TTL_SECONDS = 30
+_ws_tickets: dict[str, tuple[int, float]] = {}
+_ws_ticket_lock = threading.Lock()
 
 
 def hash_password(password: str) -> str:
@@ -80,6 +87,26 @@ def get_current_user_id(user: User = Depends(get_current_user)) -> int:
     return user.id
 
 
+def create_websocket_ticket(user_id: int) -> str:
+    """Create a short-lived, single-use browser WebSocket ticket."""
+    ticket = secrets.token_urlsafe(32)
+    with _ws_ticket_lock:
+        now = monotonic()
+        for key, (_, expires_at) in list(_ws_tickets.items()):
+            if expires_at <= now:
+                _ws_tickets.pop(key, None)
+        _ws_tickets[ticket] = (user_id, now + _WS_TICKET_TTL_SECONDS)
+    return ticket
+
+
+def consume_websocket_ticket(ticket: str) -> int | None:
+    with _ws_ticket_lock:
+        entry = _ws_tickets.pop(ticket, None)
+    if entry is None or entry[1] <= monotonic():
+        return None
+    return entry[0]
+
+
 def authenticate_credentials(
     db: Session, identifier: str, password: str
 ) -> User | None:
@@ -96,19 +123,30 @@ def authenticate_credentials(
 
 async def authenticate_websocket(websocket: WebSocket, db: Session) -> User:
     header = websocket.headers.get("authorization", "")
-    token = (
-        header[7:].strip()
-        if header.lower().startswith("bearer ")
-        else websocket.query_params.get("token")
-    )
-    if not token:
+    user_id = None
+    if header.lower().startswith("bearer "):
+        token = header[7:].strip()
+        if token:
+            try:
+                user_id = _decode_access_token(token)
+            except HTTPException:
+                await websocket.close(code=1008)
+                raise
+    else:
+        ticket = websocket.query_params.get("ticket")
+        if ticket:
+            user_id = consume_websocket_ticket(ticket)
+        # Keep the old query-token path temporarily for non-browser clients.
+        # Browser clients must use the short-lived ticket endpoint.
+        elif websocket.query_params.get("token"):
+            try:
+                user_id = _decode_access_token(websocket.query_params["token"])
+            except HTTPException:
+                await websocket.close(code=1008)
+                raise
+    if user_id is None:
         await websocket.close(code=1008)
         raise _auth_error()
-    try:
-        user_id = _decode_access_token(token)
-    except HTTPException:
-        await websocket.close(code=1008)
-        raise
     user = db.query(User).filter(User.id == user_id).first()
     if user is None or not user.is_active:
         await websocket.close(code=1008)

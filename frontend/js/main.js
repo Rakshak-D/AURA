@@ -79,10 +79,31 @@ function ensureAuthenticated() {
     panel.id = 'aura-auth-panel';
     panel.hidden = Boolean(getAuthToken());
     panel.style.cssText = 'position:fixed;inset:0;background:rgba(10,15,30,.96);z-index:2000;display:grid;place-items:center;color:white';
-    panel.innerHTML = `<form style="display:grid;gap:12px;width:min(360px,90vw);padding:24px;background:#172033;border-radius:12px" onsubmit="event.preventDefault(); authenticate('login')">
-        <h2>Sign in to AURA</h2><input id="aura-auth-identifier" required minlength="3" placeholder="Username or email">
-        <input id="aura-auth-password" required minlength="8" type="password" placeholder="Password">
-        <button type="submit">Sign in</button><button type="button" onclick="authenticate('register')">Create account</button></form>`;
+    const form = document.createElement('form');
+    form.style.cssText = 'display:grid;gap:12px;width:min(360px,90vw);padding:24px;background:#172033;border-radius:12px';
+    const title = AuraSafe.element('h2', null, 'Sign in to AURA');
+    const identifier = AuraSafe.element('input');
+    identifier.id = 'aura-auth-identifier';
+    identifier.required = true;
+    identifier.minLength = 3;
+    identifier.placeholder = 'Username or email';
+    const password = AuraSafe.element('input');
+    password.id = 'aura-auth-password';
+    password.required = true;
+    password.minLength = 8;
+    password.type = 'password';
+    password.placeholder = 'Password';
+    const loginButton = AuraSafe.element('button', null, 'Sign in');
+    loginButton.type = 'submit';
+    const registerButton = AuraSafe.element('button', null, 'Create account');
+    registerButton.type = 'button';
+    form.append(title, identifier, password, loginButton, registerButton);
+    form.addEventListener('submit', (event) => {
+        event.preventDefault();
+        authenticate('login');
+    });
+    registerButton.addEventListener('click', () => authenticate('register'));
+    panel.appendChild(form);
     document.body.appendChild(panel);
 }
 

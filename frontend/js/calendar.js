@@ -126,13 +126,16 @@ async function renderCalendar() {
     } catch (error) {
         console.error('Error fetching calendar:', error);
         const errorMsg = error.message || 'Failed to load schedule';
-        container.innerHTML = `
-            <div class="error-state" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; color: var(--text-muted); padding: 2rem;">
-                <i data-lucide="alert-circle" style="width: 48px; height: 48px; margin-bottom: 1rem; opacity: 0.5;"></i>
-                <p style="margin-bottom: 0.5rem;">${errorMsg}</p>
-                <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1rem;">Check browser console (F12) for details</p>
-                <button onclick="window.renderCalendar()" style="margin-top: 1rem; padding: 0.5rem 1rem; background: var(--primary-color); color: white; border: none; border-radius: 4px; cursor: pointer;">Retry</button>
-            </div>`;
+        const errorState = AuraSafe.element('div', 'error-state');
+        errorState.style.cssText = 'position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;color:var(--text-muted);padding:2rem';
+        errorState.appendChild(AuraSafe.element('p', null, errorMsg));
+        errorState.appendChild(AuraSafe.element('p', null, 'Check browser console (F12) for details'));
+        const retry = AuraSafe.element('button', null, 'Retry');
+        retry.type = 'button';
+        retry.style.cssText = 'margin-top:1rem;padding:0.5rem 1rem;background:var(--primary-color);color:white;border:none;border-radius:4px;cursor:pointer';
+        retry.addEventListener('click', () => window.renderCalendar());
+        errorState.appendChild(retry);
+        AuraSafe.clear(container).appendChild(errorState);
 
         // Re-initialize icons for error state
         if (typeof lucide !== 'undefined') {

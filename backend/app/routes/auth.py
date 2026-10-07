@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from ..auth import (
     authenticate_credentials,
     create_access_token,
+    create_websocket_ticket,
     get_current_user,
     hash_password,
 )
@@ -105,6 +106,13 @@ def login(request: Request, credentials: Credentials, db: Session = Depends(get_
 @router.get("/me", response_model=UserResponse)
 def me(user: User = Depends(get_current_user)):
     return _safe_user(user)
+
+
+@router.post("/ws-ticket")
+@limiter.limit("30/minute")
+def websocket_ticket(request: Request, user: User = Depends(get_current_user)):
+    """Issue a one-use browser WebSocket ticket instead of putting a bearer token in a URL."""
+    return {"ticket": create_websocket_ticket(user.id), "expires_in": 30}
 
 
 @router.post("/bootstrap", response_model=UserResponse)

@@ -106,66 +106,60 @@ function createTaskCard(task) {
     const description = task.description ? (task.description.length > 100 ? task.description.substring(0, 97) + '...' : task.description) : '';
 
     // Date Formatting with color coding
-    let dateHtml = '';
+    let dateClass = '';
     if (task.due_date) {
         const date = new Date(task.due_date);
         const now = new Date();
         const isOverdue = date < now && !task.completed;
         const isFuture = date > now;
-        const dateStr = date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-        const dateClass = isOverdue ? 'overdue' : (isFuture ? 'future' : 'today');
-        dateHtml = `<span class="task-date ${dateClass}">
-                        <i data-lucide="calendar" style="width: 14px; height: 14px;"></i> ${dateStr}
-                    </span>`;
+        dateClass = isOverdue ? 'overdue' : (isFuture ? 'future' : 'today');
     }
 
     // Priority badge with proper capitalization
     const priorityLabel = task.priority ? task.priority.charAt(0).toUpperCase() + task.priority.slice(1) : 'Medium';
 
-    // Complete button - show different icon/text based on status
-    const completeIcon = task.completed ? 'rotate-ccw' : 'check-circle';
-    const completeTitle = task.completed ? 'Mark as Incomplete' : 'Mark as Complete';
-    const completeClass = task.completed ? 'complete active' : 'complete';
-
-    div.innerHTML = `
-        <div class="task-header">
-            <div class="task-title-wrapper">
-                <button class="task-checkbox ${task.completed ? 'checked' : ''}" onclick="toggleComplete(${task.id}, ${!task.completed})" title="${completeTitle}">
-                    <i data-lucide="${task.completed ? 'check-circle-2' : 'circle'}" style="width: 20px; height: 20px;"></i>
-                </button>
-                <span class="task-title ${task.completed ? 'completed' : ''}">${escapeHtml(title)}</span>
-            </div>
-            <div class="task-actions">
-                <button class="action-btn" onclick="openEditModal(${task.id})" title="Edit">
-                    <i data-lucide="edit-2" style="width: 14px; height: 14px;"></i>
-                </button>
-                <button class="action-btn delete" onclick="deleteTask(${task.id})" title="Delete">
-                    <i data-lucide="trash-2" style="width: 14px; height: 14px;"></i>
-                </button>
-            </div>
-        </div>
-        
-        <div class="task-body">
-            <p class="${task.completed ? 'completed' : ''}">${escapeHtml(description)}</p>
-        </div>
-        
-        <div class="task-footer">
-            <div class="task-footer-left">
-                ${dateHtml}
-                <span class="task-badge priority-${task.priority || 'medium'}">${priorityLabel}</span>
-            </div>
-        </div>
-    `;
+    const header = AuraSafe.element('div', 'task-header');
+    const titleWrapper = AuraSafe.element('div', 'task-title-wrapper');
+    const checkbox = AuraSafe.element('button', `task-checkbox ${task.completed ? 'checked' : ''}`);
+    checkbox.type = 'button';
+    checkbox.title = task.completed ? 'Mark as Incomplete' : 'Mark as Complete';
+    checkbox.addEventListener('click', () => toggleComplete(task.id, !task.completed));
+    const icon = AuraSafe.element('i');
+    icon.dataset.lucide = task.completed ? 'check-circle-2' : 'circle';
+    icon.style.cssText = 'width:20px;height:20px';
+    checkbox.appendChild(icon);
+    const titleEl = AuraSafe.element('span', `task-title ${task.completed ? 'completed' : ''}`, title);
+    titleWrapper.append(checkbox, titleEl);
+    const actions = AuraSafe.element('div', 'task-actions');
+    const edit = AuraSafe.element('button', 'action-btn');
+    edit.type = 'button';
+    edit.title = 'Edit';
+    edit.addEventListener('click', () => openEditModal(task.id));
+    const editIcon = AuraSafe.element('i');
+    editIcon.dataset.lucide = 'edit-2';
+    edit.appendChild(editIcon);
+    const remove = AuraSafe.element('button', 'action-btn delete');
+    remove.type = 'button';
+    remove.title = 'Delete';
+    remove.addEventListener('click', () => deleteTask(task.id));
+    const removeIcon = AuraSafe.element('i');
+    removeIcon.dataset.lucide = 'trash-2';
+    remove.appendChild(removeIcon);
+    actions.append(edit, remove);
+    header.append(titleWrapper, actions);
+    const body = AuraSafe.element('div', 'task-body');
+    body.appendChild(AuraSafe.element('p', task.completed ? 'completed' : '', description));
+    const footer = AuraSafe.element('div', 'task-footer');
+    const footerLeft = AuraSafe.element('div', 'task-footer-left');
+    if (task.due_date) {
+        const dateEl = AuraSafe.element('span', `task-date ${dateClass}`, new Date(task.due_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }));
+        footerLeft.appendChild(dateEl);
+    }
+    footerLeft.appendChild(AuraSafe.element('span', `task-badge priority-${['low', 'medium', 'high', 'urgent'].includes(task.priority) ? task.priority : 'medium'}`, priorityLabel));
+    footer.appendChild(footerLeft);
+    div.append(header, body, footer);
 
     return div;
-}
-
-// Helper function to escape HTML
-function escapeHtml(text) {
-    if (!text) return '';
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
 }
 
 // --- Modal Functions ---

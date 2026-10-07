@@ -13,30 +13,32 @@ async function performGlobalSearch(query) {
     }
 
     modal.style.display = 'flex';
-    resultsContainer.innerHTML = '<div class="loading">Searching...</div>';
+    AuraSafe.clear(resultsContainer).appendChild(AuraSafe.element('div', 'loading', 'Searching...'));
 
     try {
         const response = await apiFetch(`${API_URL}/search?q=${encodeURIComponent(query)}`);
         const data = await response.json();
 
-        if (data.results && data.results.length > 0) {
-            resultsContainer.innerHTML = data.results.map(item => `
-                <div class="search-result-item" onclick="handleResultClick('${item.type}', '${item.id}')">
-                    <div class="result-icon">${getResultIcon(item.type)}</div>
-                    <div class="result-content">
-                        <div class="result-title">${item.title}</div>
-                        <div class="result-snippet">${item.snippet}</div>
-                        <div class="result-meta">${item.type} • ${item.date}</div>
-                    </div>
-                </div>
-            `).join('');
+        if (Array.isArray(data.results) && data.results.length > 0) {
+            AuraSafe.clear(resultsContainer);
+            data.results.forEach((item) => {
+                const result = AuraSafe.element('div', 'search-result-item');
+                result.addEventListener('click', () => handleResultClick(item.type, item.id));
+                result.appendChild(AuraSafe.element('div', 'result-icon', getResultIcon(item.type)));
+                const content = AuraSafe.element('div', 'result-content');
+                content.appendChild(AuraSafe.element('div', 'result-title', item.title));
+                content.appendChild(AuraSafe.element('div', 'result-snippet', item.snippet));
+                content.appendChild(AuraSafe.element('div', 'result-meta', `${item.type || ''} • ${item.date || ''}`));
+                result.appendChild(content);
+                resultsContainer.appendChild(result);
+            });
         } else {
-            resultsContainer.innerHTML = '<div class="no-results">No results found</div>';
+            AuraSafe.clear(resultsContainer).appendChild(AuraSafe.element('div', 'no-results', 'No results found'));
         }
 
     } catch (error) {
         console.error('Search error:', error);
-        resultsContainer.innerHTML = '<div class="error">Search failed</div>';
+        AuraSafe.clear(resultsContainer).appendChild(AuraSafe.element('div', 'error', 'Search failed'));
     }
 }
 
