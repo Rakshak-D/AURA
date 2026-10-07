@@ -1,14 +1,17 @@
 from datetime import datetime, timedelta, timezone
 
 import pytest
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, event, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
 
 from backend.app.database import (
+    REQUIRED_SCHEMA_VERSION,
     Base,
     UTCDateTime,
+    _apply_schema_migrations,
     get_development_user_id,
+    schema_status,
     session_scope,
     utc_now,
 )
@@ -114,6 +117,108 @@ def test_task_completion_and_recurrence_invariants(db_session):
     with pytest.raises(IntegrityError):
         db_session.commit()
     db_session.rollback()
+
+
+@pytest.mark.parametrize(
+    "completed, completed_at",
+    [(False, utc_now()), (True, None)],
+)
+def test_both_invalid_task_completion_states_are_rejected(db_session, completed, completed_at):
+    db_session.add(
+        Task(
+            title="invalid completion",
+            user_id=1,
+            completed=completed,
+            completed_at=completed_at,
+        )
+    )
+    with pytest.raises(IntegrityError):
+        db_session.commit()
+    db_session.rollback()
+
+
+def test_composite_ownership_foreign_keys_reject_cross_user_links(db_session):
+    user_a, user_b = db_session.query(User).order_by(User.id).all()
+    parent = Task(title="A parent", user_id=user_a.id)
+    other = Task(title="B task", user_id=user_b.id)
+    db_session.add_all([parent, other])
+    db_session.commit()
+
+    db_session.add(Reminder(user_id=user_b.id, task_id=parent.id, reminder_time=utc_now()))
+    with pytest.raises(IntegrityError):
+        db_session.commit()
+    db_session.rollback()
+
+    db_session.add(Task(title="B child", user_id=user_b.id, parent_task_id=parent.id))
+    with pytest.raises(IntegrityError):
+        db_session.commit()
+    db_session.rollback()
+
+
+def test_same_user_relationships_and_authoritative_reminder_status(db_session):
+    user = db_session.query(User).first()
+    parent = Task(title="parent", user_id=user.id)
+    db_session.add(parent)
+    db_session.flush()
+    child = Task(title="child", user_id=user.id, parent_task_id=parent.id)
+    reminder = Reminder(user_id=user.id, task_id=parent.id, reminder_time=utc_now())
+    db_session.add_all([child, reminder])
+    db_session.commit()
+
+    assert child.parent_task_id == parent.id
+    assert reminder.status == "pending"
+    reminder.status = "sent"
+    db_session.commit()
+    assert reminder.status == "sent"
+    assert "sent" not in {column["name"] for column in __import__("sqlalchemy").inspect(db_session.get_bind()).get_columns("reminders")}
+
+
+def _create_legacy_database(engine):
+    with engine.begin() as connection:
+        connection.exec_driver_sql("PRAGMA foreign_keys=OFF")
+        connection.exec_driver_sql("CREATE TABLE users (id INTEGER PRIMARY KEY, name VARCHAR(100), preferences TEXT, settings JSON, created_at DATETIME)")
+        connection.exec_driver_sql("CREATE TABLE tasks (id INTEGER PRIMARY KEY, title VARCHAR(200), description TEXT, due_date DATETIME, completed BOOLEAN, priority VARCHAR(20), category VARCHAR(50), duration_minutes INTEGER, is_flexible BOOLEAN, conflict_flag BOOLEAN, tags TEXT, recurring VARCHAR(50), recurring_end_date DATETIME, parent_task_id INTEGER, user_id INTEGER, created_at DATETIME, updated_at DATETIME, completed_at DATETIME, FOREIGN KEY(parent_task_id) REFERENCES tasks(id), FOREIGN KEY(user_id) REFERENCES users(id))")
+        connection.exec_driver_sql("CREATE TABLE reminders (id INTEGER PRIMARY KEY, task_id INTEGER, user_id INTEGER, reminder_time DATETIME, status VARCHAR(20), sent BOOLEAN, created_at DATETIME, FOREIGN KEY(task_id) REFERENCES tasks(id), FOREIGN KEY(user_id) REFERENCES users(id))")
+        connection.exec_driver_sql("CREATE TABLE documents (id INTEGER PRIMARY KEY, user_id INTEGER, filename VARCHAR(200), content TEXT, file_type VARCHAR(50), uploaded_at DATETIME, FOREIGN KEY(user_id) REFERENCES users(id))")
+        connection.exec_driver_sql("CREATE TABLE chat_history (id INTEGER PRIMARY KEY, user_id INTEGER, role VARCHAR(20), content TEXT, intent VARCHAR(50), meta_data JSON, timestamp DATETIME)")
+        connection.exec_driver_sql("CREATE TABLE routine_events (id INTEGER PRIMARY KEY, title VARCHAR, event_type VARCHAR, start_time VARCHAR, duration_minutes INTEGER, days_of_week VARCHAR, user_id INTEGER)")
+        connection.exec_driver_sql("CREATE TABLE schema_version (version INTEGER NOT NULL)")
+        connection.exec_driver_sql("INSERT INTO schema_version(version) VALUES (1)")
+        connection.exec_driver_sql("INSERT INTO users VALUES (1,'A','{}','{}','2026-01-01 00:00:00'), (2,'B','{}','{}','2026-01-01 00:00:00')")
+        connection.exec_driver_sql("INSERT INTO tasks VALUES (10,'parent',NULL,NULL,0,'medium','Personal',30,0,0,'[]',NULL,NULL,NULL,1,'2026-01-01','2026-01-01',NULL), (11,'cross child',NULL,NULL,0,'medium','Personal',30,0,0,'[]',NULL,NULL,10,2,'2026-01-01','2026-01-01',NULL), (12,'completed',NULL,NULL,1,'medium','Personal',30,0,0,'[]',NULL,NULL,NULL,1,'2026-01-01','2026-01-01',NULL)")
+        connection.exec_driver_sql("INSERT INTO reminders VALUES (20,10,2,'2026-01-02 00:00:00','pending',0,'2026-01-01 00:00:00')")
+        connection.exec_driver_sql("INSERT INTO documents VALUES (30,2,'notes.txt','data','text/plain','2026-01-01 00:00:00')")
+
+
+def test_legacy_migration_preserves_data_enforces_constraints_and_is_idempotent(tmp_path):
+    engine = create_engine(f"sqlite:///{tmp_path / 'legacy.db'}")
+    _create_legacy_database(engine)
+    _apply_schema_migrations(engine)
+
+    with engine.connect() as connection:
+        assert connection.execute(text("SELECT version FROM schema_version")).scalar() == REQUIRED_SCHEMA_VERSION
+        assert connection.execute(text("SELECT COUNT(*) FROM tasks")).scalar() == 3
+        assert connection.execute(text("SELECT COUNT(*) FROM reminders")).scalar() == 1
+        assert connection.execute(text("SELECT user_id FROM reminders WHERE id=20")).scalar() == 1
+        assert connection.execute(text("SELECT parent_task_id FROM tasks WHERE id=11")).scalar() is None
+        assert connection.execute(text("SELECT completed_at IS NOT NULL FROM tasks WHERE id=12")).scalar() == 1
+        assert "sent" not in {column["name"] for column in __import__("sqlalchemy").inspect(engine).get_columns("reminders")}
+
+    assert schema_status(engine)["ready"] is True
+    _apply_schema_migrations(engine)
+    assert schema_status(engine)["ready"] is True
+    engine.dispose()
+
+
+def test_schema_readiness_rejects_incomplete_schema(tmp_path):
+    engine = create_engine(f"sqlite:///{tmp_path / 'incomplete.db'}")
+    Base.metadata.create_all(engine)
+    assert schema_status(engine)["ready"] is False
+    with engine.begin() as connection:
+        connection.exec_driver_sql("CREATE TABLE schema_version (version INTEGER NOT NULL)")
+        connection.exec_driver_sql("INSERT INTO schema_version VALUES (1)")
+    assert schema_status(engine)["ready"] is False
+    engine.dispose()
 
 
 def test_routines_reminders_documents_and_cascades(db_session):

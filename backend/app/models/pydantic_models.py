@@ -58,9 +58,10 @@ class ReminderCreate(BaseModel):
 
 class ReminderResponse(BaseModel):
     id: int
-    task_id: int
+    task_id: int | None
     reminder_time: datetime
-    sent: bool
+    status: str
+    timezone: str
     
     class Config:
         from_attributes = True

@@ -14,6 +14,10 @@ it is not a global identity. Document indexing is represented in SQL with
 `pending`, `indexed`, or `failed` and an optional non-sensitive failure marker.
 SQLite and Chroma are separate systems and are not part of one transaction.
 
+The required database schema version is `2`. Readiness validates the actual
+SQLite schema and does not report the database as ready when this version or
+its required constraints are missing.
+
 ## Ownership model
 
 Authentication is intentionally not implemented yet. Until Phase 3, routes use
@@ -46,20 +50,29 @@ document is committed as `pending`, and a separate state update records
 ## Constraints and indexes
 
 Fresh databases enforce positive task/routine durations, supported task
-priorities and recurrence values, coherent task completion timestamps,
-supported reminder/indexing states, and foreign-key ownership. Indexes cover
+priorities and recurrence values, and the exact task completion invariant:
+incomplete tasks have no completion timestamp and completed tasks have one.
+Composite foreign keys ensure a task parent and its child share an owner, and
+that a reminder's task and user match. Indexes cover
 common ownership plus due/completion, reminder trigger, document ownership,
 and chat-history chronology queries.
+
+Reminder `status` is the only authoritative delivery state. It is one of
+`pending`, `sent`, `cancelled`, or `failed`; the former mutable `sent` boolean
+is removed by the migration and is not used as a second source of truth.
 
 ## Initialization and migration
 
 `Base.metadata.create_all()` creates missing tables for a fresh development
-database. It is not treated as a schema migration. A small additive migration
-step maintains `schema_version` and adds the Phase 2 document/reminder columns
-and indexes to existing SQLite files without deleting data. Existing legacy
-tables cannot gain every new SQLite CHECK/FK constraint without a table rebuild;
-such destructive/rebuild migrations are deferred to an explicit future
-migration step rather than being performed silently at startup.
+database, but it is not treated as a schema migration. Existing legacy SQLite
+databases at version 1 are transactionally rebuilt for the affected task,
+reminder, and document tables. Primary keys and valid values are preserved;
+missing ownership is assigned to the first seeded user, cross-owner legacy
+links are detached or aligned to the referenced task owner, invalid task
+completion combinations are normalized deterministically, and legacy reminder
+`sent` values are converted into `status`. The schema version advances only
+after the rebuilt schema validates. Re-running the migration is idempotent;
+failure leaves the version unchanged and does not silently claim completion.
 
 ## Test databases
 

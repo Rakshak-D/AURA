@@ -4,10 +4,12 @@ from sqlalchemy import (
     CheckConstraint,
     Column,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     Integer,
     String,
     Text,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import relationship
 
@@ -43,7 +45,7 @@ class Task(Base):
     tags = Column(Text, nullable=False, default='[]')
     recurring = Column(String(50), nullable=True)
     recurring_end_date = Column(UTCDateTime, nullable=True)
-    parent_task_id = Column(Integer, ForeignKey('tasks.id', ondelete='CASCADE'), nullable=True)
+    parent_task_id = Column(Integer, nullable=True)
     user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True)
     created_at = Column(UTCDateTime, nullable=False, default=utc_now)
     updated_at = Column(UTCDateTime, nullable=False, default=utc_now, onupdate=utc_now)
@@ -52,32 +54,49 @@ class Task(Base):
     __table_args__ = (
         CheckConstraint("duration_minutes > 0", name="ck_tasks_duration_positive"),
         CheckConstraint("priority IN ('low', 'medium', 'high', 'urgent')", name="ck_tasks_priority"),
-        CheckConstraint("(completed = 0 AND completed_at IS NULL) OR completed = 1", name="ck_tasks_completion_time"),
+        CheckConstraint(
+            "(completed = 0 AND completed_at IS NULL) OR (completed = 1 AND completed_at IS NOT NULL)",
+            name="ck_tasks_completion_time",
+        ),
         CheckConstraint("recurring IS NULL OR recurring IN ('daily', 'weekly', 'monthly')", name="ck_tasks_recurring"),
+        UniqueConstraint("id", "user_id", name="uq_tasks_id_user"),
+        ForeignKeyConstraint(
+            ["parent_task_id", "user_id"],
+            ["tasks.id", "tasks.user_id"],
+            ondelete="CASCADE",
+            name="fk_tasks_parent_same_user",
+        ),
         Index("ix_tasks_user_due", "user_id", "due_date"),
         Index("ix_tasks_user_completed", "user_id", "completed"),
     )
     
     user = relationship("User", back_populates="tasks")
-    parent = relationship("Task", remote_side=[id], back_populates="subtasks")
-    subtasks = relationship("Task", back_populates="parent", cascade="all, delete-orphan")
+    parent = relationship("Task", remote_side=[id], back_populates="subtasks", overlaps="user,tasks")
+    subtasks = relationship("Task", back_populates="parent", cascade="all, delete-orphan", overlaps="user,tasks")
 
 class Reminder(Base):
     __tablename__ = 'reminders'
     id = Column(Integer, primary_key=True)
     user_id = Column(Integer, ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True)
-    task_id = Column(Integer, ForeignKey('tasks.id', ondelete='CASCADE'), nullable=True, index=True)
+    task_id = Column(Integer, nullable=True, index=True)
     reminder_time = Column(UTCDateTime, nullable=False, index=True)
     status = Column(String(20), nullable=False, default='pending')
-    sent = Column(Boolean, nullable=False, default=False)
     timezone = Column(String(64), nullable=False, default='UTC')
     created_at = Column(UTCDateTime, nullable=False, default=utc_now)
     updated_at = Column(UTCDateTime, nullable=False, default=utc_now, onupdate=utc_now)
 
-    __table_args__ = (CheckConstraint("status IN ('pending', 'sent', 'cancelled', 'failed')", name="ck_reminders_status"),)
+    __table_args__ = (
+        CheckConstraint("status IN ('pending', 'sent', 'cancelled', 'failed')", name="ck_reminders_status"),
+        ForeignKeyConstraint(
+            ["task_id", "user_id"],
+            ["tasks.id", "tasks.user_id"],
+            ondelete="CASCADE",
+            name="fk_reminders_task_same_user",
+        ),
+    )
     
-    task = relationship("Task")
-    user = relationship("User", back_populates="reminders")
+    task = relationship("Task", overlaps="user,reminders")
+    user = relationship("User", back_populates="reminders", overlaps="task")
 
 class ChatHistory(Base):
     __tablename__ = 'chat_history'

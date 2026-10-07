@@ -56,6 +56,7 @@ def _enable_sqlite_foreign_keys(dbapi_connection, _connection_record):
         cursor.close()
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+REQUIRED_SCHEMA_VERSION = 2
 
 _chroma_client = None
 _collection = None
@@ -151,7 +152,7 @@ def init_db():
         db.rollback()
     finally:
         db.close()
-    _apply_additive_schema_migrations()
+    _apply_schema_migrations()
 
 def get_db():
     """Dependency for getting database session"""
@@ -165,51 +166,275 @@ def get_db():
         db.close()
 
 
-def _apply_additive_schema_migrations() -> None:
-    """Apply safe, additive migrations for existing development SQLite files.
+def _table_columns(connection, table: str) -> set[str]:
+    from sqlalchemy import inspect
 
-    ``create_all`` creates missing tables but never upgrades existing ones. This
-    phase intentionally uses small additive migrations instead of deleting or
-    rebuilding user data. Fresh databases receive the complete model schema;
-    legacy databases receive compatible columns and indexes where possible.
-    """
-    if engine.url.get_backend_name() != "sqlite":
+    return {column["name"] for column in inspect(connection).get_columns(table)}
+
+
+def _apply_schema_migrations(target_engine=engine) -> None:
+    """Upgrade SQLite schemas transactionally to the enforced Phase 2 model."""
+    if target_engine.url.get_backend_name() != "sqlite":
         return
 
+    from sqlalchemy import text
+
+    with target_engine.connect() as connection:
+        connection.exec_driver_sql("PRAGMA foreign_keys=OFF")
+        connection.commit()
+        transaction = connection.begin()
+        try:
+            connection.execute(text("CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)"))
+            if connection.execute(text("SELECT COUNT(*) FROM schema_version")).scalar() == 0:
+                connection.execute(text("INSERT INTO schema_version(version) VALUES (0)"))
+            version = connection.execute(text("SELECT version FROM schema_version LIMIT 1")).scalar() or 0
+            if version >= REQUIRED_SCHEMA_VERSION:
+                if not schema_status(target_engine)["ready"]:
+                    raise DatabaseIntegrityError("Database schema version is marked complete but validation failed")
+                transaction.commit()
+                return
+
+            existing_missing = schema_status(target_engine)["missing"]
+            if version == 0 and all(item in {"table:schema_version", "schema_version"} for item in existing_missing):
+                connection.execute(text("UPDATE schema_version SET version = :version"), {"version": REQUIRED_SCHEMA_VERSION})
+                transaction.commit()
+                return
+
+            first_user = connection.execute(text("SELECT id FROM users ORDER BY id LIMIT 1")).scalar()
+            if first_user is None:
+                raise DatabaseIntegrityError("Cannot migrate an ownership schema without a user")
+
+            _rebuild_tasks(connection, first_user)
+            _rebuild_reminders(connection, first_user)
+            _rebuild_documents(connection, first_user)
+            _create_integrity_indexes(connection)
+            connection.execute(text("UPDATE schema_version SET version = :version"), {"version": REQUIRED_SCHEMA_VERSION})
+            transaction.commit()
+        except Exception:
+            transaction.rollback()
+            raise
+        finally:
+            connection.exec_driver_sql("PRAGMA foreign_keys=ON")
+
+    result = schema_status(target_engine)
+    if not result["ready"]:
+        raise DatabaseIntegrityError("Database migration completed without a valid Phase 2 schema")
+
+
+def _rebuild_tasks(connection, first_user: int) -> None:
+    from sqlalchemy import text
+
+    if "tasks" not in {row[0] for row in connection.execute(text("SELECT name FROM sqlite_master WHERE type='table'"))}:
+        return
+    if "tasks_legacy" in {row[0] for row in connection.execute(text("SELECT name FROM sqlite_master WHERE type='table'"))} and _table_has_sql(connection, "tasks", "fk_tasks_parent_same_user"):
+        if connection.execute(text("SELECT COUNT(*) FROM tasks_legacy")).scalar() != connection.execute(text("SELECT COUNT(*) FROM tasks")).scalar():
+            raise DatabaseIntegrityError("Unfinished task migration contains data that cannot be safely discarded")
+        connection.execute(text("DROP TABLE tasks_legacy"))
+        return
+    columns = _table_columns(connection, "tasks")
+    connection.execute(text("ALTER TABLE tasks RENAME TO tasks_legacy"))
+    connection.exec_driver_sql(
+        """CREATE TABLE tasks (
+            id INTEGER PRIMARY KEY,
+            title VARCHAR(200) NOT NULL,
+            description TEXT,
+            due_date DATETIME,
+            completed BOOLEAN NOT NULL DEFAULT 0,
+            priority VARCHAR(20) NOT NULL DEFAULT 'medium',
+            category VARCHAR(50) NOT NULL DEFAULT 'Personal',
+            duration_minutes INTEGER NOT NULL DEFAULT 30,
+            is_flexible BOOLEAN NOT NULL DEFAULT 0,
+            conflict_flag BOOLEAN NOT NULL DEFAULT 0,
+            tags TEXT NOT NULL DEFAULT '[]',
+            recurring VARCHAR(50),
+            recurring_end_date DATETIME,
+            parent_task_id INTEGER,
+            user_id INTEGER NOT NULL,
+            created_at DATETIME NOT NULL,
+            updated_at DATETIME NOT NULL,
+            completed_at DATETIME,
+            CONSTRAINT ck_tasks_duration_positive CHECK (duration_minutes > 0),
+            CONSTRAINT ck_tasks_priority CHECK (priority IN ('low', 'medium', 'high', 'urgent')),
+            CONSTRAINT ck_tasks_completion_time CHECK ((completed = 0 AND completed_at IS NULL) OR (completed = 1 AND completed_at IS NOT NULL)),
+            CONSTRAINT ck_tasks_recurring CHECK (recurring IS NULL OR recurring IN ('daily', 'weekly', 'monthly')),
+            CONSTRAINT uq_tasks_id_user UNIQUE (id, user_id),
+            CONSTRAINT fk_tasks_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            CONSTRAINT fk_tasks_parent_same_user FOREIGN KEY (parent_task_id, user_id) REFERENCES tasks(id, user_id) ON DELETE CASCADE
+        )"""
+    )
+    def col(name, fallback):
+        return f't."{name}"' if name in columns else fallback
+    connection.execute(text(f"""INSERT INTO tasks
+        (id,title,description,due_date,completed,priority,category,duration_minutes,is_flexible,conflict_flag,tags,recurring,recurring_end_date,parent_task_id,user_id,created_at,updated_at,completed_at)
+        SELECT t.id, COALESCE(t.title, ''), t.description, {col('due_date', 'NULL')},
+            CASE WHEN COALESCE(t.completed, 0) <> 0 THEN 1 ELSE 0 END,
+            CASE WHEN {col('priority', "'medium'")} IN ('low','medium','high','urgent') THEN {col('priority', "'medium'")} ELSE 'medium' END,
+            COALESCE({col('category', "'Personal'")}, 'Personal'),
+            CASE WHEN COALESCE({col('duration_minutes', '30')}, 30) > 0 THEN COALESCE({col('duration_minutes', '30')}, 30) ELSE 30 END,
+            COALESCE({col('is_flexible', '0')}, 0), COALESCE({col('conflict_flag', '0')}, 0), COALESCE({col('tags', "'[]'")}, '[]'),
+            CASE WHEN {col('recurring', 'NULL')} IN ('daily','weekly','monthly') THEN {col('recurring', 'NULL')} ELSE NULL END,
+            {col('recurring_end_date', 'NULL')},
+            CASE WHEN p.id IS NOT NULL AND p.user_id = COALESCE(t.user_id, :first_user) THEN t.parent_task_id ELSE NULL END,
+            COALESCE(u.id, :first_user), COALESCE({col('created_at', 'CURRENT_TIMESTAMP')}, CURRENT_TIMESTAMP),
+            COALESCE({col('updated_at', col('created_at', 'CURRENT_TIMESTAMP'))}, CURRENT_TIMESTAMP),
+            CASE WHEN COALESCE(t.completed, 0) <> 0 THEN COALESCE({col('completed_at', 'NULL')}, {col('updated_at', col('created_at', 'CURRENT_TIMESTAMP'))}, CURRENT_TIMESTAMP) ELSE NULL END
+        FROM tasks_legacy t
+        LEFT JOIN users u ON u.id = t.user_id
+        LEFT JOIN tasks_legacy p ON p.id = t.parent_task_id"""), {"first_user": first_user})
+    connection.execute(text("DROP TABLE tasks_legacy"))
+
+
+def _rebuild_reminders(connection, first_user: int) -> None:
+    from sqlalchemy import text
+
+    if "reminders" not in {row[0] for row in connection.execute(text("SELECT name FROM sqlite_master WHERE type='table'"))}:
+        return
+    if "reminders_legacy" in {row[0] for row in connection.execute(text("SELECT name FROM sqlite_master WHERE type='table'"))} and _table_has_sql(connection, "reminders", "fk_reminders_task_same_user"):
+        if connection.execute(text("SELECT COUNT(*) FROM reminders_legacy")).scalar() != connection.execute(text("SELECT COUNT(*) FROM reminders")).scalar():
+            raise DatabaseIntegrityError("Unfinished reminder migration contains data that cannot be safely discarded")
+        connection.execute(text("DROP TABLE reminders_legacy"))
+        return
+    columns = _table_columns(connection, "reminders")
+    if "status" in columns:
+        legacy_sent = " WHEN COALESCE(r.sent,0) <> 0 THEN 'sent'" if "sent" in columns else ""
+        status_expr = f"CASE WHEN r.status IN ('pending','sent','cancelled','failed') THEN r.status{legacy_sent} ELSE 'pending' END"
+    else:
+        status_expr = "CASE WHEN COALESCE(r.sent,0) <> 0 THEN 'sent' ELSE 'pending' END" if "sent" in columns else "'pending'"
+    user_expr = "COALESCE(t.user_id, u.id, :first_user)" if "user_id" in columns else "COALESCE(t.user_id, :first_user)"
+    connection.execute(text("ALTER TABLE reminders RENAME TO reminders_legacy"))
+    connection.exec_driver_sql(
+        """CREATE TABLE reminders (
+            id INTEGER PRIMARY KEY,
+            user_id INTEGER NOT NULL,
+            task_id INTEGER,
+            reminder_time DATETIME NOT NULL,
+            status VARCHAR(20) NOT NULL DEFAULT 'pending',
+            timezone VARCHAR(64) NOT NULL DEFAULT 'UTC',
+            created_at DATETIME NOT NULL,
+            updated_at DATETIME NOT NULL,
+            CONSTRAINT ck_reminders_status CHECK (status IN ('pending','sent','cancelled','failed')),
+            CONSTRAINT fk_reminders_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            CONSTRAINT fk_reminders_task_same_user FOREIGN KEY (task_id, user_id) REFERENCES tasks(id, user_id) ON DELETE CASCADE
+        )"""
+    )
+    def col(name, fallback):
+        return f'r."{name}"' if name in columns else fallback
+    connection.execute(text(f"""INSERT INTO reminders
+        (id,user_id,task_id,reminder_time,status,timezone,created_at,updated_at)
+        SELECT r.id, {user_expr}, CASE WHEN t.id IS NULL THEN NULL ELSE t.id END,
+            r.reminder_time, {status_expr}, COALESCE({col('timezone', "'UTC'")}, 'UTC'),
+            COALESCE({col('created_at', 'CURRENT_TIMESTAMP')}, CURRENT_TIMESTAMP),
+            COALESCE({col('updated_at', col('created_at', 'CURRENT_TIMESTAMP'))}, CURRENT_TIMESTAMP)
+        FROM reminders_legacy r
+        LEFT JOIN tasks t ON t.id = r.task_id
+        LEFT JOIN users u ON u.id = r.user_id"""), {"first_user": first_user})
+    connection.execute(text("DROP TABLE reminders_legacy"))
+
+
+def _rebuild_documents(connection, first_user: int) -> None:
+    from sqlalchemy import text
+
+    if "documents" not in {row[0] for row in connection.execute(text("SELECT name FROM sqlite_master WHERE type='table'"))}:
+        return
+    if "documents_legacy" in {row[0] for row in connection.execute(text("SELECT name FROM sqlite_master WHERE type='table'"))} and _table_has_sql(connection, "documents", "ck_documents_indexing_state"):
+        if connection.execute(text("SELECT COUNT(*) FROM documents_legacy")).scalar() != connection.execute(text("SELECT COUNT(*) FROM documents")).scalar():
+            raise DatabaseIntegrityError("Unfinished document migration contains data that cannot be safely discarded")
+        connection.execute(text("DROP TABLE documents_legacy"))
+        return
+    columns = _table_columns(connection, "documents")
+    connection.execute(text("ALTER TABLE documents RENAME TO documents_legacy"))
+    connection.exec_driver_sql(
+        """CREATE TABLE documents (
+            id INTEGER PRIMARY KEY,
+            user_id INTEGER NOT NULL,
+            filename VARCHAR(200) NOT NULL,
+            stored_path VARCHAR(500),
+            content TEXT NOT NULL,
+            file_type VARCHAR(50) NOT NULL,
+            indexing_state VARCHAR(20) NOT NULL DEFAULT 'pending',
+            indexing_error TEXT,
+            uploaded_at DATETIME NOT NULL,
+            updated_at DATETIME NOT NULL,
+            CONSTRAINT ck_documents_indexing_state CHECK (indexing_state IN ('pending','indexed','failed')),
+            CONSTRAINT fk_documents_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )"""
+    )
+    def col(name, fallback):
+        return f'd."{name}"' if name in columns else fallback
+    connection.execute(text(f"""INSERT INTO documents
+        (id,user_id,filename,stored_path,content,file_type,indexing_state,indexing_error,uploaded_at,updated_at)
+        SELECT d.id, COALESCE(u.id, :first_user), COALESCE(d.filename, 'unnamed'), {col('stored_path', 'NULL')},
+            COALESCE(d.content, ''), COALESCE(d.file_type, 'application/octet-stream'),
+            CASE WHEN {col('indexing_state', "'pending'")} IN ('pending','indexed','failed') THEN {col('indexing_state', "'pending'")} ELSE 'pending' END,
+            {col('indexing_error', 'NULL')}, COALESCE({col('uploaded_at', 'CURRENT_TIMESTAMP')}, CURRENT_TIMESTAMP),
+            COALESCE({col('updated_at', col('uploaded_at', 'CURRENT_TIMESTAMP'))}, CURRENT_TIMESTAMP)
+        FROM documents_legacy d LEFT JOIN users u ON u.id = d.user_id"""), {"first_user": first_user})
+    connection.execute(text("DROP TABLE documents_legacy"))
+
+
+def _create_integrity_indexes(connection) -> None:
+    for sql in (
+        "CREATE INDEX IF NOT EXISTS ix_tasks_user_due ON tasks (user_id, due_date)",
+        "CREATE INDEX IF NOT EXISTS ix_tasks_user_completed ON tasks (user_id, completed)",
+        "CREATE INDEX IF NOT EXISTS ix_chat_history_user_timestamp ON chat_history (user_id, timestamp)",
+        "CREATE INDEX IF NOT EXISTS ix_documents_user ON documents (user_id)",
+        "CREATE INDEX IF NOT EXISTS ix_reminders_user_trigger ON reminders (user_id, reminder_time)",
+    ):
+        connection.exec_driver_sql(sql)
+
+
+def _table_has_sql(connection, table: str, fragment: str) -> bool:
+    row = connection.exec_driver_sql(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name = ?", (table,)
+    ).first()
+    return row is not None and fragment.lower() in (row[0] or "").lower()
+
+
+def schema_status(target_engine=engine) -> dict:
+    """Validate the actual active SQLite schema, not only ORM declarations."""
     from sqlalchemy import inspect, text
 
-    with engine.begin() as connection:
-        connection.execute(text("CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL)"))
-        if connection.execute(text("SELECT COUNT(*) FROM schema_version")).scalar() == 0:
-            connection.execute(text("INSERT INTO schema_version(version) VALUES (0)"))
+    if target_engine.url.get_backend_name() != "sqlite":
+        return {"ready": True, "version": REQUIRED_SCHEMA_VERSION, "missing": []}
+    missing = []
+    inspector = inspect(target_engine)
+    tables = set(inspector.get_table_names())
+    required_tables = {"users", "tasks", "reminders", "documents", "chat_history", "routine_events", "schema_version"}
+    missing.extend(f"table:{table}" for table in sorted(required_tables - tables))
+    version = None
+    if "schema_version" in tables:
+        with target_engine.connect() as connection:
+            version = connection.execute(text("SELECT version FROM schema_version LIMIT 1")).scalar()
+    if version is None or version < REQUIRED_SCHEMA_VERSION:
+        missing.append("schema_version")
 
-        additions = {
-            "reminders": {
-                "user_id": "INTEGER",
-                "status": "VARCHAR(20) DEFAULT 'pending'",
-                "timezone": "VARCHAR(64) DEFAULT 'UTC'",
-                "updated_at": "DATETIME",
-            },
-            "documents": {
-                "stored_path": "VARCHAR(500)",
-                "indexing_state": "VARCHAR(20) DEFAULT 'pending'",
-                "indexing_error": "TEXT",
-                "updated_at": "DATETIME",
-            },
-        }
-        for table, columns in additions.items():
-            existing = {column["name"] for column in inspect(connection).get_columns(table)}
-            for name, definition in columns.items():
-                if name not in existing:
-                    connection.execute(text(f'ALTER TABLE "{table}" ADD COLUMN "{name}" {definition}'))
+    def columns(table):
+        return {item["name"]: item for item in inspector.get_columns(table)} if table in tables else {}
+    if columns("reminders").get("sent"):
+        missing.append("reminders:sent_removed")
+    for table, column in (("tasks", "user_id"), ("reminders", "user_id"), ("documents", "user_id")):
+        if column not in columns(table) or not columns(table)[column]["nullable"] is False:
+            missing.append(f"{table}:{column}_not_null")
 
-        first_user = connection.execute(text("SELECT id FROM users ORDER BY id LIMIT 1")).scalar()
-        if first_user is not None:
-            connection.execute(text("UPDATE reminders SET user_id = :user_id WHERE user_id IS NULL"), {"user_id": first_user})
-            connection.execute(text("UPDATE documents SET user_id = :user_id WHERE user_id IS NULL"), {"user_id": first_user})
-        connection.execute(text("CREATE INDEX IF NOT EXISTS ix_tasks_user_due ON tasks (user_id, due_date)"))
-        connection.execute(text("CREATE INDEX IF NOT EXISTS ix_tasks_user_completed ON tasks (user_id, completed)"))
-        connection.execute(text("CREATE INDEX IF NOT EXISTS ix_chat_history_user_timestamp ON chat_history (user_id, timestamp)"))
-        connection.execute(text("CREATE INDEX IF NOT EXISTS ix_documents_user ON documents (user_id)"))
-        connection.execute(text("CREATE INDEX IF NOT EXISTS ix_reminders_user_trigger ON reminders (user_id, reminder_time)"))
-        connection.execute(text("UPDATE schema_version SET version = 1"))
+    with target_engine.connect() as connection:
+        for table, target, expected_from in (
+            ("tasks", "tasks", {"parent_task_id", "user_id"}),
+            ("reminders", "tasks", {"task_id", "user_id"}),
+        ):
+            groups = {}
+            for row in connection.exec_driver_sql(f"PRAGMA foreign_key_list('{table}')"):
+                groups.setdefault(row[0], []).append(row)
+            if not any(
+                rows[0][2] == target and {row[3] for row in rows} == expected_from
+                for rows in groups.values()
+            ):
+                missing.append(f"{table}:same_owner_foreign_key")
+        sql_rows = connection.execute(text("SELECT name, sql FROM sqlite_master WHERE type='table' AND name IN ('tasks','reminders')")).all()
+        sql_by_name = {row[0]: (row[1] or "").lower() for row in sql_rows}
+        if "completed = 1" not in sql_by_name.get("tasks", "") or "completed_at is not null" not in sql_by_name.get("tasks", ""):
+            missing.append("tasks:completion_check")
+        if "status in" not in sql_by_name.get("reminders", ""):
+            missing.append("reminders:status_check")
+        if "indexing_state in" not in (connection.execute(text("SELECT sql FROM sqlite_master WHERE type='table' AND name='documents'")).scalar() or "").lower():
+            missing.append("documents:indexing_state_check")
+    return {"ready": not missing, "version": version, "missing": missing}

@@ -164,10 +164,17 @@ def embedding_status() -> dict[str, Any]:
 
 
 def database_status() -> dict[str, Any]:
+    schema = database.schema_status()
+    if not schema["ready"]:
+        return {
+            "state": "schema_incomplete",
+            "schema_version": schema["version"],
+            "missing": schema["missing"],
+        }
     session = SessionLocal()
     try:
         session.execute(text("SELECT 1"))
-        return {"state": "ready"}
+        return {"state": "ready", "schema_version": schema["version"]}
     except Exception:  # noqa: BLE001 - diagnostics must never break readiness
         return {"state": "runtime_failure"}
     finally:
