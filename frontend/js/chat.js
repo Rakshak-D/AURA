@@ -51,11 +51,11 @@ async function sendMessage() {
                         scheduleText += `${idx + 1}. ${event.title} - ${timeStr}\n`;
                     });
                 }
-                simulateStreaming(scheduleText, 'assistant');
+                addMessage(scheduleText, 'assistant');
             } else if (data.action_taken === 'task_query' && data.data && data.data.tasks) {
                 renderWidget({ type: 'widget', widget_type: 'task_list', data: { title: data.response, tasks: data.data.tasks } });
             } else {
-                simulateStreaming(data.response, 'assistant');
+                addMessage(data.response, 'assistant');
             }
         }
 
@@ -165,38 +165,6 @@ function addLoadingIndicator() {
 function removeLoadingIndicator(id) {
     const el = document.getElementById(id);
     if (el) el.remove();
-}
-
-function simulateStreaming(fullText, sender) {
-    const history = document.getElementById('chat-history');
-    if (!history) return;
-
-    const div = document.createElement('div');
-    div.className = `message ${sender} message-enter`;
-
-    const contentEl = document.createElement('div');
-    contentEl.className = 'message-content markdown-body';
-    div.appendChild(contentEl);
-
-    history.appendChild(div);
-    scrollToBottom();
-
-    const tokens = fullText.split(/(\s+)/); // keep spaces
-    let index = 0;
-
-    const interval = setInterval(() => {
-        if (index >= tokens.length) {
-            clearInterval(interval);
-            AuraSafe.text(contentEl, renderMarkdown(fullText));
-            scrollToBottom();
-            return;
-        }
-
-        const partial = tokens.slice(0, index + 1).join('');
-        AuraSafe.text(contentEl, renderMarkdown(partial));
-        index++;
-        scrollToBottom();
-    }, 25);
 }
 
 function scrollToBottom() {

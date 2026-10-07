@@ -29,6 +29,8 @@ class ConnectionManager:
                 del self.active_connections[user_id]
 
     async def broadcast(self, message: str, user_id: int) -> bool:
+        if len(message.encode("utf-8")) > config.websocket_max_message_bytes:
+            return False
         delivered = False
         for connection in list(self.active_connections.get(user_id, set())):
             try:

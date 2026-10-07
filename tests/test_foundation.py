@@ -49,6 +49,8 @@ def test_configuration_environment_overrides(monkeypatch, tmp_path):
         ("LLM_MAX_TOKENS", "3000"),
         ("RAG_CHUNK_OVERLAP", "500"),
         ("REMINDER_DELIVERY_TIMEOUT_SECONDS", "0"),
+        ("WEBSOCKET_MAX_MESSAGE_BYTES", "0"),
+        ("WEBSOCKET_HEARTBEAT_INTERVAL_SECONDS", "0"),
     ],
 )
 def test_invalid_configuration_is_rejected(monkeypatch, name, value):

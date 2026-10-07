@@ -131,10 +131,16 @@ def deliver_reminder(reminder_id: int, *, session_factory=None) -> bool:
             _mark_failed(reminder_id, user_id, "associated task was not found", session_factory=session_factory)
             return False
         message = json.dumps({
-            "type": "reminder",
-            "reminder_id": reminder.id,
-            "task_id": task.id,
-            "task": task.title,
+            "protocol_version": 1,
+            "type": "notification",
+            "event_id": f"reminder:{reminder.id}",
+            "created_at": utc_now().isoformat(),
+            "data": {
+                "kind": "reminder",
+                "reminder_id": reminder.id,
+                "task_id": task.id,
+                "task": task.title,
+            },
         })
 
     if not manager.broadcast_sync(message, user_id):

@@ -78,6 +78,49 @@ def test_browser_websocket_ticket_is_single_use(auth_client):
             pass
 
 
+def test_websocket_protocol_ready_ping_and_pong(auth_client):
+    client, _ = auth_client
+    client.post("/api/auth/register", json={"identifier": "protocol@example.com", "password": "correct horse battery"})
+    token = client.post("/api/auth/login", json={"identifier": "protocol@example.com", "password": "correct horse battery"}).json()["access_token"]
+    ticket = client.post("/api/auth/ws-ticket", headers={"Authorization": f"Bearer {token}"}).json()["ticket"]
+    with client.websocket_connect(f"/ws/notifications?ticket={ticket}") as websocket:
+        ready = websocket.receive_json()
+        assert ready["type"] == "ready"
+        assert ready["protocol_version"] == 1
+        websocket.send_json({"type": "ping"})
+        assert websocket.receive_json()["type"] == "pong"
+
+
+def test_websocket_protocol_rejects_unknown_and_oversized_messages(auth_client, monkeypatch):
+    client, _ = auth_client
+    client.post("/api/auth/register", json={"identifier": "protocol-errors@example.com", "password": "correct horse battery"})
+    token = client.post("/api/auth/login", json={"identifier": "protocol-errors@example.com", "password": "correct horse battery"}).json()["access_token"]
+
+    ticket = client.post("/api/auth/ws-ticket", headers={"Authorization": f"Bearer {token}"}).json()["ticket"]
+    with client.websocket_connect(f"/ws/notifications?ticket={ticket}") as websocket:
+        websocket.receive_json()
+        websocket.send_json({"type": "execute", "command": "unexpected"})
+        assert websocket.receive_json()["data"]["code"] == "unknown_message_type"
+
+    monkeypatch.setattr(config, "websocket_max_message_bytes", 8)
+    ticket = client.post("/api/auth/ws-ticket", headers={"Authorization": f"Bearer {token}"}).json()["ticket"]
+    with client.websocket_connect(f"/ws/notifications?ticket={ticket}") as websocket:
+        websocket.receive_json()
+        websocket.send_text('{"type":"ping"}')
+        assert websocket.receive_json()["data"]["code"] == "message_too_large"
+
+
+def test_websocket_protocol_rejects_malformed_json(auth_client):
+    client, _ = auth_client
+    client.post("/api/auth/register", json={"identifier": "malformed@example.com", "password": "correct horse battery"})
+    token = client.post("/api/auth/login", json={"identifier": "malformed@example.com", "password": "correct horse battery"}).json()["access_token"]
+    ticket = client.post("/api/auth/ws-ticket", headers={"Authorization": f"Bearer {token}"}).json()["ticket"]
+    with client.websocket_connect(f"/ws/notifications?ticket={ticket}") as websocket:
+        websocket.receive_json()
+        websocket.send_text("not-json")
+        assert websocket.receive_json()["data"]["code"] == "invalid_json"
+
+
 def test_upload_rejects_path_traversal_oversize_and_unsupported_type(auth_client, monkeypatch):
     client, factory = auth_client
     client.post("/api/auth/register", json={"identifier": "upload@example.com", "password": "correct horse battery"})

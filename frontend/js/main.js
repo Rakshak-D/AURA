@@ -4,9 +4,6 @@
 const API_URL = '/api';
 
 // Global State
-let isVoiceActive = false;
-let recognition = null;
-
 document.addEventListener('DOMContentLoaded', () => {
     // Initialize Lucide Icons
     lucide.createIcons();
@@ -17,6 +14,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Initialize Voice
     setupVoice();
     ensureAuthenticated();
+    if (getAuthToken()) AuraNotifications.start();
 });
 
 const AUTH_TOKEN_KEY = 'aura_access_token';
@@ -36,6 +34,7 @@ async function apiFetch(url, options = {}) {
     const response = await fetch(url, { ...options, headers });
     if (response.status === 401) {
         clearAuthToken();
+        AuraNotifications.stop();
         showAuthPanel();
     }
     return response;
@@ -65,11 +64,14 @@ async function authenticate(action = 'login') {
     }
     sessionStorage.setItem(AUTH_TOKEN_KEY, data.access_token);
     hideAuthPanel();
+    AuraNotifications.start();
     showToast('Signed in');
 }
 
 function logout() {
     clearAuthToken();
+    AuraNotifications.stop();
+    stopVoiceInput();
     showAuthPanel();
 }
 
@@ -185,60 +187,6 @@ function showToast(message, type = 'success') {
         toast.style.transform = 'translateY(10px)';
         setTimeout(() => toast.remove(), 300);
     }, 3000);
-}
-
-// Voice Recognition
-function setupVoice() {
-    if ('webkitSpeechRecognition' in window) {
-        recognition = new webkitSpeechRecognition();
-        recognition.continuous = false;
-        recognition.interimResults = false;
-
-        recognition.onresult = (event) => {
-            const text = event.results[0][0].transcript;
-            document.getElementById('chat-input').value = text;
-            sendMessage(); // Auto-send
-        };
-
-        recognition.onend = () => {
-            isVoiceActive = false;
-            updateVoiceIcon();
-        };
-
-        recognition.onerror = (event) => {
-            console.error("Voice error:", event.error);
-            isVoiceActive = false;
-            updateVoiceIcon();
-            showToast("Voice recognition error", "error");
-        };
-    } else {
-        console.warn("Web Speech API not supported");
-    }
-}
-
-function toggleVoice() {
-    if (!recognition) return showToast("Voice not supported", "error");
-
-    if (isVoiceActive) {
-        recognition.stop();
-    } else {
-        recognition.start();
-        isVoiceActive = true;
-    }
-    updateVoiceIcon();
-}
-
-function updateVoiceIcon() {
-    const btn = document.querySelector('.icon-btn i[data-lucide="mic"]');
-    if (btn) {
-        if (isVoiceActive) {
-            btn.parentElement.style.color = '#EF4444';
-            btn.parentElement.classList.add('pulse');
-        } else {
-            btn.parentElement.style.color = '';
-            btn.parentElement.classList.remove('pulse');
-        }
-    }
 }
 
 // Global API Call Helper

@@ -1,4 +1,7 @@
+import asyncio
+import json
 import logging
+from datetime import datetime, timezone
 
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -33,6 +36,16 @@ from .services.reminder_service import (
 from .websocket_manager import manager
 
 app = FastAPI(title="AURA API", version="1.0.0")
+WEBSOCKET_PROTOCOL_VERSION = 1
+
+
+def _ws_envelope(message_type: str, data: dict | None = None) -> dict:
+    return {
+        "protocol_version": WEBSOCKET_PROTOCOL_VERSION,
+        "type": message_type,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "data": data or {},
+    }
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -125,18 +138,46 @@ async def websocket_endpoint(websocket: WebSocket):
     try:
         user = await authenticate_websocket(websocket, db)
         await manager.connect(websocket, user.id)
+        await websocket.send_json(_ws_envelope(
+            "ready",
+            {"heartbeat_interval_seconds": config.websocket_heartbeat_interval_seconds},
+        ))
     except Exception:
+        manager.disconnect(websocket)
         db.close()
         return
     db.close()
     try:
         while True:
-            # Keep connection alive
-            await websocket.receive_text()
+            try:
+                raw_message = await asyncio.wait_for(
+                    websocket.receive_text(),
+                    timeout=config.websocket_heartbeat_interval_seconds * 2,
+                )
+            except asyncio.TimeoutError:
+                await websocket.close(code=1001, reason="heartbeat timeout")
+                break
+            if len(raw_message.encode("utf-8")) > config.websocket_max_message_bytes:
+                await websocket.send_json(_ws_envelope("error", {"code": "message_too_large"}))
+                await websocket.close(code=1009, reason="message too large")
+                break
+            try:
+                message = json.loads(raw_message)
+            except json.JSONDecodeError:
+                await websocket.send_json(_ws_envelope("error", {"code": "invalid_json"}))
+                await websocket.close(code=1003, reason="invalid message")
+                break
+            if not isinstance(message, dict) or message.get("type") not in {"ping", "pong"}:
+                await websocket.send_json(_ws_envelope("error", {"code": "unknown_message_type"}))
+                await websocket.close(code=1003, reason="unsupported message")
+                break
+            if message["type"] == "ping":
+                await websocket.send_json(_ws_envelope("pong"))
     except WebSocketDisconnect:
-        manager.disconnect(websocket)
+        pass
     except Exception:
-        logging.getLogger(__name__).exception("WebSocket error")
+        logging.getLogger(__name__).warning("WebSocket connection closed unexpectedly")
+    finally:
         manager.disconnect(websocket)
 
 @app.get("/")

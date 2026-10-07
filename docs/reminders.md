@@ -33,7 +33,9 @@ connection is not sufficient. The wait is bounded by
 `REMINDER_DELIVERY_TIMEOUT_SECONDS`. No connection, send failure, coroutine
 failure, or timeout leaves the reminder retryable; after the attempt limit it
 remains `failed`. Notifications contain `reminder_id` and `task_id`, providing
-a stable identity for client-side deduplication. Delivery is at-least-once: a
+a stable identity for client-side deduplication. Delivery is acknowledged
+only after the WebSocket send operation completes successfully. Delivery is
+at-least-once: a
 crash after dispatch but before persisting `sent` can produce a duplicate.
 
 Cancellation is an atomic conditional transition. Only `pending` and `failed`

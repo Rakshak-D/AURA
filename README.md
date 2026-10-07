@@ -14,7 +14,7 @@
 ### 💬 Intelligent Chat Interface
 - **Context-Aware AI**: Powered by **Local LLM (Phi-3 Mini via LlamaCPP)** for privacy-first, offline-capable, and context-rich conversations.
 - **Markdown & Code Support**: Beautiful rendering of code blocks, tables, and formatted text.
-- **Real-time Streaming**: Instant responses with typing indicators and smooth animations.
+- **Safe Chat Responses**: Authenticated responses are rendered as bounded plain text; server-side chat streaming is not currently claimed.
 - **Memory & Context**: Remembers previous interactions for a continuous dialogue flow.
 
 ### 📋 Kanban Task Management
@@ -156,7 +156,7 @@ graph TD
     B -->|Vector Search| D[Knowledge Base]
     B -->|Prompt| E[Local LLM (Phi-3)]
     E -->|Response| B
-    B -->|JSON/Stream| A
+    B -->|JSON/WebSocket notifications| A
 ```
 
 ### Magic Schedule Flow

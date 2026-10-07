@@ -64,6 +64,8 @@ class Settings(BaseSettings):
     reminder_processing_timeout_seconds: int = Field(default=300, validation_alias="REMINDER_PROCESSING_TIMEOUT_SECONDS")
     reminder_retry_delay_seconds: int = Field(default=60, validation_alias="REMINDER_RETRY_DELAY_SECONDS")
     reminder_delivery_timeout_seconds: float = Field(default=5.0, validation_alias="REMINDER_DELIVERY_TIMEOUT_SECONDS")
+    websocket_max_message_bytes: int = Field(default=4096, validation_alias="WEBSOCKET_MAX_MESSAGE_BYTES")
+    websocket_heartbeat_interval_seconds: int = Field(default=30, validation_alias="WEBSOCKET_HEARTBEAT_INTERVAL_SECONDS")
 
     @field_validator("environment")
     @classmethod
@@ -102,6 +104,7 @@ class Settings(BaseSettings):
         "reminder_poll_interval_seconds", "reminder_max_attempts",
         "reminder_processing_timeout_seconds", "reminder_retry_delay_seconds",
         "reminder_delivery_timeout_seconds",
+        "websocket_max_message_bytes", "websocket_heartbeat_interval_seconds",
     )
     @classmethod
     def validate_positive(cls, value: int) -> int:

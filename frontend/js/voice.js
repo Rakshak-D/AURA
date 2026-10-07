@@ -1,99 +1,58 @@
-// Voice input functionality with proper error handling
+// Browser-only voice input. The backend never receives audio.
+let auraRecognition = null;
+let auraVoiceActive = false;
 
-let recognition = null;
-let isListening = false;
-
-function setupVoiceInput() {
-    // Voice button is the icon-btn with mic icon, not a separate voice-btn
-    const voiceBtn = document.querySelector('.icon-btn i[data-lucide="mic"]')?.parentElement;
-
-    if (!voiceBtn) {
-        console.warn('Voice button not found - mic icon button may not exist');
+function setupVoice() {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const voiceButton = document.querySelector('.icon-btn i[data-lucide="mic"]')?.parentElement;
+    if (!SpeechRecognition) {
+        if (voiceButton) voiceButton.style.display = 'none';
         return;
     }
-
-    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
-        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-        recognition = new SpeechRecognition();
-
-        recognition.continuous = false;
-        recognition.interimResults = false;
-        recognition.lang = 'en-US';
-
-        recognition.onstart = () => {
-            isListening = true;
-            voiceBtn.classList.add('listening');
-        };
-
-        recognition.onresult = (event) => {
-            const transcript = event.results[0][0].transcript;
-            const chatInput = document.getElementById('chat-input');
-            if (chatInput) {
-                chatInput.value = transcript;
-                chatInput.focus();
-            }
-            stopVoiceInput();
-
-            // Auto-send after a brief delay
-            if (transcript.trim()) {
-                setTimeout(() => sendMessage(), 300);
-            }
-        };
-
-        recognition.onerror = (event) => {
-            console.error('Speech recognition error:', event.error);
-            stopVoiceInput();
-
-            if (event.error === 'no-speech') {
-                showToast('No speech detected. Try again.', 'info');
-            } else if (event.error === 'not-allowed') {
-                showToast('Microphone access denied', 'error');
-            } else {
-                showToast('Voice input error', 'error');
-            }
-        };
-
-        recognition.onend = () => {
-            stopVoiceInput();
-        };
-
-        voiceBtn.addEventListener('click', toggleVoiceInput);
-    } else {
-        voiceBtn.style.display = 'none';
-        console.warn('Speech recognition not supported in this browser');
-    }
+    if (!voiceButton || auraRecognition) return;
+    auraRecognition = new SpeechRecognition();
+    auraRecognition.continuous = false;
+    auraRecognition.interimResults = false;
+    auraRecognition.lang = 'en-US';
+    auraRecognition.onstart = () => {
+        auraVoiceActive = true;
+        voiceButton.classList.add('listening');
+    };
+    auraRecognition.onresult = (event) => {
+        const transcript = event.results?.[0]?.[0]?.transcript || '';
+        const input = document.getElementById('chat-input');
+        if (input) {
+            input.value = transcript;
+            input.focus();
+        }
+        stopVoiceInput();
+        if (transcript.trim()) setTimeout(() => sendMessage(), 300);
+    };
+    auraRecognition.onerror = (event) => {
+        stopVoiceInput();
+        showToast(event.error === 'not-allowed' ? 'Microphone access denied' : 'Voice input error', 'error');
+    };
+    auraRecognition.onend = () => stopVoiceInput();
 }
 
-function toggleVoiceInput() {
-    if (isListening) {
-        stopVoiceInput();
-    } else {
-        startVoiceInput();
-    }
+function toggleVoice() {
+    if (!auraRecognition) return showToast('Voice is not supported in this browser', 'error');
+    if (auraVoiceActive) stopVoiceInput();
+    else startVoiceInput();
 }
 
 function startVoiceInput() {
-    if (recognition && !isListening) {
-        try {
-            recognition.start();
-        } catch (error) {
-            console.error('Failed to start recognition:', error);
-            showToast('Could not start voice input', 'error');
-        }
-    }
+    if (!auraRecognition || auraVoiceActive) return;
+    try { auraRecognition.start(); }
+    catch (error) { showToast('Could not start voice input', 'error'); }
 }
 
 function stopVoiceInput() {
-    if (recognition && isListening) {
-        try {
-            recognition.stop();
-        } catch (error) {
-            console.error('Error stopping recognition:', error);
-        }
-        isListening = false;
-        const voiceBtn = document.querySelector('.icon-btn i[data-lucide="mic"]')?.parentElement;
-        if (voiceBtn) {
-            voiceBtn.classList.remove('listening');
-        }
+    if (auraRecognition && auraVoiceActive) {
+        try { auraRecognition.stop(); } catch (error) { /* already stopped */ }
     }
+    auraVoiceActive = false;
+    document.querySelector('.icon-btn i[data-lucide="mic"]')?.parentElement.classList.remove('listening');
 }
+
+window.addEventListener('beforeunload', stopVoiceInput);
