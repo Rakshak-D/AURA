@@ -1,24 +1,36 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
+import logging
+
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
+
 from .config import config
-from .websocket_manager import manager
 from .database import init_db
 from .routes import (
-    chat, tasks, upload, dashboard, reminders, search, 
-    export, schedule, insights, settings, routine
+    chat,
+    dashboard,
+    export,
+    insights,
+    reminders,
+    routine,
+    schedule,
+    search,
+    settings,
+    tasks,
+    upload,
 )
+from .websocket_manager import manager
 
 app = FastAPI(title="AURA API", version="1.0.0")
 
 # Global Exception Handler
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    print(f"Global Error: {exc}")
+    logging.getLogger(__name__).exception("Unhandled application error")
     return JSONResponse(
         status_code=500,
-        content={"message": "Internal Server Error", "details": str(exc)},
+        content={"message": "Internal Server Error"},
     )
 
 # CORS
@@ -32,10 +44,11 @@ app.add_middleware(
 
 @app.on_event("startup")
 async def startup_event():
+    config.init_dirs()
+    config.setup_logging()
     # Initialize DB
     init_db()
-    
-    print(f"📂 Serving static files from: {config.FRONTEND_DIR}")
+    logging.getLogger(__name__).info("Serving static files from %s", config.frontend_dir)
     
     import asyncio
     manager.set_loop(asyncio.get_running_loop())
@@ -66,8 +79,8 @@ async def websocket_endpoint(websocket: WebSocket):
             await websocket.receive_text()
     except WebSocketDisconnect:
         manager.disconnect(websocket)
-    except Exception as e:
-        print(f"WebSocket error: {e}")
+    except Exception:
+        logging.getLogger(__name__).exception("WebSocket error")
         manager.disconnect(websocket)
 
 @app.get("/")

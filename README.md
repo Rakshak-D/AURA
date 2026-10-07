@@ -61,6 +61,10 @@
 - 4GB+ RAM (8GB+ recommended for best performance)
 - Modern Web Browser
 
+Copy .env.example to .env for local configuration. The real .env is ignored by Git; never commit credentials or machine-specific settings.
+
+The core API can be imported and started without a GGUF model, GPU, ChromaDB data, embedding downloads, OCR binaries, or user documents. Local AI/RAG and document features require the optional dependencies and model/system prerequisites documented in requirements.txt.
+
 ### Installation
 
 1. **Clone the Repository**

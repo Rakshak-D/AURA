@@ -1,12 +1,13 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-from ..database import get_db, collection
-from ..models.sql_models import Task, ChatHistory, Document
+
+from ..database import get_chroma_collection, get_db
+from ..models.sql_models import ChatHistory, Task
 
 router = APIRouter()
 
 @router.get("/search")
-def search_all(q: str, db: Session = Depends(get_db)):
+def search_all(q: str, db: Session = Depends(get_db)):  # noqa: B008 - FastAPI dependency injection
     if not q:
         return {"tasks": [], "knowledge": []}
     
@@ -32,24 +33,23 @@ def search_all(q: str, db: Session = Depends(get_db)):
     # 2. Search Knowledge (Documents via ChromaDB + Chats via SQL)
     
     # A. Documents (Vector Search)
-    if collection:
-        try:
-            vector_results = collection.query(
-                query_texts=[q],
-                n_results=5
-            )
-            
-            if vector_results['documents']:
-                for i, doc_text in enumerate(vector_results['documents'][0]):
-                    meta = vector_results['metadatas'][0][i]
-                    results["knowledge"].append({
-                        "type": "document",
-                        "title": meta.get('filename', 'Unknown Document'),
-                        "snippet": (doc_text[:150] + "...") if doc_text else "",
-                        "score": "High Relevance"
-                    })
-        except Exception as e:
-            print(f"Vector search failed: {e}")
+    try:
+        collection = get_chroma_collection()
+        vector_results = collection.query(query_texts=[q], n_results=5)
+        if vector_results["documents"]:
+            for i, doc_text in enumerate(vector_results["documents"][0]):
+                meta = vector_results["metadatas"][0][i]
+                results["knowledge"].append({
+                    "type": "document",
+                    "title": meta.get("filename", "Unknown Document"),
+                    "snippet": (doc_text[:150] + "...") if doc_text else "",
+                    "score": "High Relevance",
+                })
+    except RuntimeError:
+        pass
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("Vector search failed")
             
     # B. Chats (SQL Fallback/Supplement)
     chats = db.query(ChatHistory).filter(
