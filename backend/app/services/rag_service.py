@@ -104,13 +104,15 @@ def delete_document_embeddings(user_id: int, filename: str) -> int:
 
 def query_rag(user_id: int, query: str, k: int | None = None) -> str:
     try:
+        if not isinstance(query, str) or not query.strip() or len(query) > 2000:
+            raise RuntimeError("Document search query is invalid")
         collection = get_chroma_collection()
-        top_k = k if k is not None else getattr(config, "RAG_TOP_K", 3)
+        top_k = min(k if k is not None else getattr(config, "RAG_TOP_K", 3), 10)
         query_emb = llm.embed(query)
         results = collection.query(query_embeddings=[query_emb], n_results=top_k, where={"user_id": user_id})
 
         if results.get("documents") and results["documents"][0]:
-            return "\n".join(results["documents"][0])
+            return "\n".join(str(document)[:4000] for document in results["documents"][0])[:12000]
         return ""
     except Exception as e:
         import logging
