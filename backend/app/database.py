@@ -154,8 +154,9 @@ def _table_columns(connection, table: str) -> set[str]:
     return {column["name"] for column in inspect(connection).get_columns(table)}
 
 
-def _apply_schema_migrations(target_engine=engine) -> None:
+def _apply_schema_migrations(target_engine=None) -> None:
     """Upgrade SQLite schemas transactionally to the enforced Phase 2 model."""
+    target_engine = target_engine or engine
     if target_engine.url.get_backend_name() != "sqlite":
         return
 
@@ -407,8 +408,9 @@ def _migrate_user_authentication(connection) -> None:
     )
 
 
-def schema_status(target_engine=engine) -> dict:
+def schema_status(target_engine=None) -> dict:
     """Validate the actual active SQLite schema, not only ORM declarations."""
+    target_engine = target_engine or engine
     from sqlalchemy import inspect, text
 
     if target_engine.url.get_backend_name() != "sqlite":
@@ -433,7 +435,7 @@ def schema_status(target_engine=engine) -> dict:
         if column not in columns("reminders"):
             missing.append(f"reminders:{column}")
     for table, column in (("tasks", "user_id"), ("reminders", "user_id"), ("documents", "user_id")):
-        if column not in columns(table) or not columns(table)[column]["nullable"] is False:
+        if column not in columns(table) or columns(table)[column]["nullable"] is not False:
             missing.append(f"{table}:{column}_not_null")
     for column in ("login_identifier", "password_hash", "is_active"):
         if column not in columns("users"):

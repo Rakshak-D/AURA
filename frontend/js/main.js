@@ -2,6 +2,7 @@
 
 // Global Configuration
 const API_URL = '/api';
+const API_REQUEST_TIMEOUT_MS = 15000;
 
 // Global State
 document.addEventListener('DOMContentLoaded', () => {
@@ -31,13 +32,19 @@ async function apiFetch(url, options = {}) {
     const headers = new Headers(options.headers || {});
     const token = getAuthToken();
     if (token) headers.set('Authorization', `Bearer ${token}`);
-    const response = await fetch(url, { ...options, headers });
-    if (response.status === 401) {
-        clearAuthToken();
-        AuraNotifications.stop();
-        showAuthPanel();
+    const controller = options.signal ? null : new AbortController();
+    const timeout = controller ? setTimeout(() => controller.abort(), API_REQUEST_TIMEOUT_MS) : null;
+    try {
+        const response = await fetch(url, { ...options, headers, ...(controller ? { signal: controller.signal } : {}) });
+        if (response.status === 401) {
+            clearAuthToken();
+            AuraNotifications.stop();
+            showAuthPanel();
+        }
+        return response;
+    } finally {
+        if (timeout) clearTimeout(timeout);
     }
-    return response;
 }
 
 async function apiJson(url, options = {}) {
@@ -46,8 +53,13 @@ async function apiJson(url, options = {}) {
     let body = null;
     if (contentType.includes('application/json')) {
         body = await response.json().catch(() => null);
+        if (response.ok && response.status !== 204 && body === null) {
+            throw new Error('Invalid JSON response');
+        }
     } else if (!response.ok) {
         await response.text().catch(() => '');
+    } else if (response.status !== 204) {
+        throw new Error('Invalid JSON response');
     }
     if (!response.ok) {
         const detail = body?.detail || body?.message || body?.error?.message || `Request failed (${response.status})`;
@@ -85,6 +97,7 @@ async function authenticate(action = 'login') {
         AuraNotifications.start();
         if (typeof loadSettings === 'function') loadSettings();
         if (typeof loadTasks === 'function') loadTasks();
+        if (typeof loadUploadedFiles === 'function') loadUploadedFiles();
         showToast('Signed in');
     } catch (error) {
         showToast(error.message || 'Authentication failed', 'error');

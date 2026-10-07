@@ -2,43 +2,9 @@ from datetime import datetime, timedelta, timezone
 
 import jwt
 import pytest
-from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, event
-from sqlalchemy.orm import sessionmaker
-
-from backend.app import database, main
+from backend.app import main
 from backend.app.config import config
-from backend.app.models.sql_models import Base, Reminder, Task, User
-
-
-@pytest.fixture
-def auth_client(tmp_path, monkeypatch):
-    engine = create_engine(
-        f"sqlite:///{tmp_path / 'auth.db'}", connect_args={"check_same_thread": False}
-    )
-
-    @event.listens_for(engine, "connect")
-    def enable_foreign_keys(connection, _record):
-        connection.execute("PRAGMA foreign_keys=ON")
-
-    Base.metadata.create_all(engine)
-    factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
-    monkeypatch.setattr(database, "SessionLocal", factory)
-    monkeypatch.setattr(main, "SessionLocal", factory)
-    monkeypatch.setattr(main, "init_db", lambda: None)
-    monkeypatch.setattr(
-        "backend.app.routes.reminders.schedule_reminder", lambda *args: None
-    )
-    monkeypatch.setattr(
-        config, "auth_secret_key", "test-auth-secret-which-is-long-enough-123456"
-    )
-    from backend.app.utils.security import limiter
-
-    if hasattr(limiter, "_storage"):
-        limiter._storage.reset()
-    with TestClient(main.app) as client:
-        yield client, factory
-    engine.dispose()
+from backend.app.models.sql_models import Reminder, Task, User
 
 
 def register(client, identifier):

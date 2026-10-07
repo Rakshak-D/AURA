@@ -30,7 +30,7 @@ jobs:
       - name: Ruff checks
         # The repository has pre-existing lint debt outside this phase. Keep
         # the required CI check focused on newly maintained test infrastructure.
-        run: python -m ruff check tests/conftest.py tests/browser tests/test_authentication.py tests/test_web_security.py
+        run: python -m ruff check tests/conftest.py tests/browser tests/test_authentication.py tests/test_web_security.py tests/test_phase9_isolation.py backend/app/database.py
       - name: Dependency consistency
         run: python -m pip check
       - name: Upload coverage
@@ -54,6 +54,8 @@ jobs:
           while IFS= read -r file; do
             node --check "$file"
           done < <(find frontend -type f -name '*.js' -print)
+      - name: Run frontend API contract checks
+        run: node tests/frontend_contracts.test.mjs
       - name: Reject dangerous browser sinks
         shell: bash
         run: |

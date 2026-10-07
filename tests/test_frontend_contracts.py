@@ -11,9 +11,10 @@ def test_frontend_contract_layer_and_search_shape():
     main = read("main.js")
     search = read("search.js")
     assert "async function apiJson" in main
-    assert "data?.tasks" in search
-    assert "data?.knowledge" in search
+    assert "data.tasks" in search
+    assert "data.knowledge" in search
     assert "data.results" not in search
+    assert "Invalid search response" in search
 
 
 def test_frontend_has_no_fake_stream_and_settings_single_initialization():
@@ -21,6 +22,10 @@ def test_frontend_has_no_fake_stream_and_settings_single_initialization():
     settings = read("settings.js")
     assert "simulateStreaming" not in chat
     assert settings.count("loadSettings();") == 1
+    assert "Invalid tasks response" in read("tasks.js")
+    assert "Invalid chat response" in chat
+    assert "loadUploadedFiles();" in read("main.js")
+    assert "API_REQUEST_TIMEOUT_MS" in read("main.js")
 
 
 def test_external_content_uses_safe_dom_boundaries():

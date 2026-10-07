@@ -8,7 +8,8 @@ document.addEventListener('DOMContentLoaded', loadTasks);
 async function loadTasks() {
     try {
         const data = await apiJson(`${API_URL}/tasks`);
-        allTasks = Array.isArray(data) ? data : [];
+        if (!Array.isArray(data)) throw new Error('Invalid tasks response');
+        allTasks = data;
         renderKanban(allTasks);
     } catch (error) {
         console.error("Error loading tasks:", error);

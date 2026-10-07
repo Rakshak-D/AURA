@@ -5,6 +5,13 @@ databases and temporary runtime directories for every test. It does not use
 `data/aura.db`, the checked-out `models` directory, persistent Chroma data,
 GPU libraries, model downloads, or external AI services.
 
+Route-focused `TestClient` tests intentionally replace the startup database
+initializer with a no-op after binding all database boundaries to the isolated
+engine; this avoids creating production defaults while still exercising the
+real request dependency, authentication, and shutdown lifecycle. Startup
+behavior itself is covered separately by the subprocess foundation test with
+an explicit temporary `DATA_DIR`.
+
 ## Local commands
 
 Install the core and development dependencies:

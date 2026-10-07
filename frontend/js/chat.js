@@ -35,6 +35,9 @@ async function sendMessage() {
                 context: currentChatContext
             })
         });
+        if (!data || (data.type !== 'widget' && typeof data.response !== 'string')) {
+            throw new Error('Invalid chat response');
+        }
 
         // Handle Widget Response
         if (data.type === 'widget') {

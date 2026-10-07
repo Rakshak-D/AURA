@@ -17,9 +17,12 @@ async function performGlobalSearch(query) {
 
     try {
         const data = await apiJson(`${API_URL}/search?q=${encodeURIComponent(query.trim())}`);
+        if (!data || !Array.isArray(data.tasks) || !Array.isArray(data.knowledge)) {
+            throw new Error('Invalid search response');
+        }
         const groups = [
-            ['Tasks', Array.isArray(data?.tasks) ? data.tasks : [], 'task'],
-            ['Knowledge', Array.isArray(data?.knowledge) ? data.knowledge : [], 'knowledge']
+            ['Tasks', data.tasks, 'task'],
+            ['Knowledge', data.knowledge, 'knowledge']
         ];
         const total = groups.reduce((count, group) => count + group[1].length, 0);
         AuraSafe.clear(resultsContainer);
