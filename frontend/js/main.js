@@ -73,12 +73,18 @@ async function apiJson(url, options = {}) {
 
 function showAuthPanel() {
     const panel = document.getElementById('aura-auth-panel');
-    if (panel) panel.hidden = false;
+    if (panel) {
+        panel.hidden = false;
+        panel.style.display = 'grid';
+    }
 }
 
 function hideAuthPanel() {
     const panel = document.getElementById('aura-auth-panel');
-    if (panel) panel.hidden = true;
+    if (panel) {
+        panel.hidden = true;
+        panel.style.display = 'none';
+    }
 }
 
 async function authenticate(action = 'login') {
@@ -116,7 +122,7 @@ function ensureAuthenticated() {
     const panel = document.createElement('section');
     panel.id = 'aura-auth-panel';
     panel.hidden = Boolean(getAuthToken());
-    panel.style.cssText = 'position:fixed;inset:0;background:rgba(10,15,30,.96);z-index:2000;display:grid;place-items:center;color:white';
+    panel.style.cssText = `position:fixed;inset:0;background:rgba(10,15,30,.96);z-index:2000;display:${getAuthToken() ? 'none' : 'grid'};place-items:center;color:white`;
     const form = document.createElement('form');
     form.style.cssText = 'display:grid;gap:12px;width:min(360px,90vw);padding:24px;background:#172033;border-radius:12px';
     const title = AuraSafe.element('h2', null, 'Sign in to AURA');
