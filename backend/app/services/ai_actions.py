@@ -13,6 +13,7 @@ from pydantic import (
     ValidationError,
     field_validator,
 )
+from sqlalchemy import update
 from sqlalchemy.orm import Session
 
 from ..database import utc_now
@@ -233,15 +234,22 @@ def execute_action(
     if isinstance(action, CancelReminderAction):
         if not confirmed:
             raise ConfirmationRequired("cancelling a reminder requires confirmation")
+        result = db.execute(
+            update(Reminder)
+            .where(
+                Reminder.id == action.reminder_id,
+                Reminder.user_id == user_id,
+                Reminder.status.in_(["pending", "failed"]),
+            )
+            .values(status="cancelled", updated_at=utc_now())
+        )
+        if result.rowcount == 1:
+            db.flush()
+            return {"action": action.action, "reminder_id": action.reminder_id}
         reminder = _owned_reminder(db, user_id, action.reminder_id)
-        if reminder.status == "sent":
-            raise ActionRejected("sent reminders cannot be cancelled")
         if reminder.status == "cancelled":
             return {"action": action.action, "reminder_id": reminder.id, "already_cancelled": True}
-        reminder.status = "cancelled"
-        reminder.updated_at = utc_now()
-        db.flush()
-        return {"action": action.action, "reminder_id": reminder.id}
+        raise ActionRejected("reminder cannot be cancelled in its current state")
 
     if isinstance(action, UpdateSettingsAction):
         user = db.query(User).filter(User.id == user_id).first()

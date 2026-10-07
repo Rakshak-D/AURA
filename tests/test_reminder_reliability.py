@@ -1,3 +1,5 @@
+import asyncio
+import threading
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -8,6 +10,61 @@ from backend.app.config import config
 from backend.app.models.pydantic_models import ReminderCreate
 from backend.app.models.sql_models import Base, Reminder, Task, User
 from backend.app.services import reminder_service
+from backend.app.services.ai_actions import ActionRejected, execute_action, parse_action
+from backend.app.websocket_manager import ConnectionManager
+
+
+class FakeSocket:
+    def __init__(self, *, failure=None, delay=0):
+        self.failure = failure
+        self.delay = delay
+        self.messages = []
+
+    async def send_text(self, message):
+        if self.delay:
+            await asyncio.sleep(self.delay)
+        if self.failure:
+            raise self.failure
+        self.messages.append(message)
+
+
+@pytest.fixture
+def running_manager(monkeypatch):
+    manager = ConnectionManager()
+    loop = asyncio.new_event_loop()
+    thread = threading.Thread(target=loop.run_forever, daemon=True)
+    thread.start()
+    manager.set_loop(loop)
+    monkeypatch.setattr(config, "reminder_delivery_timeout_seconds", 0.05)
+    yield manager
+    loop.call_soon_threadsafe(loop.stop)
+    thread.join(timeout=1)
+    loop.close()
+
+
+def test_websocket_dispatch_requires_actual_success(running_manager):
+    assert not running_manager.broadcast_sync("message", 1)
+    good = FakeSocket()
+    bad = FakeSocket(failure=RuntimeError("closed"))
+    running_manager.active_connections[1].update({good, bad})
+    running_manager.connection_users[good] = 1
+    running_manager.connection_users[bad] = 1
+    assert running_manager.broadcast_sync("message", 1)
+    assert good.messages == ["message"]
+    assert bad not in running_manager.connection_users
+
+
+def test_websocket_dispatch_failure_and_timeout_return_false(running_manager):
+    failed = FakeSocket(failure=RuntimeError("send failed"))
+    running_manager.active_connections[2].add(failed)
+    running_manager.connection_users[failed] = 2
+    assert not running_manager.broadcast_sync("message", 2)
+    assert failed not in running_manager.connection_users
+
+    slow = FakeSocket(delay=1)
+    running_manager.active_connections[3].add(slow)
+    running_manager.connection_users[slow] = 3
+    assert not running_manager.broadcast_sync("message", 3)
 
 
 @pytest.fixture
@@ -113,6 +170,24 @@ def test_cancelled_reminder_is_never_claimed(reminder_db):
         db.commit()
     assert not reminder_service.claim_due_reminder(reminder_id, session_factory=factory)
     assert reminder_service.process_due_reminders(session_factory=factory) == 0
+
+
+def test_llm_cancellation_uses_same_state_rules(reminder_db):
+    factory, reminder_id = reminder_db
+    with factory() as db:
+        user_id = db.query(User.id).one()[0]
+        action = parse_action({"action": "cancel_reminder", "reminder_id": reminder_id})
+        result = execute_action(action, user_id=user_id, db=db, confirmed=True)
+        db.commit()
+        assert result["reminder_id"] == reminder_id
+        reminder = db.get(Reminder, reminder_id)
+        assert reminder.status == "cancelled"
+        assert execute_action(action, user_id=user_id, db=db, confirmed=True)["already_cancelled"]
+
+        reminder.status = "processing"
+        db.commit()
+        with pytest.raises(ActionRejected, match="current state"):
+            execute_action(action, user_id=user_id, db=db, confirmed=True)
 
 
 @pytest.mark.parametrize(

@@ -1,7 +1,10 @@
 import asyncio
 from collections import defaultdict
+from concurrent.futures import TimeoutError as FutureTimeoutError
 
 from fastapi import WebSocket
+
+from .config import config
 
 
 class ConnectionManager:
@@ -25,20 +28,30 @@ class ConnectionManager:
             if not self.active_connections[user_id]:
                 del self.active_connections[user_id]
 
-    async def broadcast(self, message: str, user_id: int):
+    async def broadcast(self, message: str, user_id: int) -> bool:
+        delivered = False
         for connection in list(self.active_connections.get(user_id, set())):
             try:
                 await connection.send_text(message)
+                delivered = True
             except Exception:
                 self.disconnect(connection)
+        return delivered
 
     def broadcast_sync(self, message: str, user_id: int):
-        if self.loop and self.active_connections.get(user_id):
-            asyncio.run_coroutine_threadsafe(
-                self.broadcast(message, user_id), self.loop
-            )
-            return True
-        return False
+        if not self.loop or not self.active_connections.get(user_id):
+            return False
+        future = asyncio.run_coroutine_threadsafe(
+            self.broadcast(message, user_id), self.loop
+        )
+        try:
+            return bool(future.result(timeout=config.reminder_delivery_timeout_seconds))
+        except FutureTimeoutError:
+            future.cancel()
+            return False
+        except Exception:
+            future.cancel()
+            return False
 
 
 manager = ConnectionManager()

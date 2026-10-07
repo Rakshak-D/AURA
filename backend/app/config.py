@@ -63,6 +63,7 @@ class Settings(BaseSettings):
     reminder_max_attempts: int = Field(default=3, validation_alias="REMINDER_MAX_ATTEMPTS")
     reminder_processing_timeout_seconds: int = Field(default=300, validation_alias="REMINDER_PROCESSING_TIMEOUT_SECONDS")
     reminder_retry_delay_seconds: int = Field(default=60, validation_alias="REMINDER_RETRY_DELAY_SECONDS")
+    reminder_delivery_timeout_seconds: float = Field(default=5.0, validation_alias="REMINDER_DELIVERY_TIMEOUT_SECONDS")
 
     @field_validator("environment")
     @classmethod
@@ -100,6 +101,7 @@ class Settings(BaseSettings):
         "access_token_expire_minutes",
         "reminder_poll_interval_seconds", "reminder_max_attempts",
         "reminder_processing_timeout_seconds", "reminder_retry_delay_seconds",
+        "reminder_delivery_timeout_seconds",
     )
     @classmethod
     def validate_positive(cls, value: int) -> int:

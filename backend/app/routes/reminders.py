@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import update
 from sqlalchemy.orm import Session
 
 from ..auth import get_current_user_id
@@ -45,14 +46,28 @@ def cancel_reminder(
     db: Session = Depends(get_db),
     current_user_id: int = Depends(get_current_user_id),
 ):
-    reminder = db.query(Reminder).filter(
+    result = db.execute(
+        update(Reminder)
+        .where(
+            Reminder.id == reminder_id,
+            Reminder.user_id == current_user_id,
+            Reminder.status.in_(["pending", "failed"]),
+        )
+        .values(status="cancelled")
+    )
+    if result.rowcount == 1:
+        db.commit()
+        return {"status": "cancelled", "id": reminder_id}
+
+    current = db.query(Reminder).filter(
         Reminder.id == reminder_id,
         Reminder.user_id == current_user_id,
     ).first()
-    if reminder is None:
+    if current is None:
+        db.rollback()
         raise HTTPException(status_code=404, detail="Reminder not found")
-    if reminder.status == "sent":
-        raise HTTPException(status_code=409, detail="Sent reminders cannot be cancelled")
-    reminder.status = "cancelled"
-    db.commit()
-    return {"status": "cancelled", "id": reminder.id}
+    if current.status == "cancelled":
+        db.commit()
+        return {"status": "cancelled", "id": reminder_id}
+    db.rollback()
+    raise HTTPException(status_code=409, detail="Reminder cannot be cancelled in its current state")

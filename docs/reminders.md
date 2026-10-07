@@ -27,11 +27,20 @@ conditional database update means concurrent workers cannot claim the same
 row. Every worker uses its own SQLAlchemy session.
 
 The current policy is B: an authenticated user must have an active WebSocket
-connection for dispatch to be accepted. No connection leaves the reminder
-retryable; after the attempt limit it remains `failed`. Notifications contain
-`reminder_id` and `task_id`, providing a stable identity for client-side
-deduplication. Delivery is at-least-once: a crash after dispatch but before
-persisting `sent` can produce a duplicate.
+connection for dispatch to be accepted. Delivery is considered successful only
+after the WebSocket send coroutine completes successfully; merely having a
+connection is not sufficient. The wait is bounded by
+`REMINDER_DELIVERY_TIMEOUT_SECONDS`. No connection, send failure, coroutine
+failure, or timeout leaves the reminder retryable; after the attempt limit it
+remains `failed`. Notifications contain `reminder_id` and `task_id`, providing
+a stable identity for client-side deduplication. Delivery is at-least-once: a
+crash after dispatch but before persisting `sent` can produce a duplicate.
+
+Cancellation is an atomic conditional transition. Only `pending` and `failed`
+reminders can become `cancelled`; `processing` reminders return a conflict and
+cannot be cancelled, while an already-cancelled reminder is handled
+idempotently. This prevents cancellation and worker claiming from racing into
+an inconsistent state.
 
 ## Timezones
 

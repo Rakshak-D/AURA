@@ -8,7 +8,7 @@ from sqlalchemy.orm import sessionmaker
 
 from backend.app import database, main
 from backend.app.config import config
-from backend.app.models.sql_models import Base, Task, User
+from backend.app.models.sql_models import Base, Reminder, Task, User
 from backend.app.websocket_manager import manager
 
 
@@ -234,3 +234,27 @@ def test_reminder_and_document_routes_require_auth(auth_client):
     assert client.get("/api/tasks").status_code == 401
     assert client.get("/api/upload/files").status_code == 401
     assert client.get("/api/export").status_code == 401
+
+
+def test_reminder_cancellation_is_atomic_and_state_safe(auth_client):
+    client, factory = auth_client
+    register(client, "cancel@example.com")
+    _, headers = login(client, "cancel@example.com")
+    task_id = client.post("/api/tasks", headers=headers, json={"title": "Cancel me"}).json()["id"]
+    payload = {"task_id": task_id, "reminder_time": "2030-01-01T10:00:00Z"}
+    reminder_id = client.post("/api/reminders", headers=headers, json=payload).json()["id"]
+
+    assert client.delete(f"/api/reminders/{reminder_id}", headers=headers).status_code == 200
+    assert client.delete(f"/api/reminders/{reminder_id}", headers=headers).status_code == 200
+
+    with factory() as db:
+        reminder = db.get(Reminder, reminder_id)
+        reminder.status = "processing"
+        db.commit()
+    assert client.delete(f"/api/reminders/{reminder_id}", headers=headers).status_code == 409
+
+    with factory() as db:
+        reminder = db.get(Reminder, reminder_id)
+        reminder.status = "sent"
+        db.commit()
+    assert client.delete(f"/api/reminders/{reminder_id}", headers=headers).status_code == 409

@@ -48,6 +48,7 @@ def test_configuration_environment_overrides(monkeypatch, tmp_path):
         ("N_GPU_LAYERS", "-1"),
         ("LLM_MAX_TOKENS", "3000"),
         ("RAG_CHUNK_OVERLAP", "500"),
+        ("REMINDER_DELIVERY_TIMEOUT_SECONDS", "0"),
     ],
 )
 def test_invalid_configuration_is_rejected(monkeypatch, name, value):
