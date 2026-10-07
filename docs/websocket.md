@@ -22,6 +22,15 @@ browser client reconnects with bounded exponential backoff while authenticated
 and stops reconnecting on logout or a 401 response. Multiple sockets remain
 isolated by authenticated user ID.
 
+Each connection has one bounded outbound `asyncio.Queue` and one sender task,
+with capacity controlled by `WEBSOCKET_OUTBOUND_QUEUE_SIZE`. A notification is
+acknowledged only after that connection's `send_text()` completes. Queueing is
+not delivery success. Full, failed, or slow consumers are removed without
+blocking healthy connections; `REMINDER_DELIVERY_TIMEOUT_SECONDS` bounds the
+actual acknowledgement wait. There is no external broker or cross-process
+coordination: outbound queues are process-local and are drained/cancelled on
+disconnect or shutdown.
+
 Reminder notifications use a stable `event_id` (`reminder:<id>`) and include
 `reminder_id` and `task_id`. Client deduplication is bounded and delivery is
 still at-least-once: a process crash after sending but before the database

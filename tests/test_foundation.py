@@ -51,6 +51,7 @@ def test_configuration_environment_overrides(monkeypatch, tmp_path):
         ("REMINDER_DELIVERY_TIMEOUT_SECONDS", "0"),
         ("WEBSOCKET_MAX_MESSAGE_BYTES", "0"),
         ("WEBSOCKET_HEARTBEAT_INTERVAL_SECONDS", "0"),
+        ("WEBSOCKET_OUTBOUND_QUEUE_SIZE", "0"),
     ],
 )
 def test_invalid_configuration_is_rejected(monkeypatch, name, value):

@@ -112,6 +112,7 @@ async def startup_event():
 @app.on_event("shutdown")
 async def shutdown_event():
     stop_scheduler()
+    await manager.shutdown()
 
 # Routers
 app.include_router(chat.router, prefix="/api")

@@ -20,6 +20,9 @@ class FakeSocket:
         self.delay = delay
         self.messages = []
 
+    async def accept(self):
+        return None
+
     async def send_text(self, message):
         if self.delay:
             await asyncio.sleep(self.delay)
@@ -37,18 +40,24 @@ def running_manager(monkeypatch):
     manager.set_loop(loop)
     monkeypatch.setattr(config, "reminder_delivery_timeout_seconds", 0.05)
     yield manager
+    asyncio.run_coroutine_threadsafe(manager.shutdown(), loop).result(timeout=1)
     loop.call_soon_threadsafe(loop.stop)
     thread.join(timeout=1)
     loop.close()
+
+
+def connect_fake(manager, socket, user_id):
+    asyncio.run_coroutine_threadsafe(
+        manager.connect(socket, user_id), manager.loop
+    ).result(timeout=1)
 
 
 def test_websocket_dispatch_requires_actual_success(running_manager):
     assert not running_manager.broadcast_sync("message", 1)
     good = FakeSocket()
     bad = FakeSocket(failure=RuntimeError("closed"))
-    running_manager.active_connections[1].update({good, bad})
-    running_manager.connection_users[good] = 1
-    running_manager.connection_users[bad] = 1
+    connect_fake(running_manager, good, 1)
+    connect_fake(running_manager, bad, 1)
     assert running_manager.broadcast_sync("message", 1)
     assert good.messages == ["message"]
     assert bad not in running_manager.connection_users
@@ -56,15 +65,36 @@ def test_websocket_dispatch_requires_actual_success(running_manager):
 
 def test_websocket_dispatch_failure_and_timeout_return_false(running_manager):
     failed = FakeSocket(failure=RuntimeError("send failed"))
-    running_manager.active_connections[2].add(failed)
-    running_manager.connection_users[failed] = 2
+    connect_fake(running_manager, failed, 2)
     assert not running_manager.broadcast_sync("message", 2)
     assert failed not in running_manager.connection_users
 
     slow = FakeSocket(delay=1)
-    running_manager.active_connections[3].add(slow)
-    running_manager.connection_users[slow] = 3
+    connect_fake(running_manager, slow, 3)
     assert not running_manager.broadcast_sync("message", 3)
+
+
+def test_slow_connection_does_not_block_healthy_connection(running_manager):
+    slow = FakeSocket(delay=1)
+    healthy = FakeSocket()
+    connect_fake(running_manager, slow, 4)
+    connect_fake(running_manager, healthy, 4)
+    assert running_manager.broadcast_sync("message", 4)
+    assert healthy.messages == ["message"]
+    threading.Event().wait(0.1)
+    assert slow not in running_manager.connection_users
+
+
+def test_outbound_queue_is_bounded_and_disconnect_cleans_items(running_manager, monkeypatch):
+    monkeypatch.setattr(config, "websocket_outbound_queue_size", 1)
+    slow = FakeSocket(delay=1)
+    connect_fake(running_manager, slow, 5)
+    state = running_manager._states[slow]
+    assert state.queue.maxsize == 1
+    assert running_manager.broadcast_sync("first", 5) is False
+    running_manager.disconnect(slow)
+    assert slow not in running_manager.connection_users
+    assert state.queue.empty()
 
 
 @pytest.fixture
