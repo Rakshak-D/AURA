@@ -117,7 +117,7 @@ def test_browser_auth_task_and_xss_rendering(frontend_server: str) -> None:
             page.get_by_role("button", name="Create account").click()
             page.wait_for_function("() => sessionStorage.getItem('aura_access_token') === 'browser-test-token'")
 
-            page.get_by_role("button", name="Tasks").click()
+            page.get_by_role("button", name="Tasks", exact=True).click()
             page.get_by_role("button", name="+ New Task").click()
             page.locator("#task-title").fill("<img src=x onerror=alert(1)>")
             page.get_by_role("button", name="Save Task").click()
