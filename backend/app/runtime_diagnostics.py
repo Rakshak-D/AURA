@@ -4,6 +4,7 @@ import hashlib
 import importlib.util
 import json
 import logging
+import os
 from pathlib import Path
 from typing import Any
 
@@ -106,7 +107,7 @@ def gpu_status() -> dict[str, Any]:
             "state": "available" if available else "unavailable",
             "requested_layers": config.n_gpu_layers,
         }
-    except Exception:
+    except Exception:  # noqa: BLE001 - capability probing must fail closed
         return {
             "requested": True,
             "available": False,
@@ -167,7 +168,11 @@ def embedding_status() -> dict[str, Any]:
 
 
 def database_status() -> dict[str, Any]:
-    schema = database.schema_status()
+    try:
+        schema = database.schema_status()
+    except Exception:
+        logger.exception("Database schema readiness check failed")
+        return {"state": "unavailable", "schema_version": None, "missing": ["database"]}
     if not schema["ready"]:
         return {
             "state": "schema_incomplete",
@@ -178,10 +183,25 @@ def database_status() -> dict[str, Any]:
     try:
         session.execute(text("SELECT 1"))
         return {"state": "ready", "schema_version": schema["version"]}
-    except Exception:
+    except Exception:  # noqa: BLE001 - readiness must not expose runtime details
         return {"state": "runtime_failure"}
     finally:
         session.close()
+
+
+def runtime_directories_status() -> dict[str, Any]:
+    """Check core writable paths without creating or exposing their contents."""
+    paths = {
+        "data": config.data_dir,
+        "models": config.models_dir,
+        "uploads": config.uploads_dir,
+        "logs": config.logs_dir,
+    }
+    unavailable = [name for name, path in paths.items() if not path.is_dir() or not os.access(path, os.W_OK)]
+    return {
+        "state": "ready" if not unavailable else "unavailable",
+        "missing": unavailable,
+    }
 
 
 def rag_status() -> dict[str, Any]:
@@ -192,7 +212,7 @@ def rag_status() -> dict[str, Any]:
     if collection_loaded:
         try:
             vector_count = database._collection.count()
-        except Exception:
+        except Exception:  # noqa: BLE001 - diagnostics are best effort
             vector_count = None
     if not dependency:
         state = "optional_dependency_missing"
@@ -219,7 +239,7 @@ def scheduler_status() -> dict[str, Any]:
         initialized = scheduler is not None
         running = bool(initialized and scheduler.running)
         last_tick = last_scheduler_tick.isoformat() if last_scheduler_tick else None
-    except Exception:
+    except Exception:  # noqa: BLE001 - diagnostics are best effort
         initialized = False
     if not dependency:
         state = "optional_dependency_missing"
@@ -250,9 +270,11 @@ def scheduler_status() -> dict[str, Any]:
 
 def readiness_status() -> dict[str, Any]:
     database = database_status()
+    directories = runtime_directories_status()
+    core_ready = database["state"] == "ready" and directories["state"] == "ready"
     return {
-        "status": "ready" if database["state"] == "ready" else "unavailable",
-        "core": {"state": "ready", "database": database},
+        "status": "ready" if core_ready else "unavailable",
+        "core": {"state": "ready" if core_ready else "unavailable", "database": database, "directories": directories},
         "optional": {
             "llm": llm_status(),
             "embeddings": embedding_status(),

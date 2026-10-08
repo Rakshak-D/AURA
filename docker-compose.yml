@@ -1,0 +1,78 @@
+services:
+  aura:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    image: aura:runtime
+    restart: unless-stopped
+    init: true
+    ports:
+      - "${AURA_BIND_ADDRESS:-127.0.0.1}:${AURA_PUBLISHED_PORT:-8000}:8000"
+    environment:
+      ENVIRONMENT: production
+      HOST: 0.0.0.0
+      PORT: 8000
+      RELOAD: "false"
+      LOG_LEVEL: "${LOG_LEVEL:-INFO}"
+      AUTH_SECRET_KEY: "${AUTH_SECRET_KEY:-}"
+      AUTH_SECRET_KEY_FILE: "${AUTH_SECRET_KEY_FILE:-}"
+      AUTH_BOOTSTRAP_TOKEN: "${AUTH_BOOTSTRAP_TOKEN:-}"
+      ALLOWED_ORIGINS: "${ALLOWED_ORIGINS:-http://127.0.0.1:8000,http://localhost:8000}"
+      DATA_DIR: /var/lib/aura/data
+      MODELS_DIR: /var/lib/aura/models
+      DB_PATH: /var/lib/aura/data/aura.db
+      CHROMA_PATH: /var/lib/aura/data/chroma_db
+      UPLOADS_DIR: /var/lib/aura/data/uploads
+      LOGS_DIR: /var/lib/aura/data/logs
+      REMINDER_SCHEDULER_ENABLED: "${REMINDER_SCHEDULER_ENABLED:-true}"
+      REMINDER_POLL_INTERVAL_SECONDS: "${REMINDER_POLL_INTERVAL_SECONDS:-30}"
+      REMINDER_MAX_ATTEMPTS: "${REMINDER_MAX_ATTEMPTS:-3}"
+      REMINDER_PROCESSING_TIMEOUT_SECONDS: "${REMINDER_PROCESSING_TIMEOUT_SECONDS:-300}"
+      REMINDER_RETRY_DELAY_SECONDS: "${REMINDER_RETRY_DELAY_SECONDS:-60}"
+      REMINDER_DELIVERY_TIMEOUT_SECONDS: "${REMINDER_DELIVERY_TIMEOUT_SECONDS:-5}"
+      WEBSOCKET_MAX_MESSAGE_BYTES: "${WEBSOCKET_MAX_MESSAGE_BYTES:-4096}"
+      WEBSOCKET_HEARTBEAT_INTERVAL_SECONDS: "${WEBSOCKET_HEARTBEAT_INTERVAL_SECONDS:-30}"
+      WEBSOCKET_OUTBOUND_QUEUE_SIZE: "${WEBSOCKET_OUTBOUND_QUEUE_SIZE:-32}"
+    volumes:
+      - aura_data:/var/lib/aura/data
+      - aura_models:/var/lib/aura/models
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/ready', timeout=3).read()"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    stop_grace_period: 30s
+
+  # Optional TLS reverse proxy. The default profile does not publish this
+  # service; localhost deployments can use the backend port directly.
+  caddy:
+    image: caddy:2.8-alpine
+    profiles: ["tls"]
+    restart: unless-stopped
+    depends_on:
+      aura:
+        condition: service_healthy
+    ports:
+      - "${CADDY_HTTP_BIND:-127.0.0.1}:80:80"
+      - "${CADDY_HTTPS_BIND:-127.0.0.1}:443:443"
+    environment:
+      AURA_DOMAIN: "${AURA_DOMAIN:-localhost}"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  aura_data:
+  aura_models:
+  caddy_data:
+  caddy_config:

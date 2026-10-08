@@ -3,7 +3,7 @@
 import logging
 from pathlib import Path
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import AliasChoices, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 PROJECT_DIR = Path(__file__).resolve().parents[2]
@@ -17,7 +17,10 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    environment: str = Field(default="development", validation_alias="ENVIRONMENT")
+    environment: str = Field(
+        default="development",
+        validation_alias=AliasChoices("ENVIRONMENT", "AURA_ENVIRONMENT"),
+    )
     base_dir: Path = Field(default=PROJECT_DIR, validation_alias="BASE_DIR")
     data_dir: Path | None = Field(default=None, validation_alias="DATA_DIR")
     models_dir: Path | None = Field(default=None, validation_alias="MODELS_DIR")
@@ -46,6 +49,7 @@ class Settings(BaseSettings):
     wake_word: str = Field(default="hey aura", validation_alias="WAKE_WORD")
     secret_key: str = Field(default="dev-only-change-me", validation_alias="SECRET_KEY")
     auth_secret_key: str = Field(default="dev-only-change-me", validation_alias="AUTH_SECRET_KEY")
+    auth_secret_key_file: Path | None = Field(default=None, validation_alias="AUTH_SECRET_KEY_FILE")
     auth_bootstrap_token: str | None = Field(default=None, validation_alias="AUTH_BOOTSTRAP_TOKEN")
     access_token_expire_minutes: int = Field(default=30, validation_alias="ACCESS_TOKEN_EXPIRE_MINUTES")
     allowed_origins: str = Field(
@@ -130,6 +134,14 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_combinations(self) -> "Settings":
+        if self.auth_secret_key_file:
+            try:
+                secret_from_file = self.auth_secret_key_file.read_text(encoding="utf-8").strip()
+            except OSError as exc:
+                raise ValueError("AUTH_SECRET_KEY_FILE could not be read") from exc
+            if not secret_from_file:
+                raise ValueError("AUTH_SECRET_KEY_FILE is empty")
+            object.__setattr__(self, "auth_secret_key", secret_from_file)
         if self.llm_max_tokens > self.llm_context_window:
             raise ValueError("LLM_MAX_TOKENS cannot exceed CONTEXT_WINDOW")
         if self.rag_chunk_overlap >= self.rag_chunk_size:
@@ -139,6 +151,8 @@ class Settings(BaseSettings):
                 raise ValueError("AUTH_SECRET_KEY must be a unique value of at least 32 characters in production")
             if not self.allowed_origins.strip() or "*" in self.allowed_origins:
                 raise ValueError("ALLOWED_ORIGINS must explicitly list origins in production")
+            if self.reload:
+                raise ValueError("RELOAD must be false in production")
         return self
 
     def model_post_init(self, __context: object, /) -> None:

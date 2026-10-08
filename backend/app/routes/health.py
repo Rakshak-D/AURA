@@ -1,4 +1,5 @@
 from fastapi import APIRouter
+from fastapi.responses import JSONResponse
 
 from ..runtime_diagnostics import rag_status, readiness_status
 
@@ -14,7 +15,10 @@ def health() -> dict[str, str]:
 @router.get("/ready")
 def ready() -> dict:
     """Core readiness plus non-loading optional capability diagnostics."""
-    return readiness_status()
+    body = readiness_status()
+    if body["status"] != "ready":
+        return JSONResponse(status_code=503, content=body)
+    return body
 
 
 @router.get("/diagnostics/rag")

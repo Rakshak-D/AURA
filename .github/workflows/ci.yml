@@ -90,3 +90,56 @@ jobs:
           name: browser-artifacts
           path: tests/browser-artifacts
           if-no-files-found: ignore
+
+  deployment:
+    name: Production container smoke test
+    runs-on: ubuntu-latest
+    needs: [python, frontend, browser]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Compose configuration
+        env:
+          AUTH_SECRET_KEY: ci-only-secret-that-is-long-enough-for-tests-123456
+        run: docker compose config --quiet
+      - name: Build the CPU-only production image
+        env:
+          AUTH_SECRET_KEY: ci-only-secret-that-is-long-enough-for-tests-123456
+        run: docker compose build aura
+      - name: Start the localhost deployment
+        env:
+          AUTH_SECRET_KEY: ci-only-secret-that-is-long-enough-for-tests-123456
+        run: docker compose up -d aura
+      - name: Wait for readiness
+        env:
+          AUTH_SECRET_KEY: ci-only-secret-that-is-long-enough-for-tests-123456
+        run: |
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:8000/ready > /tmp/aura-ready.json; then
+              cat /tmp/aura-ready.json
+              break
+            fi
+            sleep 2
+          done
+          test -s /tmp/aura-ready.json
+      - name: Run deployment smoke test
+        env:
+          AUTH_SECRET_KEY: ci-only-secret-that-is-long-enough-for-tests-123456
+        run: python scripts/deployment_smoke.py --token-file "$RUNNER_TEMP/aura-token"
+      - name: Restart and verify persistence
+        env:
+          AUTH_SECRET_KEY: ci-only-secret-that-is-long-enough-for-tests-123456
+        run: |
+          docker compose restart aura
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:8000/ready > /dev/null; then break; fi
+            sleep 2
+          done
+          python scripts/deployment_smoke.py --token-file "$RUNNER_TEMP/aura-token"
+      - name: Show service logs on failure
+        if: failure()
+        run: docker compose logs aura
+      - name: Stop deployment
+        if: always()
+        env:
+          AUTH_SECRET_KEY: ci-only-secret-that-is-long-enough-for-tests-123456
+        run: docker compose down -v

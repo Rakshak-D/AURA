@@ -1,0 +1,4 @@
+{$AURA_DOMAIN} {
+    encode gzip
+    reverse_proxy aura:8000
+}

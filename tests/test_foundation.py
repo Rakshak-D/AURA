@@ -38,6 +38,43 @@ def test_configuration_environment_overrides(monkeypatch, tmp_path):
     assert settings.model_path.name == "test-model.gguf"
 
 
+def test_aura_environment_alias_is_supported(monkeypatch):
+    monkeypatch.setenv("AURA_ENVIRONMENT", "test")
+    assert Settings(_env_file=None).environment == "test"
+
+
+@pytest.mark.parametrize("secret", [None, "short", "dev-only-change-me"])
+def test_production_rejects_missing_or_insecure_auth_secret(monkeypatch, secret):
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    monkeypatch.setenv("ALLOWED_ORIGINS", "https://aura.example.test")
+    if secret is None:
+        monkeypatch.delenv("AUTH_SECRET_KEY", raising=False)
+    else:
+        monkeypatch.setenv("AUTH_SECRET_KEY", secret)
+    with pytest.raises(ValueError):
+        Settings(_env_file=None)
+
+
+def test_production_rejects_reload(monkeypatch):
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    monkeypatch.setenv("AUTH_SECRET_KEY", "x" * 64)
+    monkeypatch.setenv("ALLOWED_ORIGINS", "https://aura.example.test")
+    monkeypatch.setenv("RELOAD", "true")
+    with pytest.raises(ValueError, match="RELOAD"):
+        Settings(_env_file=None)
+
+
+def test_production_can_read_auth_secret_from_file(monkeypatch, tmp_path):
+    secret_file = tmp_path / "auth-secret"
+    secret_file.write_text("file-secret-" + "x" * 64, encoding="utf-8")
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    monkeypatch.setenv("AUTH_SECRET_KEY", "")
+    monkeypatch.setenv("AUTH_SECRET_KEY_FILE", str(secret_file))
+    monkeypatch.setenv("ALLOWED_ORIGINS", "https://aura.example.test")
+    settings = Settings(_env_file=None)
+    assert settings.auth_secret_key == secret_file.read_text(encoding="utf-8")
+
+
 @pytest.mark.parametrize(
     ("name", "value"),
     [

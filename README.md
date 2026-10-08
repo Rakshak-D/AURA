@@ -67,6 +67,8 @@ The core API can be imported and started without a GGUF model, GPU, ChromaDB dat
 
 See docs/runtime.md for the core, AI, and RAG install profiles, explicit model/embedding provisioning, verification, CPU/GPU behavior, and health/readiness diagnostics.
 
+For a persistent single-host deployment, use the CPU-only Docker Compose path documented in [docs/deployment.md](docs/deployment.md). It binds to localhost by default, stores application state in named volumes, and does not download models during startup.
+
 ### Installation
 
 1. **Clone the Repository**
