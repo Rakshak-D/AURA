@@ -1,7 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
-from datetime import datetime
-
 from ..database import get_db, utc_now
 from ..auth import get_current_user_id
 from ..models.sql_models import ChatHistory

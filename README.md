@@ -1,215 +1,183 @@
-# 🌌 AURA (Augmented Understanding And Response Agent)
+# AURA
 
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.110.0-brightgreen)](https://fastapi.tiangolo.com/)
-[![Model: Phi-3](https://img.shields.io/badge/Model-Phi--3_Mini-blueviolet)](https://huggingface.co/microsoft/Phi-3-mini-4k-instruct-gguf)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://www.python.org/)
+AURA (Augmented Understanding And Response Agent) is a self-hosted personal
+productivity assistant. It combines authenticated task and reminder management,
+calendar scheduling, document search, local AI capabilities, and browser
+notifications in one FastAPI application.
 
-**AURA** is a next-generation, AI-powered personal productivity assistant designed to seamlessly integrate chat, task management, scheduling, and knowledge retrieval into a single, cohesive interface. Built with a "dark-mode first" philosophy, it offers a premium, glassmorphism-inspired UI that feels alive and responsive.
+Repository: <https://github.com/Rakshak-D/AURA>
 
----
+## Current capabilities
 
-## ✨ Key Features
+- Local username/password authentication with short-lived bearer tokens.
+- User-owned tasks, routines, reminders, calendar scheduling, search, settings,
+  and logical data export.
+- Persistent reminder delivery through the database-backed scheduler and
+  authenticated WebSocket notifications.
+- Document upload and user-scoped RAG when the optional RAG dependencies and
+  provisioned embedding/Chroma runtime are available.
+- Optional local GGUF inference through llama.cpp. The core API does not load or
+  download a model during import or startup.
+- Browser-only voice input through the Web Speech API. AURA does not provide a
+  backend speech-to-text service.
+- A vanilla JavaScript frontend with safe text rendering and a centralized
+  authenticated API client.
 
-### 💬 Intelligent Chat Interface
-- **Context-Aware AI**: Powered by **Local LLM (Phi-3 Mini via LlamaCPP)** for privacy-first, offline-capable, and context-rich conversations.
-- **Markdown & Code Support**: Beautiful rendering of code blocks, tables, and formatted text.
-- **Safe Chat Responses**: Authenticated responses are rendered as bounded plain text; server-side chat streaming is not currently claimed.
-- **Memory & Context**: Remembers previous interactions for a continuous dialogue flow.
+Chat currently returns a completed response. The repository does not claim
+server-side chat streaming or exactly-once reminder delivery.
 
-### 📋 Kanban Task Management
-- **Visual Board**: Drag-and-drop Kanban board (To Do, In Progress, Done).
-- **Smart Categorization**: Auto-tagging and prioritization of tasks.
-- **Detailed Cards**: Rich task details including due dates, priority badges, and descriptions.
-- **Seamless Integration**: Create tasks directly from chat conversations.
+## Architecture
 
-### 📅 Dynamic Calendar & Scheduling
-- **Daily Timeline View**: Precision daily planner with a vertical timeline layout.
-- **Magic Schedule**: AI-powered auto-scheduling that optimizes your day based on tasks and priorities.
-- **Event Management**: Visual distinction between tasks, meetings, breaks, and deep work blocks.
-- **Time Blocking**: Drag-and-drop time allocation for focused productivity.
+The application is intentionally a single-host, single-process deployment:
 
-### 🧠 Knowledge Base (RAG)
-- **Document Ingestion**: Upload and index documents (PDF, TXT, MD) for AI retrieval.
-- **Semantic Search**: Ask questions about your uploaded documents.
-- **Contextual Answers**: The AI cites sources and uses your knowledge base to answer queries.
-
-### 📊 Insights & Analytics
-- **Focus Score**: Real-time productivity tracking and focus metrics.
-- **Activity Trends**: Visual charts showing task completion and productivity over time.
-- **Productivity Distribution**: Analysis of time spent on different categories (Work, Learning, Health).
-
----
-
-## 🛠 Technology Stack
-
-| Component | Technologies |
-|-----------|--------------|
-| **Backend API** | FastAPI, Uvicorn, SQLAlchemy, Pydantic |
-| **AI Engine** | Local LLM (Phi-3 Mini), LlamaCPP, SentenceTransformers |
-| **Database** | SQLite (Local), ChromaDB (Vector Store) |
-| **Frontend** | HTML5, Vanilla CSS (Glassmorphism), JavaScript (ES6+) |
-| **Visualization** | Chart.js, Lucide Icons |
-| **Deployment** | Docker (Optional), Python-dotenv |
-
----
-
-## 🚀 Quick Start
-
-### Prerequisites
-- Python 3.10+
-- 4GB+ RAM (8GB+ recommended for best performance)
-- Modern Web Browser
-
-Copy .env.example to .env for local configuration. The real .env is ignored by Git; never commit credentials or machine-specific settings.
-
-The core API can be imported and started without a GGUF model, GPU, ChromaDB data, embedding downloads, OCR binaries, or user documents. Local AI/RAG and document features require the optional dependencies and model/system prerequisites documented in `docs/runtime.md`. Protected API operations require registration/login; see `docs/authentication.md`.
-
-See docs/runtime.md for the core, AI, and RAG install profiles, explicit model/embedding provisioning, verification, CPU/GPU behavior, and health/readiness diagnostics.
-
-For a persistent single-host deployment, use the CPU-only Docker Compose path documented in [docs/deployment.md](docs/deployment.md). It binds to localhost by default, stores application state in named volumes, and does not download models during startup.
-
-### Installation
-
-1. **Clone the Repository**
-```bash
-git clone https://github.com/your-username/aura-assistant.git
-cd aura-assistant
+```text
+Browser HTML/CSS/JavaScript
+        | HTTP + authenticated WebSocket
+        v
+FastAPI/Uvicorn application
+  |-- SQLAlchemy -> SQLite (source of truth)
+  |-- APScheduler -> persistent reminder polling
+  |-- optional llama.cpp -> local GGUF model
+  |-- optional SentenceTransformers/Chroma -> user-scoped RAG
+  `-- authenticated WebSocket manager -> browser notifications
 ```
 
-2. **Set Up Environment**
+SQLite, the scheduler, and WebSocket connection state are process-local. Run
+one application worker; multiple workers or replicas are not supported.
+
+## Technology stack
+
+- Python 3.11 (Python 3.10+ is supported by the current code)
+- FastAPI, Uvicorn, Pydantic Settings, SQLAlchemy, SQLite
+- APScheduler and authenticated WebSockets
+- Vanilla JavaScript, HTML, CSS, Chart.js, and Lucide icons in the frontend
+- Optional: llama-cpp-python for local LLM inference
+- Optional: SentenceTransformers, ChromaDB, document parsers, and OCR support
+
+## Local development
+
+Prerequisites: Python 3.11, a modern browser, and a writable local data
+directory. The core install is CPU-only and does not need CUDA, a GGUF model,
+embedding downloads, ChromaDB, OCR, or user documents.
+
 ```bash
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate  # Linux/Mac
-# or
-venv\Scripts\activate    # Windows
-
-# Install dependencies
-pip install -r requirements.txt
-```
-
-3. **Download Models**
-Run the model downloader to fetch the GGUF model and embeddings:
-```bash
-python backend/download_models.py
-```
-
-4. **Configure Environment Variables**
-Create a `.env` file in the root directory by copying `.env.example`; never commit that local file. Set a unique `AUTH_SECRET_KEY` before exposing the API and configure explicit `ALLOWED_ORIGINS`.
-```env
-# Optional: Customize model usage
-USE_GPU=true
-MODEL_FILENAME=Phi-3-mini-4k-instruct-q4.gguf
-DATABASE_URL=sqlite:///./aura.db
-```
-
-5. **Start the Backend Server**
-```bash
+git clone https://github.com/Rakshak-D/AURA.git
+cd AURA
+python -m venv .venv
+# Linux/macOS
+source .venv/bin/activate
+# Windows PowerShell: .\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements-dev.txt
+copy .env.example .env  # Windows; use cp on Linux/macOS
 python backend/run_backend.py
-# Server will start at http://localhost:8000
 ```
 
-5. **Launch the Application**
-Open `frontend/index.html` in your browser or serve it using a simple HTTP server:
+Open <http://127.0.0.1:8000>. Register a local account before using protected
+features. Use a unique `AUTH_SECRET_KEY` for anything beyond local development;
+production settings reject the development placeholder.
+
+Optional capabilities are deliberately separate:
+
 ```bash
-cd frontend
-python -m http.server 3000
-# Access at http://localhost:3000
+python -m pip install -r requirements-ai.txt
+python -m pip install -r requirements-rag.txt
+python backend/download_models.py --status
 ```
 
----
+Provision model artifacts explicitly with `backend/download_models.py`; API
+startup never downloads them. See [docs/runtime.md](docs/runtime.md) for
+canonical paths, CPU/GPU behavior, model verification, and capability states.
 
-## 📁 Project Structure
+## Docker deployment
 
+For a persistent single-host deployment, copy `.env.example` to an untracked
+`.env`, set a strong `AUTH_SECRET_KEY`, and run:
+
+```bash
+docker compose build
+docker compose up -d
+curl http://127.0.0.1:8000/health
+curl http://127.0.0.1:8000/ready
 ```
+
+The default Compose binding is localhost-only. The `tls` profile adds the
+checked-in Caddy reverse proxy for an explicitly configured domain; it does not
+make public certificate or DNS claims. Models are stored separately and are
+never baked into the image or downloaded at container startup.
+
+Back up and restore through the running container's persistent data paths:
+
+```bash
+docker compose exec -T aura python scripts/backup.py backup /tmp/aura-backup.tar.gz
+docker cp "$(docker compose ps -q aura):/tmp/aura-backup.tar.gz" ./aura-backup.tar.gz
+```
+
+The archive contains SQLite, uploads, and Chroma data when present, but not
+models, `.env` files, or secrets. The complete restore procedure is in
+[docs/deployment.md](docs/deployment.md).
+
+## Project structure
+
+```text
 AURA/
-├── backend/
-│   ├── app/
-│   │   ├── main.py                 # FastAPI entry point
-│   │   ├── models/                 # Database models
-│   │   ├── routes/                 # API endpoints (chat, tasks, schedule)
-│   │   ├── services/               # Business logic (AI, RAG, Calendar)
-│   │   └── utils/                  # Helper functions
-│   └── run_backend.py              # Server runner script
-├── frontend/
-│   ├── css/
-│   │   └── styles.css              # Global styles & Glassmorphism theme
-│   ├── js/
-│   │   ├── main.js                 # Core frontend logic
-│   │   ├── chat.js                 # Chat handling
-│   │   ├── tasks.js                # Kanban board logic
-│   │   └── calendar.js             # Timeline view logic
-│   └── index.html                  # Main application entry
-├── data/                           # Local database and vector store
-├── requirements.txt                # Python dependencies
-└── README.md
+├── backend/                 FastAPI app, models, services, and model tooling
+├── frontend/                Vanilla HTML/CSS/JavaScript application
+├── docs/                    Runtime, security, database, testing, and deployment docs
+├── scripts/                 Backup and deployment smoke-test utilities
+├── tests/                   Python, contract, security, and browser tests
+├── Dockerfile               CPU-only runtime plus optional AI/RAG targets
+├── docker-compose.yml       Local single-host deployment and optional TLS profile
+├── Caddyfile                Reverse-proxy configuration for the TLS profile
+├── requirements*.txt        Core, development, browser, AI, and RAG dependency sets
+└── .github/workflows/       CI and deployment validation
 ```
 
----
+## Testing and CI
 
-## 🔄 Workflow
+Install the development requirements and run the deterministic suite:
 
-### System Architecture
-```mermaid
-graph TD
-    A[User Interface] -->|HTTP/WebSocket| B[FastAPI Backend]
-    B -->|Query| C[SQLite Database]
-    B -->|Vector Search| D[Knowledge Base]
-    B -->|Prompt| E[Local LLM (Phi-3)]
-    E -->|Response| B
-    B -->|JSON/WebSocket notifications| A
+```bash
+python -m pytest -m "not browser" -q
+python -m compileall -q backend tests scripts
+python -m ruff check backend tests scripts --select E4,E7,E9,F
+python -m pip check
+node tests/frontend_contracts.test.mjs
 ```
 
-### Magic Schedule Flow
-1. **Task Collection**: Aggregates pending tasks from the Kanban board.
-2. **Constraint Analysis**: Checks existing calendar events and user preferences.
-3. **AI Optimization**: Local LLM generates an optimal schedule.
-4. **Allocation**: Tasks are assigned specific time slots in the database.
-5. **Visualization**: The Calendar view updates in real-time.
+Browser tests use Playwright and are separate from the default model-free
+suite:
 
----
-
-## 🔌 API Endpoints
-
-### `POST /api/chat`
-Send a message to the AI assistant.
-```json
-{
-  "message": "Plan my day based on my tasks",
-  "context": "..."
-}
+```bash
+python -m pip install -r requirements-browser.txt
+python -m playwright install chromium
+# PowerShell: $env:AURA_RUN_BROWSER = "1"
+python -m pytest -m browser -q
 ```
 
-### `GET /api/tasks`
-Retrieve all tasks for the Kanban board.
+GitHub Actions runs Python tests and coverage, repository-wide core Ruff
+checks, Python compilation, dependency checks, frontend syntax/security checks,
+Playwright regressions, and a CPU-only Docker deployment smoke test.
 
-### `POST /api/schedule/auto-assign`
-Trigger the Magic Schedule algorithm to organize your day.
+## Operational limitations
 
----
+- AURA is designed for one host and one Uvicorn worker. SQLite, the scheduler,
+  and WebSocket connections are not coordinated across replicas.
+- Reminder delivery is at-least-once. A crash after notification dispatch and
+  before the `sent` update can produce a duplicate.
+- Local LLM and RAG support is optional and requires separately provisioned
+  artifacts and, for OCR, system dependencies.
+- Browser voice input depends on browser/platform Web Speech support and user
+  microphone permission.
+- The default deployment is suitable for localhost or deliberate LAN use. A
+  public deployment requires HTTPS, firewall controls, a strong secret, and
+  explicit allowed origins.
 
-## 👥 Development Team
+More detail is available in [docs/runtime.md](docs/runtime.md),
+[docs/authentication.md](docs/authentication.md),
+[docs/websocket.md](docs/websocket.md),
+[docs/web-security.md](docs/web-security.md), and
+[docs/testing.md](docs/testing.md).
 
-| Team Member | Role | GitHub |
-|-------------|------|--------|
-| **Rakshak D** | Lead Developer | [@Rakshak-D](https://github.com/Rakshak-D) |
+## License
 
----
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
----
-
-## 🔮 Future Roadmap
-
-- [ ] **Voice Interface**: Full STT/TTS integration for hands-free operation.
-- [ ] **Mobile App**: React Native mobile application.
-- [ ] **Plugin System**: Allow third-party integrations (Spotify, Notion, etc.).
-- [ ] **Multi-User Support**: Collaborative workspaces and shared calendars.
-
----
-
-**Experience the future of productivity with AURA. 🌌**
+AURA is released under the MIT License. See [LICENSE](LICENSE).

@@ -138,7 +138,7 @@ def generate_routine(user_id: int, db: Session, date: datetime = None) -> Dict:
         Task.due_date.isnot(None),  # Must have a due_date
         Task.due_date >= base_date,
         Task.due_date < day_end,
-        Task.completed == False
+        Task.completed.is_(False)
     ).all()
     
     for task in scheduled_tasks:
@@ -235,8 +235,8 @@ def auto_schedule_tasks(user_id: int, db: Session, date: datetime = None) -> Dic
     # 1. Get Unscheduled Tasks (High priority first)
     unscheduled = db.query(Task).filter(
         Task.user_id == user_id,
-        Task.due_date == None,
-        Task.completed == False
+        Task.due_date.is_(None),
+        Task.completed.is_(False)
     ).order_by(
         # Custom sort: Urgent > High > Medium > Low
         Task.priority == 'urgent',

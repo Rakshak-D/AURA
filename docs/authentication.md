@@ -11,7 +11,7 @@ subject, issued-at, expiry, and `access` purpose. Each request resolves the
 subject against SQLite, so disabled users are rejected immediately. Tokens are
 stateless with no refresh/revocation store yet; keep their lifetime short.
 
-Existing Phase 2 development data is preserved. If its user has no login
+Existing pre-authentication development data is preserved. If its user has no login
 identifier, set `AUTH_BOOTSTRAP_TOKEN` out of band and call
 `POST /api/auth/bootstrap` once with the token, identifier, and a new password.
 Bootstrap is rejected unless exactly one legacy user remains; no production

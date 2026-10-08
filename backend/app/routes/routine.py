@@ -4,7 +4,7 @@ from ..database import get_db
 from ..auth import get_current_user_id
 from ..models.sql_models import RoutineEvent
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List
 
 router = APIRouter()
 

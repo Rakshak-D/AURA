@@ -5,7 +5,7 @@ from ..database import get_db, utc_now
 from ..auth import get_current_user_id
 from ..services.schedule_service import get_analytics
 from ..models.sql_models import Task
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 router = APIRouter()
 
@@ -35,7 +35,7 @@ def get_focus_score(db: Session = Depends(get_db), current_user_id: int = Depend
         current_week_completed = db.query(Task).filter(
             and_(
                 Task.user_id == user_id,
-                Task.completed == True,
+                Task.completed.is_(True),
                 Task.completed_at >= week_start,
                 Task.completed_at < week_end
             )
@@ -45,7 +45,7 @@ def get_focus_score(db: Session = Depends(get_db), current_user_id: int = Depend
         previous_week_completed = db.query(Task).filter(
             and_(
                 Task.user_id == user_id,
-                Task.completed == True,
+                Task.completed.is_(True),
                 Task.completed_at >= previous_week_start,
                 Task.completed_at < previous_week_end
             )
@@ -70,7 +70,7 @@ def get_focus_score(db: Session = Depends(get_db), current_user_id: int = Depend
         # Determine label and trend text
         if score > 80:
             label = "Excellent"
-            trend_text = f"Top 10% of users" if productivity_trend and productivity_trend > 0 else "Keep it up!"
+            trend_text = "Top 10% of users" if productivity_trend and productivity_trend > 0 else "Keep it up!"
         elif score > 50:
             label = "Good"
             trend_text = f"+{productivity_trend}% from last week" if productivity_trend and productivity_trend > 0 else "On track"

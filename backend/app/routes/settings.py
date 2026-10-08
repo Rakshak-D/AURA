@@ -3,7 +3,6 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..auth import get_current_user
-from ..models.sql_models import User
 from ..models.pydantic_models import SettingsUpdate
 
 router = APIRouter()

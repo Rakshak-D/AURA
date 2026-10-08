@@ -19,8 +19,8 @@ Install the core and development dependencies:
 ```text
 python -m pip install -r requirements-dev.txt
 python -m pytest -m "not browser" --cov=backend.app
-python -m compileall -q backend tests
-python -m ruff check backend tests
+python -m compileall -q backend tests scripts
+python -m ruff check backend tests scripts --select E4,E7,E9,F
 python -m pip check
 ```
 
@@ -47,12 +47,15 @@ lightweight Python path.
 
 ## CI jobs
 
-`.github/workflows/ci.yml` contains three jobs:
+`.github/workflows/ci.yml` contains four jobs:
 
-- Python tests, coverage, compileall, Ruff, and `pip check`.
+- Python tests, coverage, compileall, repository-wide core Ruff checks, and
+  `pip check`.
 - Frontend JavaScript syntax and static security checks.
 - Playwright browser regressions, with the browser job depending on the first
   two jobs and preserving failure artifacts when present.
+- Production container build, Compose/TLS validation, persistence restart, and
+  backup/restore smoke checks.
 
 No CI job installs `requirements-ai.txt` or `requirements-rag.txt`, and the
 default job has no path that downloads GGUF or embedding models.

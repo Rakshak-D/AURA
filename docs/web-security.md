@@ -1,6 +1,6 @@
 # Web and browser security
 
-Phase 5 treats the browser, HTTP responses, uploaded files, and WebSocket
+The browser, HTTP responses, uploaded files, and WebSocket
 handshakes as security boundaries.
 
 ## XSS and untrusted content
@@ -44,8 +44,8 @@ with credentials.
 Uploads require an allowlisted extension and compatible content type, reject
 path separators and oversized bodies, normalize names, and are parsed from an
 in-memory bounded byte buffer. A user filename is never used as a filesystem
-path. Document records and Chroma operations remain user-scoped by the Phase 3
-and Phase 4 ownership boundaries.
+path. Document records and Chroma operations remain user-scoped by the
+authenticated ownership boundary.
 
 ## Error and logging behavior
 

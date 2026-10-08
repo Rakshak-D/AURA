@@ -155,7 +155,7 @@ def _table_columns(connection, table: str) -> set[str]:
 
 
 def _apply_schema_migrations(target_engine=None) -> None:
-    """Upgrade SQLite schemas transactionally to the enforced Phase 2 model."""
+    """Upgrade SQLite schemas transactionally to the enforced integrity model."""
     target_engine = target_engine or engine
     if target_engine.url.get_backend_name() != "sqlite":
         return

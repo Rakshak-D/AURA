@@ -127,7 +127,7 @@ then start it again:
 docker compose down
 docker compose run --rm --no-deps --entrypoint python \
   -v /secure/backup:/tmp/restore:ro aura \
-  scripts/backup.py restore /tmp/restore/aura-2026-10-08.tar.gz
+  scripts/backup.py restore /tmp/restore/aura-YYYY-MM-DD.tar.gz
 docker compose up -d aura
 ```
 
