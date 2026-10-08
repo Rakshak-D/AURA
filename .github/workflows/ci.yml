@@ -100,11 +100,22 @@ jobs:
       - name: Validate Compose configuration
         env:
           AUTH_SECRET_KEY: ci-only-secret-that-is-long-enough-for-tests-123456
-        run: docker compose config --quiet
+          AURA_DOMAIN: localhost
+        run: |
+          docker compose config --quiet
+          docker compose --profile tls config --quiet
+          test -f Caddyfile
+          grep -F 'reverse_proxy aura:8000' Caddyfile
       - name: Build the CPU-only production image
         env:
           AUTH_SECRET_KEY: ci-only-secret-that-is-long-enough-for-tests-123456
         run: docker compose build aura
+      - name: Inspect production image boundaries
+        run: |
+          test "$(docker inspect -f '{{.Config.User}}' aura:runtime)" = "aura"
+          docker inspect aura:runtime --format '{{json .Config.Cmd}}' | grep -F -- '--workers'
+          docker inspect aura:runtime --format '{{json .Config.Cmd}}' | grep -F -- '"1"'
+          docker run --rm aura:runtime python -c "import importlib.util, os; assert os.getuid() != 0; assert importlib.util.find_spec('pytest') is None; assert importlib.util.find_spec('llama_cpp') is None; assert not os.path.exists('/opt/aura/tests')"
       - name: Start the localhost deployment
         env:
           AUTH_SECRET_KEY: ci-only-secret-that-is-long-enough-for-tests-123456
@@ -134,6 +145,33 @@ jobs:
             if curl --fail --silent http://127.0.0.1:8000/ready > /dev/null; then break; fi
             sleep 2
           done
+          python scripts/deployment_smoke.py --token-file "$RUNNER_TEMP/aura-token"
+      - name: Create backup with the production implementation
+        env:
+          AUTH_SECRET_KEY: ci-only-secret-that-is-long-enough-for-tests-123456
+        run: |
+          docker compose exec -T aura sh -c 'printf backup-marker > /var/lib/aura/data/uploads/deployment-backup-marker.txt'
+          docker compose exec -T aura python scripts/backup.py backup /tmp/aura-backup.tar.gz
+          docker compose cp aura:/tmp/aura-backup.tar.gz "$RUNNER_TEMP/aura-backup.tar.gz"
+          test -s "$RUNNER_TEMP/aura-backup.tar.gz"
+      - name: Destroy deployment state and restore into a fresh volume
+        env:
+          AUTH_SECRET_KEY: ci-only-secret-that-is-long-enough-for-tests-123456
+        run: |
+          docker compose down -v
+          docker compose run --rm --no-deps --entrypoint python \
+            -v "$RUNNER_TEMP:/tmp/restore:ro" aura \
+            scripts/backup.py restore /tmp/restore/aura-backup.tar.gz
+          docker compose up -d aura
+      - name: Verify restored backup after startup
+        env:
+          AUTH_SECRET_KEY: ci-only-secret-that-is-long-enough-for-tests-123456
+        run: |
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:8000/ready > /dev/null; then break; fi
+            sleep 2
+          done
+          docker compose exec -T aura test -f /var/lib/aura/data/uploads/deployment-backup-marker.txt
           python scripts/deployment_smoke.py --token-file "$RUNNER_TEMP/aura-token"
       - name: Show service logs on failure
         if: failure()

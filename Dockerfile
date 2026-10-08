@@ -30,6 +30,7 @@ RUN groupadd --gid "$APP_GID" aura \
 WORKDIR /opt/aura
 COPY --chown=aura:aura backend ./backend
 COPY --chown=aura:aura frontend ./frontend
+COPY --chown=aura:aura scripts ./scripts
 
 ENV PATH="/opt/venv/bin:$PATH" \
     PYTHONPATH=/opt/aura \

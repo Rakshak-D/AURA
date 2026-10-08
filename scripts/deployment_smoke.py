@@ -24,6 +24,27 @@ def request(base_url: str, path: str, method: str = "GET", payload: dict | None 
         raise RuntimeError(f"{method} {path} returned HTTP {exc.code}") from exc
 
 
+def upload_text(base_url: str, token: str) -> dict:
+    boundary = f"----AURASMOKE{uuid.uuid4().hex}"
+    content = b"deployment backup document"
+    body = (
+        f"--{boundary}\r\n"
+        'Content-Disposition: form-data; name="file"; filename="deployment-backup.txt"\r\n'
+        "Content-Type: text/plain\r\n\r\n"
+    ).encode() + content + f"\r\n--{boundary}--\r\n".encode()
+    request_object = urllib.request.Request(
+        f"{base_url.rstrip('/')}/api/upload",
+        data=body,
+        headers={"Content-Type": f"multipart/form-data; boundary={boundary}", "Authorization": f"Bearer {token}"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request_object, timeout=10) as response:
+            return json.loads(response.read())
+    except urllib.error.HTTPError as exc:
+        raise RuntimeError(f"POST /api/upload returned HTTP {exc.code}") from exc
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--base-url", default="http://127.0.0.1:8000")
@@ -46,10 +67,15 @@ def main() -> int:
             with open(args.token_file, "w", encoding="utf-8") as output:
                 output.write(token)
         request(args.base_url, "/api/tasks", "POST", {"title": "deployment smoke task", "duration_minutes": 30}, token)
+        upload_text(args.base_url, token)
 
     tasks = request(args.base_url, "/api/tasks", token=token)
     if not any(task.get("title") == "deployment smoke task" for task in tasks):
         raise RuntimeError("persistent smoke task was not returned")
+    documents = request(args.base_url, "/api/upload/files", token=token)
+    files = documents.get("data", {}).get("files", [])
+    if not any(document.get("filename") == "deployment-backup.txt" for document in files):
+        raise RuntimeError("persistent smoke document was not returned")
     print("deployment smoke passed")
     return 0
 

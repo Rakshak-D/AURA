@@ -109,18 +109,31 @@ and reachable DNS. Localhost mode does not require TLS or public DNS.
 
 ## Backup and restore
 
-Use the SQLite backup API rather than copying a live database file:
+Use the SQLite backup API inside the running container rather than operating on
+the developer checkout's `data/` directory:
 
 ```bash
-ENVIRONMENT=production AUTH_SECRET_KEY="$AUTH_SECRET_KEY" \
-  python scripts/backup.py backup /secure/backup/aura-$(date +%F).tar.gz
-ENVIRONMENT=production AUTH_SECRET_KEY="$AUTH_SECRET_KEY" \
-  python scripts/backup.py restore /secure/backup/aura-2026-10-08.tar.gz
+mkdir -p /secure/backup
+docker compose exec -T aura python scripts/backup.py backup /tmp/aura-backup.tar.gz
+docker cp "$(docker compose ps -q aura):/tmp/aura-backup.tar.gz" \
+  "/secure/backup/aura-$(date +%F).tar.gz"
+```
+
+To restore an archive, stop the application while retaining its named volumes,
+run the actual restore implementation against the mounted persistent volume,
+then start it again:
+
+```bash
+docker compose down
+docker compose run --rm --no-deps --entrypoint python \
+  -v /secure/backup:/tmp/restore:ro aura \
+  scripts/backup.py restore /tmp/restore/aura-2026-10-08.tar.gz
+docker compose up -d aura
 ```
 
 The archive contains SQLite, uploads, and Chroma data if present. It excludes
-models, `.env` files, and secrets. Stop AURA before restore, verify the archive
-on a temporary deployment, and keep an independent copy of model files.
+models, `.env` files, and secrets. Verify archives on a temporary deployment
+before a production restore, and keep an independent copy of model files.
 
 ## Operations and limits
 
