@@ -115,7 +115,7 @@ jobs:
           test "$(docker inspect -f '{{.Config.User}}' aura:runtime)" = "aura"
           docker inspect aura:runtime --format '{{json .Config.Cmd}}' | grep -F -- '--workers'
           docker inspect aura:runtime --format '{{json .Config.Cmd}}' | grep -F -- '"1"'
-          docker run --rm aura:runtime python -c "import importlib.util, os; assert os.getuid() != 0; assert importlib.util.find_spec('pytest') is None; assert importlib.util.find_spec('llama_cpp') is None; assert not os.path.exists('/opt/aura/tests')"
+          docker run --rm --entrypoint python aura:runtime -c "import importlib.util, os; assert os.getuid() != 0; assert importlib.util.find_spec('pytest') is None; assert importlib.util.find_spec('llama_cpp') is None; assert not os.path.exists('/opt/aura/tests')"
       - name: Start the localhost deployment
         env:
           AUTH_SECRET_KEY: ci-only-secret-that-is-long-enough-for-tests-123456
