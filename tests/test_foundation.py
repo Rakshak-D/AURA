@@ -10,7 +10,9 @@ import pytest
 from backend.app.config import PROJECT_DIR, Settings
 
 
-def test_configuration_defaults_are_deterministic():
+def test_configuration_defaults_are_deterministic(monkeypatch):
+    monkeypatch.delenv("ENVIRONMENT", raising=False)
+    monkeypatch.delenv("AURA_ENVIRONMENT", raising=False)
     settings = Settings(_env_file=None)
 
     assert settings.environment == "development"
