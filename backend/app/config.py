@@ -89,6 +89,11 @@ class Settings(BaseSettings):
             raise ValueError("MODEL_FILENAME must not contain path separators")
         return value
 
+    @field_validator("auth_secret_key_file", mode="before")
+    @classmethod
+    def normalize_secret_file(cls, value: object) -> object:
+        return None if value is None or not str(value).strip() else value
+
     @field_validator("n_gpu_layers")
     @classmethod
     def validate_gpu_layers(cls, value: int) -> int:
