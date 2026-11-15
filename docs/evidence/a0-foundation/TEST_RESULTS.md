@@ -41,3 +41,7 @@ The browser tests cover actual account registration/sign-in, failure-safe icon i
 The final pytest runs reported three existing Pydantic class-based `Config` deprecation warnings. Python 3.12 also reported the existing `tarfile.extractall()` future-default warning in `scripts/backup.py:62`. Neither warning caused a failure; these unrelated compatibility cleanups were left outside A0.
 
 The files `final/implementation-iteration-initial-failure.txt` and `final/targeted-browser-checks.txt` preserve intermediate red/diagnostic runs from before the final browser fixes. The authoritative final browser result is `final/browser-suite.txt` and the last seven rows in `final/browser-run-summary.jsonl`.
+
+## A0-R1 corrective rerun
+
+The A0-R1 corrective pass reran both complete deterministic backend suites and the complete real-browser suite after the Chat fallback, narrow composer, and CI trigger updates. Exact commands, individual durations, and new evidence files are in `A0_R1_REVIEW.md`.

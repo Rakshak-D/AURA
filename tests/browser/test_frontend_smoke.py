@@ -41,6 +41,7 @@ _VIEWPORTS = (
     (390, 844),
     (320, 844),
 )
+NO_MODEL_CHAT_RESPONSE = "No AI model is available right now, so I can't answer general chat messages."
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -515,6 +516,13 @@ def test_chat_returns_a_real_graceful_no_model_response(
 ) -> None:
     _sign_in(browser_session, browser_account)
     page = browser_session.page
+    chat_responses: list[object] = []
+    page.on(
+        "response",
+        lambda response: chat_responses.append(response)
+        if urlsplit(response.url).path == "/api/chat"
+        else None,
+    )
     page.locator("#chat-input").fill("Please say hello for the A0 browser check.")
     page.locator(".send-btn").click()
     response = page.locator(".message.assistant .message-content").last
@@ -523,12 +531,77 @@ def test_chat_returns_a_real_graceful_no_model_response(
         "() => !document.querySelector('.message.assistant.loading')"
     )
     response_text = response.inner_text().strip()
-    assert response_text
-    assert "I encountered an error" not in response_text
+    assert response_text == NO_MODEL_CHAT_RESPONSE
+    assert chat_responses, "The authenticated Chat API did not return a response."
+    api_response = chat_responses[-1]
+    assert api_response.status == 200
+    api_payload = api_response.json()
+    assert api_payload["response"] == NO_MODEL_CHAT_RESPONSE
+    assert isinstance(api_payload.get("action_taken"), str)
+    assert isinstance(api_payload.get("data"), dict)
+    assert isinstance(api_payload.get("suggestions"), list)
     _capture(browser_session, "chat-1440x900.png")
-    page.set_viewport_size({"width": 390, "height": 844})
-    page.wait_for_timeout(350)
-    _capture(browser_session, "chat-390x844.png")
+
+    geometry: list[dict[str, object]] = []
+    for width, height in ((390, 844), (320, 844)):
+        page.set_viewport_size({"width": width, "height": height})
+        page.locator("#chat-history").evaluate(
+            "element => { element.scrollTop = element.scrollHeight; }"
+        )
+        page.wait_for_timeout(350)
+        message_bounds = response.bounding_box()
+        composer_bounds = page.locator(".input-area").bounding_box()
+        history_bounds = page.locator("#chat-history").bounding_box()
+        input_geometry = page.locator("#chat-input").evaluate(
+            """element => {
+                const style = getComputedStyle(element);
+                const canvas = document.createElement('canvas');
+                const context = canvas.getContext('2d');
+                context.font = style.font;
+                return {
+                    width: element.getBoundingClientRect().width,
+                    height: element.getBoundingClientRect().height,
+                    available_width: element.clientWidth
+                        - parseFloat(style.paddingLeft)
+                        - parseFloat(style.paddingRight),
+                    placeholder_width: context.measureText(element.placeholder).width,
+                };
+            }"""
+        )
+        assert message_bounds is not None
+        assert composer_bounds is not None
+        assert history_bounds is not None
+        message_bottom = message_bounds["y"] + message_bounds["height"]
+        assert message_bottom <= composer_bounds["y"], (
+            f"Assistant message is obscured by the composer at {width}x{height}: "
+            f"message={message_bounds}, composer={composer_bounds}"
+        )
+        history_bottom = history_bounds["y"] + history_bounds["height"]
+        assert history_bounds["y"] <= message_bounds["y"]
+        assert message_bottom <= history_bottom
+        assert input_geometry["placeholder_width"] <= input_geometry["available_width"], (
+            f"Composer placeholder is clipped at {width}x{height}: {input_geometry}"
+        )
+        assert composer_bounds["x"] >= 0
+        assert composer_bounds["x"] + composer_bounds["width"] <= width
+        assert composer_bounds["y"] + composer_bounds["height"] <= height
+        geometry.append(
+            {
+                "width": width,
+                "height": height,
+                "assistant_message": message_bounds,
+                "composer": composer_bounds,
+                "input": input_geometry,
+                "vertical_gap": composer_bounds["y"] - message_bottom,
+            }
+        )
+        _capture(browser_session, f"chat-{width}x{height}.png")
+
+    evidence_dir = os.getenv("AURA_BROWSER_EVIDENCE_DIR")
+    if evidence_dir:
+        geometry_path = Path(evidence_dir) / "chat-geometry-measurements.json"
+        geometry_path.parent.mkdir(parents=True, exist_ok=True)
+        geometry_path.write_text(json.dumps(geometry, indent=2), encoding="utf-8")
     _assert_no_uncaught_errors(browser_session)
 
 

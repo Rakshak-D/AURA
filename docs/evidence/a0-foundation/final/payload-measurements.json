@@ -11,8 +11,8 @@
     {
       "path": "/static/css/styles.css",
       "category": "css",
-      "body_bytes": 29326,
-      "transfer_bytes": 5789
+      "body_bytes": 29477,
+      "transfer_bytes": 5812
     },
     {
       "path": "/static/js/analytics.js",
@@ -99,8 +99,8 @@
       "transfer_bytes": 14971
     },
     "css": {
-      "body_bytes": 29326,
-      "transfer_bytes": 5789
+      "body_bytes": 29477,
+      "transfer_bytes": 5812
     },
     "javascript": {
       "body_bytes": 769538,
@@ -111,6 +111,6 @@
       "transfer_bytes": 49030
     }
   },
-  "total_body_bytes": 861404,
-  "total_transfer_bytes": 284966
+  "total_body_bytes": 861555,
+  "total_transfer_bytes": 284989
 }

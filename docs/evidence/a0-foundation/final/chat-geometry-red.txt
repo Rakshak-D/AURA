@@ -1,0 +1,24 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+_____________ test_chat_returns_a_real_graceful_no_model_response _____________
+tests\browser\test_frontend_smoke.py:582: in test_chat_returns_a_real_graceful_no_model_response
+    assert input_geometry["placeholder_width"] <= input_geometry["available_width"], (
+E   AssertionError: Composer placeholder is clipped at 320x844: {'width': 111.1875, 'height': 35, 'available_width': 95, 'placeholder_width': 132.7178955078125}
+E   assert 132.7178955078125 <= 95
+============================== warnings summary ===============================
+backend\app\models\pydantic_models.py:30
+  C:\RAKSHAK\MY CODE\AURA\backend\app\models\pydantic_models.py:30: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.14/migration/
+    class TaskResponse(BaseModel):
+
+backend\app\models\pydantic_models.py:79
+  C:\RAKSHAK\MY CODE\AURA\backend\app\models\pydantic_models.py:79: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.14/migration/
+    class ReminderResponse(BaseModel):
+
+backend\app\routes\routine.py:18
+  C:\RAKSHAK\MY CODE\AURA\backend\app\routes\routine.py:18: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.14/migration/
+    class RoutineEventResponse(RoutineEventCreate):
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/browser/test_frontend_smoke.py::test_chat_returns_a_real_graceful_no_model_response
+1 failed, 6 deselected, 3 warnings in 8.04s

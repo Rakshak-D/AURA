@@ -1430,3 +1430,13 @@ textarea {
         grid-template-columns: 1fr;
     }
 }
+
+@media (max-width: 360px) {
+    .input-area {
+        width: calc(100% + 1rem);
+    }
+
+    .input-container {
+        gap: 0.25rem;
+    }
+}

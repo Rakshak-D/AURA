@@ -1,0 +1,7 @@
+# A0-R1 Static Checks
+
+PASS: python -m compileall -q backend tests scripts
+PASS: Ruff backend/tests/scripts checks
+PASS: node --check on 14 JavaScript files under frontend
+PASS: node tests/frontend_contracts.test.mjs
+PASS: CI YAML parse and trigger assertion

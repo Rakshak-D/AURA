@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 
 from sqlalchemy.orm import Session
 
+from ..config import config
 from ..database import utc_now
 from ..models.llm_models import llm
 from ..models.sql_models import ChatHistory, Task, User
@@ -872,6 +873,13 @@ END UNTRUSTED RETRIEVED DOCUMENT DATA
     async def handle_general_chat(
         self, user_id: int, message: str, db: Session, context: dict = None
     ):
+        if llm.llm is None and not config.model_path.is_file():
+            return {
+                "response": "No AI model is available right now, so I can't answer general chat messages.",
+                "action_taken": "error",
+                "data": {},
+            }
+
         try:
             # Get user context (tasks)
             task_context = self.get_user_context(user_id, db)
