@@ -12,6 +12,8 @@ function applyTheme() {
 }
 
 async function loadSettings() {
+    if (typeof getAuthToken === 'function' && !getAuthToken()) return;
+
     try {
         const settings = await apiJson(`${API_URL}/settings`);
         const usernameInput = document.getElementById('setting-username') || document.getElementById('settings-username');

@@ -1,0 +1,23 @@
+F                                                                        [100%]
+================================== FAILURES ===================================
+____________ test_sign_in_and_ui_registration_use_the_real_backend ____________
+tests\browser\test_frontend_smoke.py:352: in test_sign_in_and_ui_registration_use_the_real_backend
+    assert form_bounds["left"] >= 0 and form_bounds["right"] <= width
+E   KeyError: 'left'
+============================== warnings summary ===============================
+backend\app\models\pydantic_models.py:30
+  C:\RAKSHAK\MY CODE\AURA\backend\app\models\pydantic_models.py:30: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.14/migration/
+    class TaskResponse(BaseModel):
+
+backend\app\models\pydantic_models.py:79
+  C:\RAKSHAK\MY CODE\AURA\backend\app\models\pydantic_models.py:79: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.14/migration/
+    class ReminderResponse(BaseModel):
+
+backend\app\routes\routine.py:18
+  C:\RAKSHAK\MY CODE\AURA\backend\app\routes\routine.py:18: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.14/migration/
+    class RoutineEventResponse(RoutineEventCreate):
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/browser/test_frontend_smoke.py::test_sign_in_and_ui_registration_use_the_real_backend
+1 failed, 103 deselected, 3 warnings in 3.16s

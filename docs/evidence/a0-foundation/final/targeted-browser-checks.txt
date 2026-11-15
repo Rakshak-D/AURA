@@ -1,0 +1,25 @@
+.F                                                                       [100%]
+================================== FAILURES ===================================
+______ test_layout_keyboard_focus_and_touch_sizing_at_required_viewports ______
+tests\browser\test_frontend_smoke.py:561: in test_layout_keyboard_focus_and_touch_sizing_at_required_viewports
+    assert menu_button.get_attribute("aria-expanded") == "true"
+E   AssertionError: assert 'false' == 'true'
+E     - true
+E     + false
+============================== warnings summary ===============================
+backend\app\models\pydantic_models.py:30
+  C:\RAKSHAK\MY CODE\AURA\backend\app\models\pydantic_models.py:30: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.14/migration/
+    class TaskResponse(BaseModel):
+
+backend\app\models\pydantic_models.py:79
+  C:\RAKSHAK\MY CODE\AURA\backend\app\models\pydantic_models.py:79: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.14/migration/
+    class ReminderResponse(BaseModel):
+
+backend\app\routes\routine.py:18
+  C:\RAKSHAK\MY CODE\AURA\backend\app\routes\routine.py:18: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.14/migration/
+    class RoutineEventResponse(RoutineEventCreate):
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/browser/test_frontend_smoke.py::test_layout_keyboard_focus_and_touch_sizing_at_required_viewports
+1 failed, 1 passed, 102 deselected, 3 warnings in 5.92s

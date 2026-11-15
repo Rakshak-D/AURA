@@ -1,6 +1,8 @@
 import asyncio
 import json
 import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
@@ -8,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.gzip import GZipMiddleware
 
 from .auth import authenticate_websocket
 from .config import config
@@ -35,7 +38,6 @@ from .services.reminder_service import (
 )
 from .websocket_manager import manager
 
-app = FastAPI(title="AURA API", version="1.0.0")
 WEBSOCKET_PROTOCOL_VERSION = 1
 
 
@@ -46,6 +48,34 @@ def _ws_envelope(message_type: str, data: dict | None = None) -> dict:
         "created_at": datetime.now(timezone.utc).isoformat(),
         "data": data or {},
     }
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    config.init_dirs()
+    config.setup_logging()
+    # Initialize DB
+    init_db()
+    if config.environment != "test" and config.reminder_scheduler_enabled:
+        try:
+            recover_stale_reminders()
+            start_scheduler()
+        except RuntimeError:
+            logging.getLogger(__name__).warning(
+                "Reminder scheduler unavailable; persistent reminders remain in SQLite"
+            )
+    logging.getLogger(__name__).info("Serving static files from %s", config.frontend_dir)
+    logging.getLogger(__name__).info("Capability summary: %s", startup_summary())
+    manager.set_loop(asyncio.get_running_loop())
+
+    try:
+        yield
+    finally:
+        stop_scheduler()
+        await manager.shutdown()
+
+
+app = FastAPI(title="AURA API", version="1.0.0", lifespan=lifespan)
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
@@ -59,7 +89,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         )
         response.headers.setdefault(
             "Content-Security-Policy",
-            "default-src 'self'; script-src 'self' https://unpkg.com https://cdn.jsdelivr.net 'unsafe-inline'; "
+            "default-src 'self'; script-src 'self' 'unsafe-inline'; "
             "style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; "
             "connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'",
         )
@@ -88,32 +118,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.on_event("startup")
-async def startup_event():
-    config.init_dirs()
-    config.setup_logging()
-    # Initialize DB
-    init_db()
-    if config.environment != "test" and config.reminder_scheduler_enabled:
-        try:
-            recover_stale_reminders()
-            start_scheduler()
-        except RuntimeError:
-            logging.getLogger(__name__).warning(
-                "Reminder scheduler unavailable; persistent reminders remain in SQLite"
-            )
-    logging.getLogger(__name__).info("Serving static files from %s", config.frontend_dir)
-    logging.getLogger(__name__).info("Capability summary: %s", startup_summary())
-    
-    import asyncio
-    manager.set_loop(asyncio.get_running_loop())
-
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    stop_scheduler()
-    await manager.shutdown()
-
 # Routers
 app.include_router(chat.router, prefix="/api")
 app.include_router(auth.router, prefix="/api")
@@ -130,7 +134,12 @@ app.include_router(routine.router, prefix="/api")
 app.include_router(health.router)
 
 # Static Files
-app.mount("/static", StaticFiles(directory=str(config.FRONTEND_DIR)), name="static")
+# Compress browser assets only; API and streamed responses keep their existing semantics.
+app.mount(
+    "/static",
+    GZipMiddleware(StaticFiles(directory=str(config.FRONTEND_DIR)), minimum_size=500),
+    name="static",
+)
 
 # WebSocket
 @app.websocket("/ws/notifications")

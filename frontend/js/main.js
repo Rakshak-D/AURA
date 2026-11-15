@@ -3,11 +3,32 @@
 // Global Configuration
 const API_URL = '/api';
 const API_REQUEST_TIMEOUT_MS = 15000;
+let lucideWarningShown = false;
+
+function refreshLucideIcons() {
+    if (typeof window.lucide?.createIcons !== 'function') {
+        if (!lucideWarningShown) {
+            console.warn('Lucide is unavailable; the application will continue without icon rendering.');
+            lucideWarningShown = true;
+        }
+        return false;
+    }
+
+    try {
+        window.lucide.createIcons();
+        return true;
+    } catch (error) {
+        if (!lucideWarningShown) {
+            console.warn('Lucide icon rendering failed; the application will continue.', error);
+            lucideWarningShown = true;
+        }
+        return false;
+    }
+}
 
 // Global State
 document.addEventListener('DOMContentLoaded', () => {
-    // Initialize Lucide Icons
-    lucide.createIcons();
+    refreshLucideIcons();
 
     // Default View
     switchView('chat');
@@ -169,6 +190,7 @@ function switchView(viewId) {
     // Close sidebar on mobile after selection
     if (window.innerWidth <= 768) {
         document.getElementById('sidebar').classList.remove('open');
+        document.querySelector('.mobile-menu-btn')?.setAttribute('aria-expanded', 'false');
     }
 
     // Trigger view-specific initialization
@@ -182,7 +204,8 @@ function switchView(viewId) {
 // Sidebar Toggle (Mobile)
 function toggleSidebar() {
     const sidebar = document.getElementById('sidebar');
-    sidebar.classList.toggle('open');
+    const isOpen = sidebar.classList.toggle('open');
+    document.querySelector('.mobile-menu-btn')?.setAttribute('aria-expanded', String(isOpen));
 }
 
 // Toast Notifications

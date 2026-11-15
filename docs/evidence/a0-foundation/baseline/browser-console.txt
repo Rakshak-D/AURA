@@ -1,0 +1,18 @@
+### Result
+Total messages: 11 (Errors: 7, Warnings: 0)
+
+[ERROR] Loading the stylesheet 'https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap' violates the following Content Security Policy directive: "style-src 'self' 'unsafe-inline'". Note that 'style-src-elem' was not explicitly set, so 'style-src' is used as a fallback. The action has been blocked. @ http://127.0.0.1:8000/:0
+[LOG] Calendar.js: DOMContentLoaded fired @ http://127.0.0.1:8000/static/js/calendar.js?v=2:12
+[LOG] Calendar view element found @ http://127.0.0.1:8000/static/js/calendar.js?v=2:22
+[VERBOSE] [DOM] Input elements should have autocomplete attributes (suggested: "current-password"): (More info: https://goo.gl/9p2vKq) %o @ http://127.0.0.1:8000/:0
+[ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://127.0.0.1:8000/api/tasks:0
+[ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://127.0.0.1:8000/api/settings:0
+[ERROR] Failed to load resource: the server responded with a status of 401 (Unauthorized) @ http://127.0.0.1:8000/api/upload/files:0
+[LOG] Date header updated to: Sunday, November 15, 2026 @ http://127.0.0.1:8000/static/js/calendar.js?v=2:110
+[ERROR] Error loading tasks: Error: Invalid authentication credentials
+    at apiJson (http://127.0.0.1:8000/static/js/main.js?v=2:66:15)
+    at async HTMLDocument.loadTasks (http://127.0.0.1:8000/static/js/tasks.js?v=2:10:22) @ http://127.0.0.1:8000/static/js/tasks.js?v=2:14
+[ERROR] Error loading files: Error: Invalid authentication credentials
+    at apiJson (http://127.0.0.1:8000/static/js/main.js?v=2:66:15)
+    at async loadUploadedFiles (http://127.0.0.1:8000/static/js/upload.js?v=2:107:22) @ http://127.0.0.1:8000/static/js/upload.js?v=2:139
+[ERROR] Failed to load resource: the server responded with a status of 404 (Not Found) @ http://127.0.0.1:8000/favicon.ico:0

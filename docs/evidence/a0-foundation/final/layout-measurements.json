@@ -1,0 +1,149 @@
+[
+  {
+    "width": 1440,
+    "documentWidth": 1440,
+    "bodyWidth": 1440,
+    "taskButton": {
+      "left": 1285.3125,
+      "right": 1408,
+      "top": 32,
+      "bottom": 72,
+      "width": 122.6875,
+      "height": 40
+    },
+    "heading": {
+      "left": 272,
+      "right": 332.375,
+      "top": 39.5,
+      "bottom": 64.5
+    },
+    "mobileMenu": {
+      "left": 0,
+      "right": 0,
+      "top": 0,
+      "bottom": 0,
+      "width": 0,
+      "height": 0
+    }
+  },
+  {
+    "width": 1024,
+    "documentWidth": 1024,
+    "bodyWidth": 1024,
+    "taskButton": {
+      "left": 869.3125,
+      "right": 992,
+      "top": 32,
+      "bottom": 72,
+      "width": 122.6875,
+      "height": 40
+    },
+    "heading": {
+      "left": 272,
+      "right": 332.375,
+      "top": 39.5,
+      "bottom": 64.5
+    },
+    "mobileMenu": {
+      "left": 0,
+      "right": 0,
+      "top": 0,
+      "bottom": 0,
+      "width": 0,
+      "height": 0
+    }
+  },
+  {
+    "width": 768,
+    "documentWidth": 768,
+    "bodyWidth": 768,
+    "taskButton": {
+      "left": 629.3125,
+      "right": 752,
+      "top": 64,
+      "bottom": 108,
+      "width": 122.6875,
+      "height": 44
+    },
+    "heading": {
+      "left": 16,
+      "right": 76.375,
+      "top": 73.5,
+      "bottom": 98.5
+    },
+    "mobileMenu": {
+      "left": 16,
+      "right": 60,
+      "top": 16,
+      "bottom": 60,
+      "width": 44,
+      "height": 44
+    },
+    "tasks_nav_target": {
+      "width": 146.015625,
+      "height": 48
+    }
+  },
+  {
+    "width": 390,
+    "documentWidth": 390,
+    "bodyWidth": 390,
+    "taskButton": {
+      "left": 255.3125,
+      "right": 378,
+      "top": 64,
+      "bottom": 108,
+      "width": 122.6875,
+      "height": 44
+    },
+    "heading": {
+      "left": 12,
+      "right": 72.375,
+      "top": 73.5,
+      "bottom": 98.5
+    },
+    "mobileMenu": {
+      "left": 16,
+      "right": 60,
+      "top": 16,
+      "bottom": 60,
+      "width": 44,
+      "height": 44
+    },
+    "tasks_nav_target": {
+      "width": 70.53125,
+      "height": 48
+    }
+  },
+  {
+    "width": 320,
+    "documentWidth": 320,
+    "bodyWidth": 320,
+    "taskButton": {
+      "left": 185.3125,
+      "right": 308,
+      "top": 64,
+      "bottom": 108,
+      "width": 122.6875,
+      "height": 44
+    },
+    "heading": {
+      "left": 12,
+      "right": 72.375,
+      "top": 73.5,
+      "bottom": 98.5
+    },
+    "mobileMenu": {
+      "left": 16,
+      "right": 60,
+      "top": 16,
+      "bottom": 60,
+      "width": 44,
+      "height": 44
+    },
+    "tasks_nav_target": {
+      "width": 59,
+      "height": 48
+    }
+  }
+]

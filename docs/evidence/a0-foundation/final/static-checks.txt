@@ -1,0 +1,13 @@
+# Final static checks
+
+Executed on the current A0 source tree on Windows using the isolated Python 3.11.7 environment.
+
+- PASS: `python -m compileall -q backend tests scripts`
+- PASS: `python -m ruff check backend tests scripts --select E4,E7,E9,F`
+- PASS: `node --check` on all JavaScript files under `frontend/`
+- PASS: `node tests/frontend_contracts.test.mjs`
+- PASS: Python frontend contract tests (4 passed)
+- PASS: PyYAML parsed `.github/workflows/ci.yml` using the Python 3.11 test environment
+- PASS: `git diff --check`
+
+Hosted GitHub Actions was not executed; see `TEST_RESULTS.md`.

@@ -116,10 +116,12 @@ def test_startup_does_not_initialize_model_or_chroma():
         "import asyncio\n"
         "from backend.app import main, database\n"
         "from backend.app.models.llm_models import llm\n"
-        "asyncio.run(main.startup_event())\n"
-        "assert llm.llm is None\n"
-        "assert llm.embedding_model is None\n"
-        "assert database._collection is None\n"
+        "async def verify_lifespan():\n"
+        "    async with main.lifespan(main.app):\n"
+        "        assert llm.llm is None\n"
+        "        assert llm.embedding_model is None\n"
+        "        assert database._collection is None\n"
+        "asyncio.run(verify_lifespan())\n"
     )
     with tempfile.TemporaryDirectory() as data_dir:
         environment = os.environ.copy()

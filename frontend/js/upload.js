@@ -99,7 +99,7 @@ async function uploadFile(file) {
 
 async function loadUploadedFiles() {
     const filesList = document.getElementById('file-list');
-    if (!filesList) return;
+    if (!filesList || (typeof getAuthToken === 'function' && !getAuthToken())) return;
 
     AuraSafe.clear(filesList).appendChild(AuraSafe.element('div', 'loading', 'Loading...'));
 
@@ -133,9 +133,7 @@ async function loadUploadedFiles() {
             filesList.appendChild(div);
         });
 
-        if (typeof lucide !== 'undefined') {
-            lucide.createIcons();
-        }
+        refreshLucideIcons();
     } catch (error) {
         console.error('Error loading files:', error);
         const errorState = AuraSafe.element('div', null, 'Failed to load files');
