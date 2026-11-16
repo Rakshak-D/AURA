@@ -39,3 +39,9 @@ The backend suites still include all existing security tests; no security test f
 - `final/chat-geometry-measurements.json` — message, composer, and input geometry at both requested viewports.
 - `final/screenshots/chat-390x844.png` and `final/screenshots/chat-320x844.png` — final browser captures.
 - `final/chat-geometry-red.txt` — regression failure before the narrow-screen CSS correction, showing the clipped 320px placeholder.
+
+## A0-R2 final verification note (2026-11-16)
+
+The R1 measurements and its statement that hosted CI had not yet run are preserved as a snapshot of that earlier point. Subsequent [push CI run #11](https://github.com/Rakshak-D/AURA/actions/runs/43737541552) and [PR CI run #12](https://github.com/Rakshak-D/AURA/actions/runs/43742047663) both completed successfully with all six jobs passing. Those runs predate the final R2 commit and are not presented as CI results for its changes.
+
+For R2, the blocked-local-Lucide test now completes real authentication and opens Tasks and Chat. The targeted test passed; all seven browser tests passed with zero external attempts and zero uncaught page errors. Browser-state review found each test gets a new browser context and per-test request/error tracking; the local server, temporary SQLite database and registered account remain session-scoped. Test-created task identifiers are unique, and no order-dependent assertion or cross-test browser-state leak was demonstrated, so fixture scopes were left unchanged. Full non-browser suites passed with 97 tests each on Python 3.11.7 and 3.12.10. The new commit's PR workflow is verified separately.

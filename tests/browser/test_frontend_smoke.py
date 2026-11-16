@@ -466,7 +466,7 @@ def test_sign_in_and_ui_registration_use_the_real_backend(
 
 
 def test_missing_local_icon_script_does_not_block_sign_in(
-    browser_session: BrowserSession,
+    browser_session: BrowserSession, browser_account: BrowserCredentials
 ) -> None:
     page = browser_session.page
 
@@ -479,7 +479,17 @@ def test_missing_local_icon_script_does_not_block_sign_in(
     page.goto(browser_session.base_url, wait_until="domcontentloaded")
     page.locator("#aura-auth-panel").wait_for(state="visible")
     assert page.get_by_role("button", name="Sign in", exact=True).is_visible()
+
+    _sign_in(browser_session, browser_account)
+    page.locator(".app-container").wait_for(state="visible")
+    for label in ("Tasks", "Chat"):
+        navigation_button = page.get_by_role("button", name=label, exact=True)
+        assert navigation_button.is_visible()
+        navigation_button.click()
+        _assert_active_view(page, label.lower())
+
     assert not browser_session.unauthenticated_data_requests
+    assert not browser_session.external_attempts
     _assert_no_uncaught_errors(browser_session)
 
 
