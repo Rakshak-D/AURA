@@ -12,3 +12,9 @@ apscheduler==3.11.3
 slowapi==0.1.10
 PyJWT==2.15.1
 pwdlib[argon2]==0.4.2
+
+# A1 provider transport and encrypted credential storage.
+httpx==0.28.1
+cryptography==50.0.2
+keyring==25.7.0; sys_platform == "win32"
+pywin32-ctypes==0.2.3; sys_platform == "win32"
