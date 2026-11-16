@@ -29,4 +29,8 @@ The commands below were run from the repository root. `PY311` and `PY312` refer 
 & $PY312 -m pip check
 ```
 
-The focused credential module passed 9 tests in each environment. The expanded A0 security/authentication/database regression selection passed 68 tests in each environment; exact command and details are recorded in `SECURITY_REVIEW.md`.
+At the Task B commit, the focused credential module passed 9 tests in each environment. The expanded A0 security/authentication/database regression selection passed 68 tests in each environment; exact command and details are recorded in `SECURITY_REVIEW.md`. The post-review credential persistence regression increased the credential module to 10 tests; the final cross-version results are recorded below.
+
+## Post-review verification
+
+On Python 3.11.7 and 3.12.10, `tests/test_provider_secrets.py` passed 10 tests. The final combined provider-storage/security selection (`tests/test_provider_secrets.py tests/test_provider_storage.py tests/test_database_integrity.py`) passed 31 tests per version. The complete non-browser backend suite passed 124 tests per version with 7 browser tests deselected. Ruff and `pip check` passed on the installed environments.

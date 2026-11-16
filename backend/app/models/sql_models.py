@@ -188,10 +188,11 @@ class ProviderConnection(Base):
         """Invalidate cache lookups tied to the previous configuration."""
         self.config_revision += 1
 
-    def mark_removed(self, when: datetime | None = None) -> None:
-        """Retain this connection as a tombstone for existing role references."""
+    def mark_removed(self, session, when: datetime | None = None) -> None:
+        """Tombstone this connection, remove its credential, and keep role refs."""
         if self.deleted_at is None:
             self.deleted_at = when or utc_now()
+        ProviderCredential.delete_owned(session, self.user_id, self.id)
 
     def current_capability_cache(self, session, model_id: str):
         """Return only the cache matching this owner's current revision."""
@@ -245,6 +246,15 @@ class ProviderCredential(Base):
             .filter_by(user_id=user_id, connection_id=connection_id)
             .one_or_none()
         )
+
+    @classmethod
+    def delete_owned(cls, session, user_id: int, connection_id: str) -> bool:
+        """Delete encrypted credential material only in its owner's scope."""
+        record = cls.get_owned(session, user_id, connection_id)
+        if record is None:
+            return False
+        session.delete(record)
+        return True
 
 
 class ModelRoleSelection(Base):

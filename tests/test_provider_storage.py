@@ -290,11 +290,21 @@ def test_soft_removal_preserves_exact_role_reference_and_marks_it_unavailable(
         model_id="provider/model-v1",
     )
     session.add(selection)
+    credential = ProviderCredential(
+        credential_id="to-remove",
+        user_id=alice_id,
+        connection_id=connection.id,
+        format_version=1,
+        key_id="os-key-id",
+        nonce=b"n" * 12,
+        ciphertext=b"c" * 16,
+    )
+    session.add(credential)
     session.commit()
 
     connection.base_url = "https://updated.example/v1"
     connection.advance_config_revision()
-    connection.mark_removed()
+    connection.mark_removed(session)
     session.commit()
     session.expire_all()
 
@@ -304,6 +314,7 @@ def test_soft_removal_preserves_exact_role_reference_and_marks_it_unavailable(
     assert stored_role.model_id == "provider/model-v1"
     assert stored_role.is_available is False
     assert ProviderConnection.get_owned(session, alice_id, "alice-chat").deleted_at is not None
+    assert ProviderCredential.get_owned(session, alice_id, "alice-chat") is None
 
 
 def test_capability_cache_is_scoped_by_user_connection_revision_and_model(provider_db):

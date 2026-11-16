@@ -191,11 +191,84 @@ class WindowsCredentialKeyProtector:
 
 
 class SecretStore:
-    """Encrypt/decrypt provider credentials without persisting plaintext."""
+    """Persist only encrypted provider credentials and expose transient values."""
 
     def __init__(self, protector: KeyProtector) -> None:
         self._protector = protector
         self._lock = threading.RLock()
+
+    def save_credential(
+        self,
+        session,
+        user_id: int,
+        connection_id: str,
+        plaintext: str | EphemeralCredential,
+    ) -> None:
+        """Encrypt and store a credential for an active, owner-scoped connection."""
+        self._validate_user_connection(user_id, connection_id)
+        from ..models.sql_models import ProviderConnection, ProviderCredential
+
+        connection = ProviderConnection.get_owned(session, user_id, connection_id)
+        if connection is None or connection.deleted_at is not None:
+            raise ProviderError(ProviderErrorCode.CONNECTION_REMOVED)
+
+        record = ProviderCredential.get_owned(session, user_id, connection_id)
+        credential_id = record.credential_id if record is not None else str(uuid.uuid4())
+        encrypted = self.encrypt_for_explicit_entry(
+            user_id,
+            connection_id,
+            credential_id,
+            plaintext,
+        )
+
+        if record is None:
+            record = ProviderCredential(
+                credential_id=credential_id,
+                user_id=user_id,
+                connection_id=connection_id,
+                format_version=encrypted.version,
+                key_id=encrypted.key_id,
+                nonce=encrypted.nonce,
+                ciphertext=encrypted.ciphertext,
+            )
+            session.add(record)
+        else:
+            record.format_version = encrypted.version
+            record.key_id = encrypted.key_id
+            record.nonce = encrypted.nonce
+            record.ciphertext = encrypted.ciphertext
+
+    def get_credential(
+        self,
+        session,
+        user_id: int,
+        connection_id: str,
+    ) -> EphemeralCredential | None:
+        """Return one owner's active credential as a redacted transient value."""
+        self._validate_user_connection(user_id, connection_id)
+        from ..models.sql_models import ProviderConnection, ProviderCredential
+
+        connection = ProviderConnection.get_owned(session, user_id, connection_id)
+        if connection is None or connection.deleted_at is not None:
+            raise ProviderError(ProviderErrorCode.CONNECTION_REMOVED)
+        record = ProviderCredential.get_owned(session, user_id, connection_id)
+        if record is None:
+            return None
+        encrypted = EncryptedCredential(
+            version=record.format_version,
+            key_id=record.key_id,
+            credential_id=record.credential_id,
+            nonce=record.nonce,
+            ciphertext=record.ciphertext,
+        )
+        return self.decrypt(user_id, connection_id, record.credential_id, encrypted)
+
+    def delete_credential(self, session, user_id: int, connection_id: str) -> bool:
+        """Delete only the owner's encrypted credential row, not shared master keys."""
+        self._validate_user_connection(user_id, connection_id)
+        from ..models.sql_models import ProviderCredential
+
+        return ProviderCredential.delete_owned(session, user_id, connection_id)
 
     def encrypt_for_explicit_entry(
         self,
@@ -302,11 +375,15 @@ class SecretStore:
 
     @staticmethod
     def _validate_identity(user_id: int, connection_id: str, credential_id: str) -> None:
+        SecretStore._validate_user_connection(user_id, connection_id)
+        if not isinstance(credential_id, str) or not credential_id.strip():
+            raise ProviderError(ProviderErrorCode.INCOMPLETE_CONFIGURATION)
+
+    @staticmethod
+    def _validate_user_connection(user_id: int, connection_id: str) -> None:
         if not isinstance(user_id, int) or user_id <= 0:
             raise ProviderError(ProviderErrorCode.INCOMPLETE_CONFIGURATION)
         if not isinstance(connection_id, str) or not connection_id.strip():
-            raise ProviderError(ProviderErrorCode.INCOMPLETE_CONFIGURATION)
-        if not isinstance(credential_id, str) or not credential_id.strip():
             raise ProviderError(ProviderErrorCode.INCOMPLETE_CONFIGURATION)
 
     @staticmethod

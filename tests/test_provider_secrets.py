@@ -7,6 +7,7 @@ import pytest
 
 from backend.app.providers import ProviderConnectionContext
 from backend.app.providers.errors import ProviderError, ProviderErrorCode
+from backend.app.models.sql_models import ProviderConnection, ProviderCredential, User
 
 
 def _secret_store():
@@ -208,6 +209,62 @@ def test_production_factory_fails_closed_on_linux_without_breaking_local_context
     with pytest.raises(ProviderError) as error:
         store.encrypt_for_explicit_entry(1, "local-ollama", "credential-a", "unused")
     assert error.value.code is ProviderErrorCode.SECRET_STORE_UNAVAILABLE
+
+
+def test_explicit_save_retrieve_and_delete_are_owner_scoped(isolated_runtime):
+    secret_store = _secret_store()
+    protector = FakeKeyProtector()
+    store = secret_store.SecretStore(protector)
+    session = isolated_runtime()
+    try:
+        alice = User(name="Alice")
+        bob = User(name="Bob")
+        session.add_all([alice, bob])
+        session.flush()
+        connection = ProviderConnection(
+            id="alice-openai",
+            user_id=alice.id,
+            name="OpenAI",
+            provider_type="openai_compatible",
+            base_url="https://api.example/v1",
+        )
+        session.add(connection)
+        session.commit()
+
+        with pytest.raises(ProviderError) as error:
+            store.save_credential(session, bob.id, connection.id, "wrong-owner-key")
+        assert error.value.code is ProviderErrorCode.CONNECTION_REMOVED
+        assert protector.created == 0
+
+        store.save_credential(session, alice.id, connection.id, "synthetic-secret-one")
+        session.commit()
+        first = ProviderCredential.get_owned(session, alice.id, connection.id)
+        assert first is not None
+        first_credential_id = first.credential_id
+        assert b"synthetic-secret-one" not in first.ciphertext
+        assert "synthetic-secret-one" not in repr(first)
+        assert store.get_credential(session, alice.id, connection.id).value == (
+            "synthetic-secret-one"
+        )
+        with pytest.raises(ProviderError) as error:
+            store.get_credential(session, bob.id, connection.id)
+        assert error.value.code is ProviderErrorCode.CONNECTION_REMOVED
+
+        store.save_credential(session, alice.id, connection.id, "synthetic-secret-two")
+        session.commit()
+        replaced = ProviderCredential.get_owned(session, alice.id, connection.id)
+        assert replaced.credential_id == first_credential_id
+        assert store.get_credential(session, alice.id, connection.id).value == (
+            "synthetic-secret-two"
+        )
+        assert store.delete_credential(session, bob.id, connection.id) is False
+        assert ProviderCredential.get_owned(session, alice.id, connection.id) is not None
+        assert store.delete_credential(session, alice.id, connection.id) is True
+        session.commit()
+        assert ProviderCredential.get_owned(session, alice.id, connection.id) is None
+        assert protector.active_key() is not None
+    finally:
+        session.close()
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows Credential Manager is Windows-only")
