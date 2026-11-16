@@ -1,0 +1,31 @@
+- generic [ref=e2]:
+  - complementary [ref=e3]:
+    - generic [ref=e4]: AURA
+    - navigation [ref=e7]:
+      - button "Chat" [ref=e106] [cursor=pointer]
+      - button "Tasks" [active] [ref=e107] [cursor=pointer]
+      - button "Calendar" [ref=e108] [cursor=pointer]
+      - button "Knowledge" [ref=e109] [cursor=pointer]
+      - button "Insights" [ref=e110] [cursor=pointer]
+    - generic [ref=e29]:
+      - generic [ref=e30]: Features
+      - button "Recents" [ref=e111] [cursor=pointer]
+      - button "Saved" [ref=e112] [cursor=pointer]
+      - button "Projects" [ref=e113] [cursor=pointer]
+    - button "Settings" [ref=e114] [cursor=pointer]
+  - main [ref=e50]:
+    - generic [ref=e178]:
+      - generic [ref=e179]:
+        - heading "Tasks" [level=2] [ref=e180]
+        - button "+ New Task" [ref=e181] [cursor=pointer]
+      - generic [ref=e182]:
+        - generic [ref=e183]:
+          - generic [ref=e184]:
+            - text: To Do
+            - generic [ref=e185]: "0"
+          - generic [ref=e186]: No tasks yet. Click "+ New Task" to get started!
+        - generic [ref=e188]:
+          - generic [ref=e189]:
+            - generic [ref=e190]: Done 0
+            - button [ref=e191] [cursor=pointer]
+          - generic [ref=e195]: No completed tasks

@@ -1,4 +1,26 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@font-face {
+    font-family: 'Sora Variable';
+    font-style: normal;
+    font-weight: 100 800;
+    font-display: swap;
+    src: url('../vendor/fonts/sora-latin-wght-normal-5.3.0.woff2') format('woff2');
+}
+
+@font-face {
+    font-family: 'Inter';
+    font-style: normal;
+    font-weight: 100 900;
+    font-display: swap;
+    src: url('../vendor/fonts/inter-latin-wght-normal-5.3.0.woff2') format('woff2');
+}
+
+@font-face {
+    font-family: 'JetBrains Mono Variable';
+    font-style: normal;
+    font-weight: 100 800;
+    font-display: swap;
+    src: url('../vendor/fonts/jetbrains-mono-latin-wght-normal-5.3.0.woff2') format('woff2');
+}
 
 :root {
     /* Merged Deep Space Theme with refinements */
@@ -119,23 +141,6 @@ body {
     flex: 1;
 }
 
-.nav-section {
-    margin-top: 1.5rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-}
-
-.nav-section-title {
-    font-size: 0.75rem;
-    font-weight: 600;
-    color: var(--text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    padding: 0.5rem 0.75rem;
-    margin-bottom: 0.25rem;
-}
-
 .nav-item {
     display: flex;
     align-items: center;
@@ -161,17 +166,6 @@ body {
     background: var(--surface-hover);
     color: var(--primary-color);
     border-left: 3px solid var(--primary-color);
-}
-
-.nav-item.sub-item {
-    font-size: 0.85rem;
-    padding-left: 2.5rem;
-    opacity: 0.8;
-}
-
-.nav-item.sub-item:hover {
-    padding-left: 2.5rem;
-    opacity: 1;
 }
 
 .nav-text {
@@ -202,6 +196,14 @@ body {
     align-items: center;
     justify-content: center;
     transition: var(--transition);
+}
+
+.mobile-menu-btn {
+    display: none;
+    position: absolute;
+    top: 1rem;
+    left: 1rem;
+    z-index: 100;
 }
 
 .icon-btn:hover {
@@ -1330,6 +1332,7 @@ textarea {
 
     .sidebar {
         transform: translateX(-100%);
+        visibility: hidden;
         width: 100%;
         height: auto;
         border-right: none;
@@ -1339,6 +1342,7 @@ textarea {
 
     .sidebar.open {
         transform: translateX(0);
+        visibility: visible;
     }
 
     .main-content {
@@ -1350,11 +1354,14 @@ textarea {
         flex-direction: row;
         overflow-x: auto;
         gap: 0.25rem;
+        align-items: flex-start;
+        flex: 0 0 auto;
     }
 
     .nav-item {
         white-space: nowrap;
         min-width: fit-content;
+        min-height: 44px;
     }
 
     .nav-text {
@@ -1363,6 +1370,7 @@ textarea {
 
     .view {
         padding: 1rem;
+        padding-top: 4rem;
     }
 
     .kanban-board {
@@ -1389,12 +1397,24 @@ textarea {
 
     .mobile-menu-btn {
         display: flex;
+        min-width: 44px;
+        min-height: 44px;
+    }
+
+    .sidebar.open ~ .main-content .mobile-menu-btn {
+        left: auto;
+        right: 1rem;
+    }
+
+    .btn-primary {
+        min-height: 44px;
     }
 }
 
 @media (max-width: 480px) {
     .view {
         padding: 0.75rem;
+        padding-top: 4rem;
     }
 
     .modal-content {
@@ -1408,5 +1428,15 @@ textarea {
 
     .suggestion-grid {
         grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 360px) {
+    .input-area {
+        width: calc(100% + 1rem);
+    }
+
+    .input-container {
+        gap: 0.25rem;
     }
 }

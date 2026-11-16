@@ -1,0 +1,116 @@
+{
+  "command": "AURA_RUN_BROWSER=1 python -m pytest -m browser -k test_sign_in_and_ui_registration_use_the_real_backend -q",
+  "measurement": "Chromium CDP Network.loadingFinished encodedDataLength; local response body sizes from checked-in files",
+  "resources": [
+    {
+      "path": "/",
+      "category": "html",
+      "body_bytes": 14284,
+      "transfer_bytes": 14971
+    },
+    {
+      "path": "/static/css/styles.css",
+      "category": "css",
+      "body_bytes": 29477,
+      "transfer_bytes": 5812
+    },
+    {
+      "path": "/static/js/analytics.js",
+      "category": "javascript",
+      "body_bytes": 5423,
+      "transfer_bytes": 2016
+    },
+    {
+      "path": "/static/js/calendar.js",
+      "category": "javascript",
+      "body_bytes": 17497,
+      "transfer_bytes": 5537
+    },
+    {
+      "path": "/static/js/chat.js",
+      "category": "javascript",
+      "body_bytes": 10947,
+      "transfer_bytes": 3846
+    },
+    {
+      "path": "/static/js/main.js",
+      "category": "javascript",
+      "body_bytes": 9184,
+      "transfer_bytes": 3603
+    },
+    {
+      "path": "/static/js/notifications.js",
+      "category": "javascript",
+      "body_bytes": 4154,
+      "transfer_bytes": 1976
+    },
+    {
+      "path": "/static/js/safe-dom.js",
+      "category": "javascript",
+      "body_bytes": 669,
+      "transfer_bytes": 1052
+    },
+    {
+      "path": "/static/js/settings.js",
+      "category": "javascript",
+      "body_bytes": 3081,
+      "transfer_bytes": 1613
+    },
+    {
+      "path": "/static/js/tasks.js",
+      "category": "javascript",
+      "body_bytes": 13319,
+      "transfer_bytes": 4269
+    },
+    {
+      "path": "/static/js/upload.js",
+      "category": "javascript",
+      "body_bytes": 5808,
+      "transfer_bytes": 2408
+    },
+    {
+      "path": "/static/js/voice.js",
+      "category": "javascript",
+      "body_bytes": 2203,
+      "transfer_bytes": 1502
+    },
+    {
+      "path": "/static/vendor/chart.js-4.6.1/chart.umd.min.js",
+      "category": "javascript",
+      "body_bytes": 210082,
+      "transfer_bytes": 71868
+    },
+    {
+      "path": "/static/vendor/fonts/inter-latin-wght-normal-5.3.0.woff2",
+      "category": "fonts",
+      "body_bytes": 48256,
+      "transfer_bytes": 49030
+    },
+    {
+      "path": "/static/vendor/lucide-1.73.0/lucide.min.js",
+      "category": "javascript",
+      "body_bytes": 487171,
+      "transfer_bytes": 115486
+    }
+  ],
+  "totals": {
+    "html": {
+      "body_bytes": 14284,
+      "transfer_bytes": 14971
+    },
+    "css": {
+      "body_bytes": 29477,
+      "transfer_bytes": 5812
+    },
+    "javascript": {
+      "body_bytes": 769538,
+      "transfer_bytes": 215176
+    },
+    "fonts": {
+      "body_bytes": 48256,
+      "transfer_bytes": 49030
+    }
+  },
+  "total_body_bytes": 861555,
+  "total_transfer_bytes": 284989
+}

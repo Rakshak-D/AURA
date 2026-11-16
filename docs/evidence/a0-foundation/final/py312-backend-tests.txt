@@ -1,0 +1,21 @@
+........................................................................ [ 74%]
+.........................                                                [100%]
+============================== warnings summary ===============================
+backend\app\models\pydantic_models.py:30
+  C:\RAKSHAK\MY CODE\AURA\backend\app\models\pydantic_models.py:30: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.14/migration/
+    class TaskResponse(BaseModel):
+
+backend\app\models\pydantic_models.py:79
+  C:\RAKSHAK\MY CODE\AURA\backend\app\models\pydantic_models.py:79: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.14/migration/
+    class ReminderResponse(BaseModel):
+
+backend\app\routes\routine.py:18
+  C:\RAKSHAK\MY CODE\AURA\backend\app\routes\routine.py:18: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.14/migration/
+    class RoutineEventResponse(RoutineEventCreate):
+
+tests/test_deployment.py::test_backup_restore_uses_sqlite_backup_and_preserves_uploads
+  C:\RAKSHAK\MY CODE\AURA\scripts\backup.py:62: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.
+    source.extractall(root)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+97 passed, 7 deselected, 4 warnings in 21.16s

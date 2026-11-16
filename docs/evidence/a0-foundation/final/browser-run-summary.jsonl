@@ -1,0 +1,7 @@
+{"test": "test_sign_in_and_ui_registration_use_the_real_backend", "external_attempts": [], "unauthenticated_data_requests": [], "uncaught_javascript_errors": [], "console_errors": []}
+{"test": "test_missing_local_icon_script_does_not_block_sign_in", "external_attempts": [], "unauthenticated_data_requests": [], "uncaught_javascript_errors": [], "console_errors": ["Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector"]}
+{"test": "test_tasks_create_complete_and_persist_through_the_real_backend", "external_attempts": [], "unauthenticated_data_requests": [], "uncaught_javascript_errors": [], "console_errors": []}
+{"test": "test_chat_returns_a_real_graceful_no_model_response", "external_attempts": [], "unauthenticated_data_requests": [], "uncaught_javascript_errors": [], "console_errors": []}
+{"test": "test_functional_navigation_and_chart_rendering", "external_attempts": [], "unauthenticated_data_requests": [], "uncaught_javascript_errors": [], "console_errors": []}
+{"test": "test_layout_keyboard_focus_and_touch_sizing_at_required_viewports", "external_attempts": [], "unauthenticated_data_requests": [], "uncaught_javascript_errors": [], "console_errors": []}
+{"test": "test_recorded_user_journey", "external_attempts": [], "unauthenticated_data_requests": [], "uncaught_javascript_errors": [], "console_errors": []}

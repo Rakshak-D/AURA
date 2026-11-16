@@ -1,0 +1,33 @@
+- generic [ref=e2]:
+  - complementary [ref=e3]:
+    - generic [ref=e4]: AURA
+    - navigation [ref=e7]:
+      - button "Chat" [ref=e106] [cursor=pointer]
+      - button "Tasks" [ref=e107] [cursor=pointer]
+      - button "Calendar" [ref=e108] [cursor=pointer]
+      - button "Knowledge" [ref=e109] [cursor=pointer]
+      - button "Insights" [ref=e110] [cursor=pointer]
+    - generic [ref=e29]:
+      - generic [ref=e30]: Features
+      - button "Recents" [ref=e111] [cursor=pointer]
+      - button "Saved" [ref=e112] [cursor=pointer]
+      - button "Projects" [ref=e113] [cursor=pointer]
+    - button "Settings" [ref=e114] [cursor=pointer]
+  - main [ref=e50]:
+    - generic [ref=e52]:
+      - generic [ref=e53]:
+        - generic [ref=e54]:
+          - heading "Hello, I’m AURA 👋" [level=2] [ref=e55]
+          - paragraph [ref=e56]: Your personal assistant for tasks, planning, insights, and more.
+          - generic [ref=e57]:
+            - button "Create a study schedule" [ref=e58] [cursor=pointer]
+            - button "Summarize text" [ref=e61] [cursor=pointer]
+            - button "Daily focus recommendation" [ref=e65] [cursor=pointer]
+            - button "Show my tasks" [ref=e69] [cursor=pointer]
+        - generic [ref=e234]: A0 baseline, please respond.
+        - generic [ref=e236]: I'm having trouble thinking right now.
+      - generic [ref=e74]:
+        - button "Use voice input" [ref=e75] [cursor=pointer]
+        - textbox "Ask me anything..." [active] [ref=e79]
+        - button "Clear chat" [ref=e80] [cursor=pointer]
+        - button [ref=e84] [cursor=pointer]

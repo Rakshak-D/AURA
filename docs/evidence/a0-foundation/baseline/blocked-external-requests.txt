@@ -1,0 +1,8 @@
+### Result
+3. [GET] https://unpkg.com/lucide@latest => [302]
+4. [GET] https://cdn.jsdelivr.net/npm/chart.js => [200]
+15. [GET] https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap => [FAILED] csp
+16. [GET] https://unpkg.com/lucide@1.73.0/dist/umd/lucide.min.js => [200]
+32. [GET] https://unpkg.com/lucide@latest => [FAILED] net::ERR_FAILED
+33. [GET] https://cdn.jsdelivr.net/npm/chart.js => [FAILED] net::ERR_FAILED
+44. [GET] https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap => [FAILED] csp

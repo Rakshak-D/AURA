@@ -1,6 +1,7 @@
 from pathlib import Path
 
-FRONTEND = Path(__file__).parents[1] / "frontend" / "js"
+FRONTEND_ROOT = Path(__file__).parents[1] / "frontend"
+FRONTEND = FRONTEND_ROOT / "js"
 
 
 def read(name):
@@ -32,3 +33,19 @@ def test_external_content_uses_safe_dom_boundaries():
     for name in ("chat.js", "search.js", "upload.js", "tasks.js", "notifications.js"):
         source = read(name)
         assert "innerHTML" not in source
+
+
+def test_browser_dependencies_are_self_hosted_and_versioned():
+    index = (FRONTEND_ROOT / "index.html").read_text(encoding="utf-8")
+    styles = (FRONTEND_ROOT / "css" / "styles.css").read_text(encoding="utf-8")
+    browser_code = "\n".join(
+        path.read_text(encoding="utf-8") for path in FRONTEND.glob("*.js")
+    )
+
+    for remote_host in ("unpkg.com", "cdn.jsdelivr.net", "fonts.googleapis.com"):
+        assert remote_host not in index + styles + browser_code
+    assert "/static/vendor/lucide-1.73.0/lucide.min.js" in index
+    assert "/static/vendor/chart.js-4.6.1/chart.umd.min.js" in index
+    assert "Sora Variable" in styles
+    assert "Inter" in styles
+    assert "JetBrains Mono Variable" in styles

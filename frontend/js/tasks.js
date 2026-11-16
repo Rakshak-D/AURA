@@ -6,6 +6,8 @@ let currentEditId = null;
 document.addEventListener('DOMContentLoaded', loadTasks);
 
 async function loadTasks() {
+    if (typeof getAuthToken === 'function' && !getAuthToken()) return;
+
     try {
         const data = await apiJson(`${API_URL}/tasks`);
         if (!Array.isArray(data)) throw new Error('Invalid tasks response');
@@ -80,9 +82,7 @@ function renderKanban(tasks) {
     if (doneCountEl) doneCountEl.textContent = counts.done;
 
     // Re-initialize icons
-    if (typeof lucide !== 'undefined') {
-        lucide.createIcons();
-    }
+    refreshLucideIcons();
 }
 
 function createTaskCard(task) {
@@ -171,7 +171,7 @@ function openTaskModal() {
     document.getElementById('task-duration').value = "30";
 
     document.getElementById('task-modal').classList.add('active');
-    lucide.createIcons();
+    refreshLucideIcons();
 }
 
 function openEditModal(id) {
@@ -199,7 +199,7 @@ function openEditModal(id) {
     document.getElementById('task-duration').value = task.duration_minutes || 30;
 
     document.getElementById('task-modal').classList.add('active');
-    lucide.createIcons();
+    refreshLucideIcons();
 }
 
 function closeTaskModal() {

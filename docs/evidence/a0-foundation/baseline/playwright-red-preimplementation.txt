@@ -1,0 +1,1127 @@
+FEFEFEFEFEFEFE                                                           [100%]
+=================================== ERRORS ====================================
+_ ERROR at teardown of test_sign_in_and_ui_registration_use_the_real_backend __
+
+aura_server = 'http://127.0.0.1:52403'
+request = <SubRequest 'browser_session' for <Function test_sign_in_and_ui_registration_use_the_real_backend>>
+tmp_path = WindowsPath('C:/Users/abhis/AppData/Local/Temp/pytest-of-abhis/pytest-1174/test_sign_in_and_ui_registrati0')
+
+    @pytest.fixture
+    def browser_session(
+        aura_server: str, request: pytest.FixtureRequest, tmp_path: Path
+    ) -> BrowserSession:
+        playwright = pytest.importorskip("playwright.sync_api")
+        playwright_runtime = playwright.sync_playwright().start()
+        browser = playwright_runtime.chromium.launch(headless=True)
+        evidence_dir = os.getenv("AURA_BROWSER_EVIDENCE_DIR")
+        capture_video = os.getenv("AURA_CAPTURE_VIDEO") == "1" and request.node.name == "test_recorded_user_journey"
+        recording_dir: Path | None = None
+        context_options: dict[str, object] = {"service_workers": "block"}
+        if capture_video:
+            recording_dir = tmp_path / "browser-recording"
+            recording_dir.mkdir()
+            context_options["record_video_dir"] = str(recording_dir)
+            context_options["record_video_size"] = {"width": 1440, "height": 900}
+
+        context = browser.new_context(**context_options)
+        external_attempts: list[str] = []
+        seen_external: set[str] = set()
+        console_errors: list[str] = []
+        page_errors: list[str] = []
+
+        def note_external(url: str) -> None:
+            label = _safe_request_label(url)
+            if label not in seen_external:
+                seen_external.add(label)
+                external_attempts.append(label)
+
+        def observe_request(browser_request: object) -> None:
+            url = browser_request.url
+            if _hostname(url) not in _LOCAL_HOSTS:
+                note_external(url)
+
+        def guard_http(route: object) -> None:
+            url = route.request.url
+            if _hostname(url) not in _LOCAL_HOSTS:
+                note_external(url)
+                route.abort("blockedbyclient")
+                return
+            route.continue_()
+
+        def guard_websocket(websocket_route: object) -> None:
+            if _hostname(websocket_route.url) not in _LOCAL_HOSTS:
+                note_external(websocket_route.url)
+                websocket_route.close()
+                return
+            websocket_route.connect_to_server()
+
+        # Register all network controls before creating a page or navigating.
+        context.on("request", observe_request)
+        context.route("**/*", guard_http)
+        context.route_web_socket("**/*", guard_websocket)
+        page = context.new_page()
+        page.on("pageerror", lambda error: page_errors.append(str(error)))
+        page.on(
+            "console",
+            lambda message: console_errors.append(message.text) if message.type == "error" else None,
+        )
+        session = BrowserSession(
+            base_url=aura_server,
+            page=page,
+            context=context,
+            external_attempts=external_attempts,
+            console_errors=console_errors,
+            page_errors=page_errors,
+            recording_dir=recording_dir,
+        )
+        try:
+            yield session
+        finally:
+            video = page.video
+            context.close()
+            if video and recording_dir:
+                output_dir = Path(evidence_dir) / "recordings" if evidence_dir else Path("tests/browser-artifacts/recordings")
+                output_dir.mkdir(parents=True, exist_ok=True)
+                video.save_as(str(output_dir / "a0-user-journey.webm"))
+            browser.close()
+            playwright_runtime.stop()
+
+            if evidence_dir:
+                evidence_path = Path(evidence_dir)
+                evidence_path.mkdir(parents=True, exist_ok=True)
+                summary_path = evidence_path / "browser-run-summary.jsonl"
+                with summary_path.open("a", encoding="utf-8") as summary:
+                    summary.write(
+                        json.dumps(
+                            {
+                                "test": request.node.name,
+                                "external_attempts": external_attempts,
+                                "uncaught_javascript_errors": page_errors,
+                                "console_errors": [_safe_console_error(error) for error in console_errors],
+                            }
+                        )
+                        + "\n"
+                    )
+
+>           assert not external_attempts, (
+                "Browser attempted non-local requests; all were blocked and recorded: "
+                + ", ".join(external_attempts)
+            )
+E           AssertionError: Browser attempted non-local requests; all were blocked and recorded: https://unpkg.com/lucide@latest, https://cdn.jsdelivr.net/npm/chart.js, https://fonts.googleapis.com/css2
+E           assert not ['https://unpkg.com/lucide@latest', 'https://cdn.jsdelivr.net/npm/chart.js', 'https://fonts.googleapis.com/css2']
+
+tests\browser\test_frontend_smoke.py:290: AssertionError
+_ ERROR at teardown of test_missing_local_icon_script_does_not_block_sign_in __
+
+aura_server = 'http://127.0.0.1:52403'
+request = <SubRequest 'browser_session' for <Function test_missing_local_icon_script_does_not_block_sign_in>>
+tmp_path = WindowsPath('C:/Users/abhis/AppData/Local/Temp/pytest-of-abhis/pytest-1174/test_missing_local_icon_script0')
+
+    @pytest.fixture
+    def browser_session(
+        aura_server: str, request: pytest.FixtureRequest, tmp_path: Path
+    ) -> BrowserSession:
+        playwright = pytest.importorskip("playwright.sync_api")
+        playwright_runtime = playwright.sync_playwright().start()
+        browser = playwright_runtime.chromium.launch(headless=True)
+        evidence_dir = os.getenv("AURA_BROWSER_EVIDENCE_DIR")
+        capture_video = os.getenv("AURA_CAPTURE_VIDEO") == "1" and request.node.name == "test_recorded_user_journey"
+        recording_dir: Path | None = None
+        context_options: dict[str, object] = {"service_workers": "block"}
+        if capture_video:
+            recording_dir = tmp_path / "browser-recording"
+            recording_dir.mkdir()
+            context_options["record_video_dir"] = str(recording_dir)
+            context_options["record_video_size"] = {"width": 1440, "height": 900}
+
+        context = browser.new_context(**context_options)
+        external_attempts: list[str] = []
+        seen_external: set[str] = set()
+        console_errors: list[str] = []
+        page_errors: list[str] = []
+
+        def note_external(url: str) -> None:
+            label = _safe_request_label(url)
+            if label not in seen_external:
+                seen_external.add(label)
+                external_attempts.append(label)
+
+        def observe_request(browser_request: object) -> None:
+            url = browser_request.url
+            if _hostname(url) not in _LOCAL_HOSTS:
+                note_external(url)
+
+        def guard_http(route: object) -> None:
+            url = route.request.url
+            if _hostname(url) not in _LOCAL_HOSTS:
+                note_external(url)
+                route.abort("blockedbyclient")
+                return
+            route.continue_()
+
+        def guard_websocket(websocket_route: object) -> None:
+            if _hostname(websocket_route.url) not in _LOCAL_HOSTS:
+                note_external(websocket_route.url)
+                websocket_route.close()
+                return
+            websocket_route.connect_to_server()
+
+        # Register all network controls before creating a page or navigating.
+        context.on("request", observe_request)
+        context.route("**/*", guard_http)
+        context.route_web_socket("**/*", guard_websocket)
+        page = context.new_page()
+        page.on("pageerror", lambda error: page_errors.append(str(error)))
+        page.on(
+            "console",
+            lambda message: console_errors.append(message.text) if message.type == "error" else None,
+        )
+        session = BrowserSession(
+            base_url=aura_server,
+            page=page,
+            context=context,
+            external_attempts=external_attempts,
+            console_errors=console_errors,
+            page_errors=page_errors,
+            recording_dir=recording_dir,
+        )
+        try:
+            yield session
+        finally:
+            video = page.video
+            context.close()
+            if video and recording_dir:
+                output_dir = Path(evidence_dir) / "recordings" if evidence_dir else Path("tests/browser-artifacts/recordings")
+                output_dir.mkdir(parents=True, exist_ok=True)
+                video.save_as(str(output_dir / "a0-user-journey.webm"))
+            browser.close()
+            playwright_runtime.stop()
+
+            if evidence_dir:
+                evidence_path = Path(evidence_dir)
+                evidence_path.mkdir(parents=True, exist_ok=True)
+                summary_path = evidence_path / "browser-run-summary.jsonl"
+                with summary_path.open("a", encoding="utf-8") as summary:
+                    summary.write(
+                        json.dumps(
+                            {
+                                "test": request.node.name,
+                                "external_attempts": external_attempts,
+                                "uncaught_javascript_errors": page_errors,
+                                "console_errors": [_safe_console_error(error) for error in console_errors],
+                            }
+                        )
+                        + "\n"
+                    )
+
+>           assert not external_attempts, (
+                "Browser attempted non-local requests; all were blocked and recorded: "
+                + ", ".join(external_attempts)
+            )
+E           AssertionError: Browser attempted non-local requests; all were blocked and recorded: https://unpkg.com/lucide@latest, https://cdn.jsdelivr.net/npm/chart.js, https://fonts.googleapis.com/css2
+E           assert not ['https://unpkg.com/lucide@latest', 'https://cdn.jsdelivr.net/npm/chart.js', 'https://fonts.googleapis.com/css2']
+
+tests\browser\test_frontend_smoke.py:290: AssertionError
+_ ERROR at teardown of test_tasks_create_complete_and_persist_through_the_real_backend _
+
+aura_server = 'http://127.0.0.1:52403'
+request = <SubRequest 'browser_session' for <Function test_tasks_create_complete_and_persist_through_the_real_backend>>
+tmp_path = WindowsPath('C:/Users/abhis/AppData/Local/Temp/pytest-of-abhis/pytest-1174/test_tasks_create_complete_and0')
+
+    @pytest.fixture
+    def browser_session(
+        aura_server: str, request: pytest.FixtureRequest, tmp_path: Path
+    ) -> BrowserSession:
+        playwright = pytest.importorskip("playwright.sync_api")
+        playwright_runtime = playwright.sync_playwright().start()
+        browser = playwright_runtime.chromium.launch(headless=True)
+        evidence_dir = os.getenv("AURA_BROWSER_EVIDENCE_DIR")
+        capture_video = os.getenv("AURA_CAPTURE_VIDEO") == "1" and request.node.name == "test_recorded_user_journey"
+        recording_dir: Path | None = None
+        context_options: dict[str, object] = {"service_workers": "block"}
+        if capture_video:
+            recording_dir = tmp_path / "browser-recording"
+            recording_dir.mkdir()
+            context_options["record_video_dir"] = str(recording_dir)
+            context_options["record_video_size"] = {"width": 1440, "height": 900}
+
+        context = browser.new_context(**context_options)
+        external_attempts: list[str] = []
+        seen_external: set[str] = set()
+        console_errors: list[str] = []
+        page_errors: list[str] = []
+
+        def note_external(url: str) -> None:
+            label = _safe_request_label(url)
+            if label not in seen_external:
+                seen_external.add(label)
+                external_attempts.append(label)
+
+        def observe_request(browser_request: object) -> None:
+            url = browser_request.url
+            if _hostname(url) not in _LOCAL_HOSTS:
+                note_external(url)
+
+        def guard_http(route: object) -> None:
+            url = route.request.url
+            if _hostname(url) not in _LOCAL_HOSTS:
+                note_external(url)
+                route.abort("blockedbyclient")
+                return
+            route.continue_()
+
+        def guard_websocket(websocket_route: object) -> None:
+            if _hostname(websocket_route.url) not in _LOCAL_HOSTS:
+                note_external(websocket_route.url)
+                websocket_route.close()
+                return
+            websocket_route.connect_to_server()
+
+        # Register all network controls before creating a page or navigating.
+        context.on("request", observe_request)
+        context.route("**/*", guard_http)
+        context.route_web_socket("**/*", guard_websocket)
+        page = context.new_page()
+        page.on("pageerror", lambda error: page_errors.append(str(error)))
+        page.on(
+            "console",
+            lambda message: console_errors.append(message.text) if message.type == "error" else None,
+        )
+        session = BrowserSession(
+            base_url=aura_server,
+            page=page,
+            context=context,
+            external_attempts=external_attempts,
+            console_errors=console_errors,
+            page_errors=page_errors,
+            recording_dir=recording_dir,
+        )
+        try:
+            yield session
+        finally:
+            video = page.video
+            context.close()
+            if video and recording_dir:
+                output_dir = Path(evidence_dir) / "recordings" if evidence_dir else Path("tests/browser-artifacts/recordings")
+                output_dir.mkdir(parents=True, exist_ok=True)
+                video.save_as(str(output_dir / "a0-user-journey.webm"))
+            browser.close()
+            playwright_runtime.stop()
+
+            if evidence_dir:
+                evidence_path = Path(evidence_dir)
+                evidence_path.mkdir(parents=True, exist_ok=True)
+                summary_path = evidence_path / "browser-run-summary.jsonl"
+                with summary_path.open("a", encoding="utf-8") as summary:
+                    summary.write(
+                        json.dumps(
+                            {
+                                "test": request.node.name,
+                                "external_attempts": external_attempts,
+                                "uncaught_javascript_errors": page_errors,
+                                "console_errors": [_safe_console_error(error) for error in console_errors],
+                            }
+                        )
+                        + "\n"
+                    )
+
+>           assert not external_attempts, (
+                "Browser attempted non-local requests; all were blocked and recorded: "
+                + ", ".join(external_attempts)
+            )
+E           AssertionError: Browser attempted non-local requests; all were blocked and recorded: https://unpkg.com/lucide@latest, https://cdn.jsdelivr.net/npm/chart.js, https://fonts.googleapis.com/css2
+E           assert not ['https://unpkg.com/lucide@latest', 'https://cdn.jsdelivr.net/npm/chart.js', 'https://fonts.googleapis.com/css2']
+
+tests\browser\test_frontend_smoke.py:290: AssertionError
+__ ERROR at teardown of test_chat_returns_a_real_graceful_no_model_response ___
+
+aura_server = 'http://127.0.0.1:52403'
+request = <SubRequest 'browser_session' for <Function test_chat_returns_a_real_graceful_no_model_response>>
+tmp_path = WindowsPath('C:/Users/abhis/AppData/Local/Temp/pytest-of-abhis/pytest-1174/test_chat_returns_a_real_grace0')
+
+    @pytest.fixture
+    def browser_session(
+        aura_server: str, request: pytest.FixtureRequest, tmp_path: Path
+    ) -> BrowserSession:
+        playwright = pytest.importorskip("playwright.sync_api")
+        playwright_runtime = playwright.sync_playwright().start()
+        browser = playwright_runtime.chromium.launch(headless=True)
+        evidence_dir = os.getenv("AURA_BROWSER_EVIDENCE_DIR")
+        capture_video = os.getenv("AURA_CAPTURE_VIDEO") == "1" and request.node.name == "test_recorded_user_journey"
+        recording_dir: Path | None = None
+        context_options: dict[str, object] = {"service_workers": "block"}
+        if capture_video:
+            recording_dir = tmp_path / "browser-recording"
+            recording_dir.mkdir()
+            context_options["record_video_dir"] = str(recording_dir)
+            context_options["record_video_size"] = {"width": 1440, "height": 900}
+
+        context = browser.new_context(**context_options)
+        external_attempts: list[str] = []
+        seen_external: set[str] = set()
+        console_errors: list[str] = []
+        page_errors: list[str] = []
+
+        def note_external(url: str) -> None:
+            label = _safe_request_label(url)
+            if label not in seen_external:
+                seen_external.add(label)
+                external_attempts.append(label)
+
+        def observe_request(browser_request: object) -> None:
+            url = browser_request.url
+            if _hostname(url) not in _LOCAL_HOSTS:
+                note_external(url)
+
+        def guard_http(route: object) -> None:
+            url = route.request.url
+            if _hostname(url) not in _LOCAL_HOSTS:
+                note_external(url)
+                route.abort("blockedbyclient")
+                return
+            route.continue_()
+
+        def guard_websocket(websocket_route: object) -> None:
+            if _hostname(websocket_route.url) not in _LOCAL_HOSTS:
+                note_external(websocket_route.url)
+                websocket_route.close()
+                return
+            websocket_route.connect_to_server()
+
+        # Register all network controls before creating a page or navigating.
+        context.on("request", observe_request)
+        context.route("**/*", guard_http)
+        context.route_web_socket("**/*", guard_websocket)
+        page = context.new_page()
+        page.on("pageerror", lambda error: page_errors.append(str(error)))
+        page.on(
+            "console",
+            lambda message: console_errors.append(message.text) if message.type == "error" else None,
+        )
+        session = BrowserSession(
+            base_url=aura_server,
+            page=page,
+            context=context,
+            external_attempts=external_attempts,
+            console_errors=console_errors,
+            page_errors=page_errors,
+            recording_dir=recording_dir,
+        )
+        try:
+            yield session
+        finally:
+            video = page.video
+            context.close()
+            if video and recording_dir:
+                output_dir = Path(evidence_dir) / "recordings" if evidence_dir else Path("tests/browser-artifacts/recordings")
+                output_dir.mkdir(parents=True, exist_ok=True)
+                video.save_as(str(output_dir / "a0-user-journey.webm"))
+            browser.close()
+            playwright_runtime.stop()
+
+            if evidence_dir:
+                evidence_path = Path(evidence_dir)
+                evidence_path.mkdir(parents=True, exist_ok=True)
+                summary_path = evidence_path / "browser-run-summary.jsonl"
+                with summary_path.open("a", encoding="utf-8") as summary:
+                    summary.write(
+                        json.dumps(
+                            {
+                                "test": request.node.name,
+                                "external_attempts": external_attempts,
+                                "uncaught_javascript_errors": page_errors,
+                                "console_errors": [_safe_console_error(error) for error in console_errors],
+                            }
+                        )
+                        + "\n"
+                    )
+
+>           assert not external_attempts, (
+                "Browser attempted non-local requests; all were blocked and recorded: "
+                + ", ".join(external_attempts)
+            )
+E           AssertionError: Browser attempted non-local requests; all were blocked and recorded: https://unpkg.com/lucide@latest, https://cdn.jsdelivr.net/npm/chart.js, https://fonts.googleapis.com/css2
+E           assert not ['https://unpkg.com/lucide@latest', 'https://cdn.jsdelivr.net/npm/chart.js', 'https://fonts.googleapis.com/css2']
+
+tests\browser\test_frontend_smoke.py:290: AssertionError
+_____ ERROR at teardown of test_functional_navigation_and_chart_rendering _____
+
+aura_server = 'http://127.0.0.1:52403'
+request = <SubRequest 'browser_session' for <Function test_functional_navigation_and_chart_rendering>>
+tmp_path = WindowsPath('C:/Users/abhis/AppData/Local/Temp/pytest-of-abhis/pytest-1174/test_functional_navigation_and0')
+
+    @pytest.fixture
+    def browser_session(
+        aura_server: str, request: pytest.FixtureRequest, tmp_path: Path
+    ) -> BrowserSession:
+        playwright = pytest.importorskip("playwright.sync_api")
+        playwright_runtime = playwright.sync_playwright().start()
+        browser = playwright_runtime.chromium.launch(headless=True)
+        evidence_dir = os.getenv("AURA_BROWSER_EVIDENCE_DIR")
+        capture_video = os.getenv("AURA_CAPTURE_VIDEO") == "1" and request.node.name == "test_recorded_user_journey"
+        recording_dir: Path | None = None
+        context_options: dict[str, object] = {"service_workers": "block"}
+        if capture_video:
+            recording_dir = tmp_path / "browser-recording"
+            recording_dir.mkdir()
+            context_options["record_video_dir"] = str(recording_dir)
+            context_options["record_video_size"] = {"width": 1440, "height": 900}
+
+        context = browser.new_context(**context_options)
+        external_attempts: list[str] = []
+        seen_external: set[str] = set()
+        console_errors: list[str] = []
+        page_errors: list[str] = []
+
+        def note_external(url: str) -> None:
+            label = _safe_request_label(url)
+            if label not in seen_external:
+                seen_external.add(label)
+                external_attempts.append(label)
+
+        def observe_request(browser_request: object) -> None:
+            url = browser_request.url
+            if _hostname(url) not in _LOCAL_HOSTS:
+                note_external(url)
+
+        def guard_http(route: object) -> None:
+            url = route.request.url
+            if _hostname(url) not in _LOCAL_HOSTS:
+                note_external(url)
+                route.abort("blockedbyclient")
+                return
+            route.continue_()
+
+        def guard_websocket(websocket_route: object) -> None:
+            if _hostname(websocket_route.url) not in _LOCAL_HOSTS:
+                note_external(websocket_route.url)
+                websocket_route.close()
+                return
+            websocket_route.connect_to_server()
+
+        # Register all network controls before creating a page or navigating.
+        context.on("request", observe_request)
+        context.route("**/*", guard_http)
+        context.route_web_socket("**/*", guard_websocket)
+        page = context.new_page()
+        page.on("pageerror", lambda error: page_errors.append(str(error)))
+        page.on(
+            "console",
+            lambda message: console_errors.append(message.text) if message.type == "error" else None,
+        )
+        session = BrowserSession(
+            base_url=aura_server,
+            page=page,
+            context=context,
+            external_attempts=external_attempts,
+            console_errors=console_errors,
+            page_errors=page_errors,
+            recording_dir=recording_dir,
+        )
+        try:
+            yield session
+        finally:
+            video = page.video
+            context.close()
+            if video and recording_dir:
+                output_dir = Path(evidence_dir) / "recordings" if evidence_dir else Path("tests/browser-artifacts/recordings")
+                output_dir.mkdir(parents=True, exist_ok=True)
+                video.save_as(str(output_dir / "a0-user-journey.webm"))
+            browser.close()
+            playwright_runtime.stop()
+
+            if evidence_dir:
+                evidence_path = Path(evidence_dir)
+                evidence_path.mkdir(parents=True, exist_ok=True)
+                summary_path = evidence_path / "browser-run-summary.jsonl"
+                with summary_path.open("a", encoding="utf-8") as summary:
+                    summary.write(
+                        json.dumps(
+                            {
+                                "test": request.node.name,
+                                "external_attempts": external_attempts,
+                                "uncaught_javascript_errors": page_errors,
+                                "console_errors": [_safe_console_error(error) for error in console_errors],
+                            }
+                        )
+                        + "\n"
+                    )
+
+>           assert not external_attempts, (
+                "Browser attempted non-local requests; all were blocked and recorded: "
+                + ", ".join(external_attempts)
+            )
+E           AssertionError: Browser attempted non-local requests; all were blocked and recorded: https://unpkg.com/lucide@latest, https://cdn.jsdelivr.net/npm/chart.js, https://fonts.googleapis.com/css2
+E           assert not ['https://unpkg.com/lucide@latest', 'https://cdn.jsdelivr.net/npm/chart.js', 'https://fonts.googleapis.com/css2']
+
+tests\browser\test_frontend_smoke.py:290: AssertionError
+_ ERROR at teardown of test_layout_keyboard_focus_and_touch_sizing_at_required_viewports _
+
+aura_server = 'http://127.0.0.1:52403'
+request = <SubRequest 'browser_session' for <Function test_layout_keyboard_focus_and_touch_sizing_at_required_viewports>>
+tmp_path = WindowsPath('C:/Users/abhis/AppData/Local/Temp/pytest-of-abhis/pytest-1174/test_layout_keyboard_focus_and0')
+
+    @pytest.fixture
+    def browser_session(
+        aura_server: str, request: pytest.FixtureRequest, tmp_path: Path
+    ) -> BrowserSession:
+        playwright = pytest.importorskip("playwright.sync_api")
+        playwright_runtime = playwright.sync_playwright().start()
+        browser = playwright_runtime.chromium.launch(headless=True)
+        evidence_dir = os.getenv("AURA_BROWSER_EVIDENCE_DIR")
+        capture_video = os.getenv("AURA_CAPTURE_VIDEO") == "1" and request.node.name == "test_recorded_user_journey"
+        recording_dir: Path | None = None
+        context_options: dict[str, object] = {"service_workers": "block"}
+        if capture_video:
+            recording_dir = tmp_path / "browser-recording"
+            recording_dir.mkdir()
+            context_options["record_video_dir"] = str(recording_dir)
+            context_options["record_video_size"] = {"width": 1440, "height": 900}
+
+        context = browser.new_context(**context_options)
+        external_attempts: list[str] = []
+        seen_external: set[str] = set()
+        console_errors: list[str] = []
+        page_errors: list[str] = []
+
+        def note_external(url: str) -> None:
+            label = _safe_request_label(url)
+            if label not in seen_external:
+                seen_external.add(label)
+                external_attempts.append(label)
+
+        def observe_request(browser_request: object) -> None:
+            url = browser_request.url
+            if _hostname(url) not in _LOCAL_HOSTS:
+                note_external(url)
+
+        def guard_http(route: object) -> None:
+            url = route.request.url
+            if _hostname(url) not in _LOCAL_HOSTS:
+                note_external(url)
+                route.abort("blockedbyclient")
+                return
+            route.continue_()
+
+        def guard_websocket(websocket_route: object) -> None:
+            if _hostname(websocket_route.url) not in _LOCAL_HOSTS:
+                note_external(websocket_route.url)
+                websocket_route.close()
+                return
+            websocket_route.connect_to_server()
+
+        # Register all network controls before creating a page or navigating.
+        context.on("request", observe_request)
+        context.route("**/*", guard_http)
+        context.route_web_socket("**/*", guard_websocket)
+        page = context.new_page()
+        page.on("pageerror", lambda error: page_errors.append(str(error)))
+        page.on(
+            "console",
+            lambda message: console_errors.append(message.text) if message.type == "error" else None,
+        )
+        session = BrowserSession(
+            base_url=aura_server,
+            page=page,
+            context=context,
+            external_attempts=external_attempts,
+            console_errors=console_errors,
+            page_errors=page_errors,
+            recording_dir=recording_dir,
+        )
+        try:
+            yield session
+        finally:
+            video = page.video
+            context.close()
+            if video and recording_dir:
+                output_dir = Path(evidence_dir) / "recordings" if evidence_dir else Path("tests/browser-artifacts/recordings")
+                output_dir.mkdir(parents=True, exist_ok=True)
+                video.save_as(str(output_dir / "a0-user-journey.webm"))
+            browser.close()
+            playwright_runtime.stop()
+
+            if evidence_dir:
+                evidence_path = Path(evidence_dir)
+                evidence_path.mkdir(parents=True, exist_ok=True)
+                summary_path = evidence_path / "browser-run-summary.jsonl"
+                with summary_path.open("a", encoding="utf-8") as summary:
+                    summary.write(
+                        json.dumps(
+                            {
+                                "test": request.node.name,
+                                "external_attempts": external_attempts,
+                                "uncaught_javascript_errors": page_errors,
+                                "console_errors": [_safe_console_error(error) for error in console_errors],
+                            }
+                        )
+                        + "\n"
+                    )
+
+>           assert not external_attempts, (
+                "Browser attempted non-local requests; all were blocked and recorded: "
+                + ", ".join(external_attempts)
+            )
+E           AssertionError: Browser attempted non-local requests; all were blocked and recorded: https://unpkg.com/lucide@latest, https://cdn.jsdelivr.net/npm/chart.js, https://fonts.googleapis.com/css2
+E           assert not ['https://unpkg.com/lucide@latest', 'https://cdn.jsdelivr.net/npm/chart.js', 'https://fonts.googleapis.com/css2']
+
+tests\browser\test_frontend_smoke.py:290: AssertionError
+_______________ ERROR at teardown of test_recorded_user_journey _______________
+
+aura_server = 'http://127.0.0.1:52403'
+request = <SubRequest 'browser_session' for <Function test_recorded_user_journey>>
+tmp_path = WindowsPath('C:/Users/abhis/AppData/Local/Temp/pytest-of-abhis/pytest-1174/test_recorded_user_journey0')
+
+    @pytest.fixture
+    def browser_session(
+        aura_server: str, request: pytest.FixtureRequest, tmp_path: Path
+    ) -> BrowserSession:
+        playwright = pytest.importorskip("playwright.sync_api")
+        playwright_runtime = playwright.sync_playwright().start()
+        browser = playwright_runtime.chromium.launch(headless=True)
+        evidence_dir = os.getenv("AURA_BROWSER_EVIDENCE_DIR")
+        capture_video = os.getenv("AURA_CAPTURE_VIDEO") == "1" and request.node.name == "test_recorded_user_journey"
+        recording_dir: Path | None = None
+        context_options: dict[str, object] = {"service_workers": "block"}
+        if capture_video:
+            recording_dir = tmp_path / "browser-recording"
+            recording_dir.mkdir()
+            context_options["record_video_dir"] = str(recording_dir)
+            context_options["record_video_size"] = {"width": 1440, "height": 900}
+
+        context = browser.new_context(**context_options)
+        external_attempts: list[str] = []
+        seen_external: set[str] = set()
+        console_errors: list[str] = []
+        page_errors: list[str] = []
+
+        def note_external(url: str) -> None:
+            label = _safe_request_label(url)
+            if label not in seen_external:
+                seen_external.add(label)
+                external_attempts.append(label)
+
+        def observe_request(browser_request: object) -> None:
+            url = browser_request.url
+            if _hostname(url) not in _LOCAL_HOSTS:
+                note_external(url)
+
+        def guard_http(route: object) -> None:
+            url = route.request.url
+            if _hostname(url) not in _LOCAL_HOSTS:
+                note_external(url)
+                route.abort("blockedbyclient")
+                return
+            route.continue_()
+
+        def guard_websocket(websocket_route: object) -> None:
+            if _hostname(websocket_route.url) not in _LOCAL_HOSTS:
+                note_external(websocket_route.url)
+                websocket_route.close()
+                return
+            websocket_route.connect_to_server()
+
+        # Register all network controls before creating a page or navigating.
+        context.on("request", observe_request)
+        context.route("**/*", guard_http)
+        context.route_web_socket("**/*", guard_websocket)
+        page = context.new_page()
+        page.on("pageerror", lambda error: page_errors.append(str(error)))
+        page.on(
+            "console",
+            lambda message: console_errors.append(message.text) if message.type == "error" else None,
+        )
+        session = BrowserSession(
+            base_url=aura_server,
+            page=page,
+            context=context,
+            external_attempts=external_attempts,
+            console_errors=console_errors,
+            page_errors=page_errors,
+            recording_dir=recording_dir,
+        )
+        try:
+            yield session
+        finally:
+            video = page.video
+            context.close()
+            if video and recording_dir:
+                output_dir = Path(evidence_dir) / "recordings" if evidence_dir else Path("tests/browser-artifacts/recordings")
+                output_dir.mkdir(parents=True, exist_ok=True)
+                video.save_as(str(output_dir / "a0-user-journey.webm"))
+            browser.close()
+            playwright_runtime.stop()
+
+            if evidence_dir:
+                evidence_path = Path(evidence_dir)
+                evidence_path.mkdir(parents=True, exist_ok=True)
+                summary_path = evidence_path / "browser-run-summary.jsonl"
+                with summary_path.open("a", encoding="utf-8") as summary:
+                    summary.write(
+                        json.dumps(
+                            {
+                                "test": request.node.name,
+                                "external_attempts": external_attempts,
+                                "uncaught_javascript_errors": page_errors,
+                                "console_errors": [_safe_console_error(error) for error in console_errors],
+                            }
+                        )
+                        + "\n"
+                    )
+
+>           assert not external_attempts, (
+                "Browser attempted non-local requests; all were blocked and recorded: "
+                + ", ".join(external_attempts)
+            )
+E           AssertionError: Browser attempted non-local requests; all were blocked and recorded: https://unpkg.com/lucide@latest, https://cdn.jsdelivr.net/npm/chart.js, https://fonts.googleapis.com/css2
+E           assert not ['https://unpkg.com/lucide@latest', 'https://cdn.jsdelivr.net/npm/chart.js', 'https://fonts.googleapis.com/css2']
+
+tests\browser\test_frontend_smoke.py:290: AssertionError
+================================== FAILURES ===================================
+____________ test_sign_in_and_ui_registration_use_the_real_backend ____________
+
+browser_session = BrowserSession(base_url='http://127.0.0.1:52403', page=<Page url='http://127.0.0.1:52403/'>, context=<BrowserContext b.../static/js/upload.js?v=2:107:22)'], page_errors=['lucide is not defined', 'lucide is not defined'], recording_dir=None)
+browser_account = {'identifier': '<redacted-test-id>', 'password': '<redacted-test-password>'}
+
+    def test_sign_in_and_ui_registration_use_the_real_backend(
+        browser_session: BrowserSession, browser_account: dict[str, str]
+    ) -> None:
+        page = browser_session.page
+        for width, height in ((1440, 900), (1024, 768), (390, 844)):
+            page.set_viewport_size({"width": width, "height": height})
+            page.goto(browser_session.base_url, wait_until="domcontentloaded")
+>           page.locator("#aura-auth-panel").wait_for(state="visible")
+
+tests\browser\test_frontend_smoke.py:335:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+C:\Users\abhis\AppData\Local\Temp\aura-a0-verify-py311\Lib\site-packages\playwright\sync_api\_generated.py:13663: in wait_for
+    self._sync(
+C:\Users\abhis\AppData\Local\Temp\aura-a0-verify-py311\Lib\site-packages\playwright\_impl\locator.py:943: in wait_for
+    await self._frame._channel.waitForSelector(
+C:\Users\abhis\AppData\Local\Temp\aura-a0-verify-py311\Lib\site-packages\playwright\_impl\channel_owner.py:398: in _mapped
+    return mapper(await awaitable)
+C:\Users\abhis\AppData\Local\Temp\aura-a0-verify-py311\Lib\site-packages\playwright\_impl\channel_owner.py:387: in finish
+    raise e from None
+C:\Users\abhis\AppData\Local\Temp\aura-a0-verify-py311\Lib\site-packages\playwright\_impl\channel_owner.py:352: in finish
+    result = await zone.run_async(lambda: awaitable)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <playwright._impl.utils.zones.Zone object at 0x00000195C5128790>
+func = <function ChannelOwner._wrap_api_call.<locals>.finish.<locals>.<lambda> at 0x00000195C518E340>
+
+    async def run_async(self, func: Callable[[], Awaitable[R]]) -> R:
+        # Python: run() of an async function. The coroutine runs when it is awaited,
+        # so the zone must be current while it is awaited, not while it is created.
+        token = _async_local_storage.set(self)
+        try:
+>           return await func()
+E           playwright._impl._errors.TimeoutError: Locator.wait_for: Timeout 30000ms exceeded.
+E           Call log:
+E             - waiting for locator("#aura-auth-panel") to be visible
+
+C:\Users\abhis\AppData\Local\Temp\aura-a0-verify-py311\Lib\site-packages\playwright\_impl\utils\zones.py:58: TimeoutError
+____________ test_missing_local_icon_script_does_not_block_sign_in ____________
+
+browser_session = BrowserSession(base_url='http://127.0.0.1:52403', page=<Page url='http://127.0.0.1:52403/'>, context=<BrowserContext b.../static/js/upload.js?v=2:107:22)'], page_errors=['lucide is not defined', 'lucide is not defined'], recording_dir=None)
+
+    def test_missing_local_icon_script_does_not_block_sign_in(
+        browser_session: BrowserSession,
+    ) -> None:
+        page = browser_session.page
+
+        def block_icon_file(route: object) -> None:
+            route.abort("blockedbyclient")
+
+        # Simulate a locally bundled icon asset failing to load. This route is local
+        # and does not exempt the external-network guard.
+        browser_session.context.route("**/*lucide*.js*", block_icon_file)
+        page.goto(browser_session.base_url, wait_until="domcontentloaded")
+>       page.locator("#aura-auth-panel").wait_for(state="visible")
+
+tests\browser\test_frontend_smoke.py:373:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+C:\Users\abhis\AppData\Local\Temp\aura-a0-verify-py311\Lib\site-packages\playwright\sync_api\_generated.py:13663: in wait_for
+    self._sync(
+C:\Users\abhis\AppData\Local\Temp\aura-a0-verify-py311\Lib\site-packages\playwright\_impl\locator.py:943: in wait_for
+    await self._frame._channel.waitForSelector(
+C:\Users\abhis\AppData\Local\Temp\aura-a0-verify-py311\Lib\site-packages\playwright\_impl\channel_owner.py:398: in _mapped
+    return mapper(await awaitable)
+C:\Users\abhis\AppData\Local\Temp\aura-a0-verify-py311\Lib\site-packages\playwright\_impl\channel_owner.py:387: in finish
+    raise e from None
+C:\Users\abhis\AppData\Local\Temp\aura-a0-verify-py311\Lib\site-packages\playwright\_impl\channel_owner.py:352: in finish
+    result = await zone.run_async(lambda: awaitable)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <playwright._impl.utils.zones.Zone object at 0x00000195C6B17D10>
+func = <function ChannelOwner._wrap_api_call.<locals>.finish.<locals>.<lambda> at 0x00000195C533AE80>
+
+    async def run_async(self, func: Callable[[], Awaitable[R]]) -> R:
+        # Python: run() of an async function. The coroutine runs when it is awaited,
+        # so the zone must be current while it is awaited, not while it is created.
+        token = _async_local_storage.set(self)
+        try:
+>           return await func()
+E           playwright._impl._errors.TimeoutError: Locator.wait_for: Timeout 30000ms exceeded.
+E           Call log:
+E             - waiting for locator("#aura-auth-panel") to be visible
+
+C:\Users\abhis\AppData\Local\Temp\aura-a0-verify-py311\Lib\site-packages\playwright\_impl\utils\zones.py:58: TimeoutError
+_______ test_tasks_create_complete_and_persist_through_the_real_backend _______
+
+browser_session = BrowserSession(base_url='http://127.0.0.1:52403', page=<Page url='http://127.0.0.1:52403/'>, context=<BrowserContext b.../static/js/upload.js?v=2:107:22)'], page_errors=['lucide is not defined', 'lucide is not defined'], recording_dir=None)
+browser_account = {'identifier': '<redacted-test-id>', 'password': '<redacted-test-password>'}
+
+    def test_tasks_create_complete_and_persist_through_the_real_backend(
+        browser_session: BrowserSession, browser_account: dict[str, str]
+    ) -> None:
+>       _sign_in(browser_session, browser_account)
+
+tests\browser\test_frontend_smoke.py:381:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\browser\test_frontend_smoke.py:313: in _sign_in
+    auth_panel.wait_for(state="visible")
+C:\Users\abhis\AppData\Local\Temp\aura-a0-verify-py311\Lib\site-packages\playwright\sync_api\_generated.py:13663: in wait_for
+    self._sync(
+C:\Users\abhis\AppData\Local\Temp\aura-a0-verify-py311\Lib\site-packages\playwright\_impl\locator.py:943: in wait_for
+    await self._frame._channel.waitForSelector(
+C:\Users\abhis\AppData\Local\Temp\aura-a0-verify-py311\Lib\site-packages\playwright\_impl\channel_owner.py:398: in _mapped
+    return mapper(await awaitable)
+C:\Users\abhis\AppData\Local\Temp\aura-a0-verify-py311\Lib\site-packages\playwright\_impl\channel_owner.py:387: in finish
+    raise e from None
+C:\Users\abhis\AppData\Local\Temp\aura-a0-verify-py311\Lib\site-packages\playwright\_impl\channel_owner.py:352: in finish
+    result = await zone.run_async(lambda: awaitable)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <playwright._impl.utils.zones.Zone object at 0x00000195C51D14D0>
+func = <function ChannelOwner._wrap_api_call.<locals>.finish.<locals>.<lambda> at 0x00000195C49F1D00>
+
+    async def run_async(self, func: Callable[[], Awaitable[R]]) -> R:
+        # Python: run() of an async function. The coroutine runs when it is awaited,
+        # so the zone must be current while it is awaited, not while it is created.
+        token = _async_local_storage.set(self)
+        try:
+>           return await func()
+E           playwright._impl._errors.TimeoutError: Locator.wait_for: Timeout 30000ms exceeded.
+E           Call log:
+E             - waiting for locator("#aura-auth-panel") to be visible
+
+C:\Users\abhis\AppData\Local\Temp\aura-a0-verify-py311\Lib\site-packages\playwright\_impl\utils\zones.py:58: TimeoutError
+_____________ test_chat_returns_a_real_graceful_no_model_response _____________
+
+browser_session = BrowserSession(base_url='http://127.0.0.1:52403', page=<Page url='http://127.0.0.1:52403/'>, context=<BrowserContext b.../static/js/upload.js?v=2:107:22)'], page_errors=['lucide is not defined', 'lucide is not defined'], recording_dir=None)
+browser_account = {'identifier': '<redacted-test-id>', 'password': '<redacted-test-password>'}
+
+    def test_chat_returns_a_real_graceful_no_model_response(
+        browser_session: BrowserSession, browser_account: dict[str, str]
+    ) -> None:
+>       _sign_in(browser_session, browser_account)
+
+tests\browser\test_frontend_smoke.py:406:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\browser\test_frontend_smoke.py:313: in _sign_in
+    auth_panel.wait_for(state="visible")
+C:\Users\abhis\AppData\Local\Temp\aura-a0-verify-py311\Lib\site-packages\playwright\sync_api\_generated.py:13663: in wait_for
+    self._sync(
+C:\Users\abhis\AppData\Local\Temp\aura-a0-verify-py311\Lib\site-packages\playwright\_impl\locator.py:943: in wait_for
+    await self._frame._channel.waitForSelector(
+C:\Users\abhis\AppData\Local\Temp\aura-a0-verify-py311\Lib\site-packages\playwright\_impl\channel_owner.py:398: in _mapped
+    return mapper(await awaitable)
+C:\Users\abhis\AppData\Local\Temp\aura-a0-verify-py311\Lib\site-packages\playwright\_impl\channel_owner.py:387: in finish
+    raise e from None
+C:\Users\abhis\AppData\Local\Temp\aura-a0-verify-py311\Lib\site-packages\playwright\_impl\channel_owner.py:352: in finish
+    result = await zone.run_async(lambda: awaitable)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <playwright._impl.utils.zones.Zone object at 0x00000195C5187050>
+func = <function ChannelOwner._wrap_api_call.<locals>.finish.<locals>.<lambda> at 0x00000195C554A5C0>
+
+    async def run_async(self, func: Callable[[], Awaitable[R]]) -> R:
+        # Python: run() of an async function. The coroutine runs when it is awaited,
+        # so the zone must be current while it is awaited, not while it is created.
+        token = _async_local_storage.set(self)
+        try:
+>           return await func()
+E           playwright._impl._errors.TimeoutError: Locator.wait_for: Timeout 30000ms exceeded.
+E           Call log:
+E             - waiting for locator("#aura-auth-panel") to be visible
+
+C:\Users\abhis\AppData\Local\Temp\aura-a0-verify-py311\Lib\site-packages\playwright\_impl\utils\zones.py:58: TimeoutError
+_______________ test_functional_navigation_and_chart_rendering ________________
+
+browser_session = BrowserSession(base_url='http://127.0.0.1:52403', page=<Page url='http://127.0.0.1:52403/'>, context=<BrowserContext b.../static/js/upload.js?v=2:107:22)'], page_errors=['lucide is not defined', 'lucide is not defined'], recording_dir=None)
+browser_account = {'identifier': '<redacted-test-id>', 'password': '<redacted-test-password>'}
+
+    def test_functional_navigation_and_chart_rendering(
+        browser_session: BrowserSession, browser_account: dict[str, str]
+    ) -> None:
+>       _sign_in(browser_session, browser_account)
+
+tests\browser\test_frontend_smoke.py:427:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\browser\test_frontend_smoke.py:313: in _sign_in
+    auth_panel.wait_for(state="visible")
+C:\Users\abhis\AppData\Local\Temp\aura-a0-verify-py311\Lib\site-packages\playwright\sync_api\_generated.py:13663: in wait_for
+    self._sync(
+C:\Users\abhis\AppData\Local\Temp\aura-a0-verify-py311\Lib\site-packages\playwright\_impl\locator.py:943: in wait_for
+    await self._frame._channel.waitForSelector(
+C:\Users\abhis\AppData\Local\Temp\aura-a0-verify-py311\Lib\site-packages\playwright\_impl\channel_owner.py:398: in _mapped
+    return mapper(await awaitable)
+C:\Users\abhis\AppData\Local\Temp\aura-a0-verify-py311\Lib\site-packages\playwright\_impl\channel_owner.py:387: in finish
+    raise e from None
+C:\Users\abhis\AppData\Local\Temp\aura-a0-verify-py311\Lib\site-packages\playwright\_impl\channel_owner.py:352: in finish
+    result = await zone.run_async(lambda: awaitable)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <playwright._impl.utils.zones.Zone object at 0x00000195C76A4710>
+func = <function ChannelOwner._wrap_api_call.<locals>.finish.<locals>.<lambda> at 0x00000195C533AA20>
+
+    async def run_async(self, func: Callable[[], Awaitable[R]]) -> R:
+        # Python: run() of an async function. The coroutine runs when it is awaited,
+        # so the zone must be current while it is awaited, not while it is created.
+        token = _async_local_storage.set(self)
+        try:
+>           return await func()
+E           playwright._impl._errors.TimeoutError: Locator.wait_for: Timeout 30000ms exceeded.
+E           Call log:
+E             - waiting for locator("#aura-auth-panel") to be visible
+
+C:\Users\abhis\AppData\Local\Temp\aura-a0-verify-py311\Lib\site-packages\playwright\_impl\utils\zones.py:58: TimeoutError
+______ test_layout_keyboard_focus_and_touch_sizing_at_required_viewports ______
+
+browser_session = BrowserSession(base_url='http://127.0.0.1:52403', page=<Page url='http://127.0.0.1:52403/'>, context=<BrowserContext b.../static/js/upload.js?v=2:107:22)'], page_errors=['lucide is not defined', 'lucide is not defined'], recording_dir=None)
+browser_account = {'identifier': '<redacted-test-id>', 'password': '<redacted-test-password>'}
+
+    def test_layout_keyboard_focus_and_touch_sizing_at_required_viewports(
+        browser_session: BrowserSession, browser_account: dict[str, str]
+    ) -> None:
+>       _sign_in(browser_session, browser_account)
+
+tests\browser\test_frontend_smoke.py:461:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\browser\test_frontend_smoke.py:313: in _sign_in
+    auth_panel.wait_for(state="visible")
+C:\Users\abhis\AppData\Local\Temp\aura-a0-verify-py311\Lib\site-packages\playwright\sync_api\_generated.py:13663: in wait_for
+    self._sync(
+C:\Users\abhis\AppData\Local\Temp\aura-a0-verify-py311\Lib\site-packages\playwright\_impl\locator.py:943: in wait_for
+    await self._frame._channel.waitForSelector(
+C:\Users\abhis\AppData\Local\Temp\aura-a0-verify-py311\Lib\site-packages\playwright\_impl\channel_owner.py:398: in _mapped
+    return mapper(await awaitable)
+C:\Users\abhis\AppData\Local\Temp\aura-a0-verify-py311\Lib\site-packages\playwright\_impl\channel_owner.py:387: in finish
+    raise e from None
+C:\Users\abhis\AppData\Local\Temp\aura-a0-verify-py311\Lib\site-packages\playwright\_impl\channel_owner.py:352: in finish
+    result = await zone.run_async(lambda: awaitable)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <playwright._impl.utils.zones.Zone object at 0x00000195C519F250>
+func = <function ChannelOwner._wrap_api_call.<locals>.finish.<locals>.<lambda> at 0x00000195C56F4E00>
+
+    async def run_async(self, func: Callable[[], Awaitable[R]]) -> R:
+        # Python: run() of an async function. The coroutine runs when it is awaited,
+        # so the zone must be current while it is awaited, not while it is created.
+        token = _async_local_storage.set(self)
+        try:
+>           return await func()
+E           playwright._impl._errors.TimeoutError: Locator.wait_for: Timeout 30000ms exceeded.
+E           Call log:
+E             - waiting for locator("#aura-auth-panel") to be visible
+
+C:\Users\abhis\AppData\Local\Temp\aura-a0-verify-py311\Lib\site-packages\playwright\_impl\utils\zones.py:58: TimeoutError
+_________________________ test_recorded_user_journey __________________________
+
+browser_session = BrowserSession(base_url='http://127.0.0.1:52403', page=<Page url='http://127.0.0.1:52403/'>, context=<BrowserContext b.../static/js/upload.js?v=2:107:22)'], page_errors=['lucide is not defined', 'lucide is not defined'], recording_dir=None)
+browser_account = {'identifier': '<redacted-test-id>', 'password': '<redacted-test-password>'}
+
+    def test_recorded_user_journey(
+        browser_session: BrowserSession, browser_account: dict[str, str]
+    ) -> None:
+        """One real user journey; optionally recorded when AURA_CAPTURE_VIDEO=1."""
+>       _sign_in(browser_session, browser_account)
+
+tests\browser\test_frontend_smoke.py:513:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\browser\test_frontend_smoke.py:313: in _sign_in
+    auth_panel.wait_for(state="visible")
+C:\Users\abhis\AppData\Local\Temp\aura-a0-verify-py311\Lib\site-packages\playwright\sync_api\_generated.py:13663: in wait_for
+    self._sync(
+C:\Users\abhis\AppData\Local\Temp\aura-a0-verify-py311\Lib\site-packages\playwright\_impl\locator.py:943: in wait_for
+    await self._frame._channel.waitForSelector(
+C:\Users\abhis\AppData\Local\Temp\aura-a0-verify-py311\Lib\site-packages\playwright\_impl\channel_owner.py:398: in _mapped
+    return mapper(await awaitable)
+C:\Users\abhis\AppData\Local\Temp\aura-a0-verify-py311\Lib\site-packages\playwright\_impl\channel_owner.py:387: in finish
+    raise e from None
+C:\Users\abhis\AppData\Local\Temp\aura-a0-verify-py311\Lib\site-packages\playwright\_impl\channel_owner.py:352: in finish
+    result = await zone.run_async(lambda: awaitable)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <playwright._impl.utils.zones.Zone object at 0x00000195C576F390>
+func = <function ChannelOwner._wrap_api_call.<locals>.finish.<locals>.<lambda> at 0x00000195C510A980>
+
+    async def run_async(self, func: Callable[[], Awaitable[R]]) -> R:
+        # Python: run() of an async function. The coroutine runs when it is awaited,
+        # so the zone must be current while it is awaited, not while it is created.
+        token = _async_local_storage.set(self)
+        try:
+>           return await func()
+E           playwright._impl._errors.TimeoutError: Locator.wait_for: Timeout 30000ms exceeded.
+E           Call log:
+E             - waiting for locator("#aura-auth-panel") to be visible
+
+C:\Users\abhis\AppData\Local\Temp\aura-a0-verify-py311\Lib\site-packages\playwright\_impl\utils\zones.py:58: TimeoutError
+============================== warnings summary ===============================
+backend\app\models\pydantic_models.py:30
+  C:\RAKSHAK\MY CODE\AURA\backend\app\models\pydantic_models.py:30: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.14/migration/
+    class TaskResponse(BaseModel):
+
+backend\app\models\pydantic_models.py:79
+  C:\RAKSHAK\MY CODE\AURA\backend\app\models\pydantic_models.py:79: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.14/migration/
+    class ReminderResponse(BaseModel):
+
+backend\app\routes\routine.py:18
+  C:\RAKSHAK\MY CODE\AURA\backend\app\routes\routine.py:18: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.14/migration/
+    class RoutineEventResponse(RoutineEventCreate):
+
+backend\app\main.py:91
+  C:\RAKSHAK\MY CODE\AURA\backend\app\main.py:91: DeprecationWarning:
+          on_event is deprecated, use lifespan event handlers instead.
+
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+
+    @app.on_event("startup")
+
+..\..\..\Users\abhis\AppData\Local\Temp\aura-a0-verify-py311\Lib\site-packages\fastapi\applications.py:4723
+..\..\..\Users\abhis\AppData\Local\Temp\aura-a0-verify-py311\Lib\site-packages\fastapi\applications.py:4723
+  C:\Users\abhis\AppData\Local\Temp\aura-a0-verify-py311\Lib\site-packages\fastapi\applications.py:4723: DeprecationWarning:
+          on_event is deprecated, use lifespan event handlers instead.
+
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+
+    return self.router.on_event(event_type)  # ty: ignore[deprecated]
+
+backend\app\main.py:112
+  C:\RAKSHAK\MY CODE\AURA\backend\app\main.py:112: DeprecationWarning:
+          on_event is deprecated, use lifespan event handlers instead.
+
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+
+    @app.on_event("shutdown")
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/browser/test_frontend_smoke.py::test_sign_in_and_ui_registration_use_the_real_backend
+FAILED tests/browser/test_frontend_smoke.py::test_missing_local_icon_script_does_not_block_sign_in
+FAILED tests/browser/test_frontend_smoke.py::test_tasks_create_complete_and_persist_through_the_real_backend
+FAILED tests/browser/test_frontend_smoke.py::test_chat_returns_a_real_graceful_no_model_response
+FAILED tests/browser/test_frontend_smoke.py::test_functional_navigation_and_chart_rendering
+FAILED tests/browser/test_frontend_smoke.py::test_layout_keyboard_focus_and_touch_sizing_at_required_viewports
+FAILED tests/browser/test_frontend_smoke.py::test_recorded_user_journey - pla...
+ERROR tests/browser/test_frontend_smoke.py::test_sign_in_and_ui_registration_use_the_real_backend
+ERROR tests/browser/test_frontend_smoke.py::test_missing_local_icon_script_does_not_block_sign_in
+ERROR tests/browser/test_frontend_smoke.py::test_tasks_create_complete_and_persist_through_the_real_backend
+ERROR tests/browser/test_frontend_smoke.py::test_chat_returns_a_real_graceful_no_model_response
+ERROR tests/browser/test_frontend_smoke.py::test_functional_navigation_and_chart_rendering
+ERROR tests/browser/test_frontend_smoke.py::test_layout_keyboard_focus_and_touch_sizing_at_required_viewports
+ERROR tests/browser/test_frontend_smoke.py::test_recorded_user_journey - Asse...
+7 failed, 96 deselected, 7 warnings, 7 errors in 219.62s (0:03:39)

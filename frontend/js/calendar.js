@@ -95,9 +95,7 @@ async function renderCalendar() {
         AuraSafe.clear(container).appendChild(errorState);
 
         // Re-initialize icons for error state
-        if (typeof lucide !== 'undefined') {
-            setTimeout(() => lucide.createIcons(), 100);
-        }
+        setTimeout(refreshLucideIcons, 100);
     }
 }
 
@@ -170,9 +168,7 @@ function renderTimelineView(container, events) {
     container.addEventListener('click', handleTimelineClick);
 
     // Re-initialize icons
-    if (typeof lucide !== 'undefined') {
-        setTimeout(() => lucide.createIcons(), 100);
-    }
+    setTimeout(refreshLucideIcons, 100);
 }
 
 function createEventElement(event) {

@@ -5,9 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AURA</title>
-    <link rel="stylesheet" href="/static/css/styles.css?v=2">
-    <script src="https://unpkg.com/lucide@latest"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="/static/css/styles.css?v=3">
 </head>
 
 <body>
@@ -21,47 +19,30 @@
             </div>
 
             <nav class="nav-menu">
-                <button class="nav-item active" onclick="switchView('chat')">
+                <button class="nav-item active" aria-label="Chat" onclick="switchView('chat')">
                     <i data-lucide="message-square"></i>
                     <span class="nav-text">Chat</span>
                 </button>
-                <button class="nav-item" onclick="switchView('tasks')">
+                <button class="nav-item" aria-label="Tasks" onclick="switchView('tasks')">
                     <i data-lucide="check-square"></i>
                     <span class="nav-text">Tasks</span>
                 </button>
-                <button class="nav-item" onclick="switchView('calendar')">
+                <button class="nav-item" aria-label="Calendar" onclick="switchView('calendar')">
                     <i data-lucide="calendar"></i>
                     <span class="nav-text">Calendar</span>
                 </button>
-                <button class="nav-item" onclick="switchView('knowledge')">
+                <button class="nav-item" aria-label="Knowledge" onclick="switchView('knowledge')">
                     <i data-lucide="file-text"></i>
                     <span class="nav-text">Knowledge</span>
                 </button>
-                <button class="nav-item" onclick="switchView('insights')">
+                <button class="nav-item" aria-label="Insights" onclick="switchView('insights')">
                     <i data-lucide="bar-chart-2"></i>
                     <span class="nav-text">Insights</span>
                 </button>
             </nav>
 
-            <!-- New Feature Section -->
-            <div class="nav-section">
-                <div class="nav-section-title">Features</div>
-                <button class="nav-item sub-item">
-                    <i data-lucide="clock"></i>
-                    <span class="nav-text">Recents</span>
-                </button>
-                <button class="nav-item sub-item">
-                    <i data-lucide="bookmark"></i>
-                    <span class="nav-text">Saved</span>
-                </button>
-                <button class="nav-item sub-item">
-                    <i data-lucide="folder"></i>
-                    <span class="nav-text">Projects</span>
-                </button>
-            </div>
-
             <div class="nav-menu" style="margin-top: auto; flex: 0;">
-                <button class="nav-item" onclick="openSettings()">
+                <button class="nav-item" aria-label="Settings" onclick="openSettings()">
                     <i data-lucide="settings"></i>
                     <span class="nav-text">Settings</span>
                 </button>
@@ -72,8 +53,8 @@
         <main class="main-content">
 
             <!-- Mobile Menu Button -->
-            <button class="icon-btn mobile-menu-btn" onclick="toggleSidebar()"
-                style="position: absolute; top: 1rem; left: 1rem; z-index: 100; display: none;">
+            <button class="icon-btn mobile-menu-btn" aria-label="Toggle navigation menu" aria-expanded="false"
+                onclick="toggleSidebar()">
                 <i data-lucide="menu"></i>
             </button>
 
@@ -297,6 +278,8 @@
     </div>
 
     <!-- Scripts -->
+    <script src="/static/vendor/lucide-1.73.0/lucide.min.js"></script>
+    <script src="/static/vendor/chart.js-4.6.1/chart.umd.min.js"></script>
     <script src="/static/js/safe-dom.js?v=1"></script>
     <script src="/static/js/voice.js?v=1"></script>
     <script src="/static/js/notifications.js?v=1"></script>
@@ -307,10 +290,6 @@
     <script src="/static/js/settings.js?v=2"></script>
     <script src="/static/js/upload.js?v=2"></script>
     <script src="/static/js/analytics.js?v=2"></script>
-    <script>
-        lucide.createIcons();
-    </script>
-
 </body>
 
 </html>
