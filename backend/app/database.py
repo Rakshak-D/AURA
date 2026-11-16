@@ -56,7 +56,7 @@ def _enable_sqlite_foreign_keys(dbapi_connection, _connection_record):
         cursor.close()
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-REQUIRED_SCHEMA_VERSION = 5
+REQUIRED_SCHEMA_VERSION = 6
 
 _chroma_client = None
 _collection = None
@@ -184,16 +184,19 @@ def _apply_schema_migrations(target_engine=None) -> None:
                 transaction.commit()
                 return
 
-            first_user = connection.execute(text("SELECT id FROM users ORDER BY id LIMIT 1")).scalar()
-            if first_user is None:
-                raise DatabaseIntegrityError("Cannot migrate an ownership schema without a user")
+            if version == 5:
+                _migrate_provider_storage(connection)
+            else:
+                first_user = connection.execute(text("SELECT id FROM users ORDER BY id LIMIT 1")).scalar()
+                if first_user is None:
+                    raise DatabaseIntegrityError("Cannot migrate an ownership schema without a user")
 
-            _rebuild_tasks(connection, first_user)
-            _rebuild_reminders(connection, first_user)
-            _rebuild_documents(connection, first_user)
-            _create_integrity_indexes(connection)
-            _migrate_user_authentication(connection)
-            _migrate_provider_storage(connection)
+                _rebuild_tasks(connection, first_user)
+                _rebuild_reminders(connection, first_user)
+                _rebuild_documents(connection, first_user)
+                _create_integrity_indexes(connection)
+                _migrate_user_authentication(connection)
+                _migrate_provider_storage(connection)
             connection.execute(text("UPDATE schema_version SET version = :version"), {"version": REQUIRED_SCHEMA_VERSION})
             transaction.commit()
         except Exception:
@@ -425,6 +428,24 @@ def _migrate_provider_storage(connection) -> None:
     ):
         model.__table__.create(connection, checkfirst=True)
 
+    source_columns = (
+        "context_length_source",
+        "tools_source",
+        "json_mode_source",
+        "vision_source",
+        "streaming_source",
+        "embeddings_source",
+    )
+    allowed_sources = "'controlled_probe', 'provider_metadata', 'unknown'"
+    existing_capability_columns = _table_columns(connection, "provider_capability_cache")
+    for column in source_columns:
+        if column not in existing_capability_columns:
+            connection.exec_driver_sql(
+                f"ALTER TABLE provider_capability_cache "
+                f"ADD COLUMN {column} VARCHAR(24) NOT NULL DEFAULT 'unknown' "
+                f"CHECK ({column} IN ({allowed_sources}))"
+            )
+
     tables = {
         row[0]
         for row in connection.execute(
@@ -490,6 +511,31 @@ def schema_status(target_engine=None) -> dict:
             missing.append(f"{table}:{column}_not_null")
     if "embedding_model_id" not in columns("documents"):
         missing.append("documents:embedding_model_id")
+    with target_engine.connect() as connection:
+        cache_sql = connection.execute(
+            text(
+                "SELECT sql FROM sqlite_master "
+                "WHERE type='table' AND name='provider_capability_cache'"
+            )
+        ).scalar() or ""
+    normalized_cache_sql = "".join(cache_sql.lower().split()).replace('"', "")
+    for capability in (
+        "context_length",
+        "tools",
+        "json_mode",
+        "vision",
+        "streaming",
+        "embeddings",
+    ):
+        source_column = f"{capability}_source"
+        if source_column not in columns("provider_capability_cache"):
+            missing.append(f"provider_capability_cache:{capability}_source")
+            continue
+        expected_source_check = (
+            f"check({source_column}in('controlled_probe','provider_metadata','unknown'))"
+        )
+        if expected_source_check not in normalized_cache_sql:
+            missing.append(f"provider_capability_cache:{source_column}_constraint")
     for column in ("login_identifier", "password_hash", "is_active"):
         if column not in columns("users"):
             missing.append(f"users:{column}")

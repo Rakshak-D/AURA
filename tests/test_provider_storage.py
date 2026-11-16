@@ -103,6 +103,89 @@ def _create_v4_engine(path):
     return engine, factory, user_ids
 
 
+def _create_previous_a1a_v5_engine(path):
+    """Create the prior A1-A schema without the R1 provenance columns."""
+    engine = create_engine(f"sqlite:///{path}")
+
+    @event.listens_for(engine, "connect")
+    def enable_foreign_keys(connection, _record):
+        connection.execute("PRAGMA foreign_keys=ON")
+
+    Base.metadata.create_all(
+        engine,
+        tables=[
+            table
+            for table in Base.metadata.sorted_tables
+            if table.name != "provider_capability_cache"
+        ],
+    )
+    factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+    with factory() as session:
+        user = User(name="Previous A1-A user")
+        session.add(user)
+        session.flush()
+        connection = ProviderConnection(
+            id="previous-a1a-connection",
+            user_id=user.id,
+            name="Existing connection",
+            provider_type="openai_compatible",
+            base_url="https://example.invalid/v1",
+        )
+        session.add_all(
+            [
+                connection,
+                UserModelPreference(user_id=user.id, local_only=False),
+                ModelRoleSelection(
+                    user_id=user.id,
+                    role="chat",
+                    connection_id=connection.id,
+                    model_id="existing-model",
+                ),
+            ]
+        )
+        session.commit()
+        user_id = user.id
+
+    with engine.begin() as connection:
+        connection.exec_driver_sql(
+            "CREATE TABLE schema_version (version INTEGER NOT NULL)"
+        )
+        connection.exec_driver_sql("INSERT INTO schema_version(version) VALUES (5)")
+        connection.exec_driver_sql(
+            """CREATE TABLE provider_capability_cache (
+                user_id INTEGER NOT NULL,
+                connection_id VARCHAR(64) NOT NULL,
+                config_revision INTEGER NOT NULL CHECK (config_revision >= 0),
+                model_id VARCHAR(512) NOT NULL,
+                context_length INTEGER CHECK (context_length IS NULL OR context_length > 0),
+                tools VARCHAR(16) NOT NULL DEFAULT 'unknown'
+                    CHECK (tools IN ('supported', 'unsupported', 'unknown')),
+                json_mode VARCHAR(16) NOT NULL DEFAULT 'unknown'
+                    CHECK (json_mode IN ('supported', 'unsupported', 'unknown')),
+                vision VARCHAR(16) NOT NULL DEFAULT 'unknown'
+                    CHECK (vision IN ('supported', 'unsupported', 'unknown')),
+                streaming VARCHAR(16) NOT NULL DEFAULT 'unknown'
+                    CHECK (streaming IN ('supported', 'unsupported', 'unknown')),
+                embeddings VARCHAR(16) NOT NULL DEFAULT 'unknown'
+                    CHECK (embeddings IN ('supported', 'unsupported', 'unknown')),
+                checked_at DATETIME NOT NULL,
+                PRIMARY KEY (user_id, connection_id, config_revision, model_id),
+                FOREIGN KEY (user_id, connection_id)
+                    REFERENCES provider_connections (user_id, id) ON DELETE CASCADE
+            )"""
+        )
+        connection.exec_driver_sql(
+            """INSERT INTO provider_capability_cache
+               (user_id, connection_id, config_revision, model_id, context_length,
+                tools, json_mode, vision, streaming, embeddings, checked_at)
+               VALUES (?, ?, 0, ?, 4096, 'supported', 'unsupported', 'unknown',
+                       'supported', 'unknown', CURRENT_TIMESTAMP)""",
+            (user_id, "previous-a1a-connection", "existing-model"),
+        )
+
+    return engine, factory, user_id
+
+
 @pytest.fixture
 def provider_db(tmp_path):
     engine, factory, user_ids = _create_v4_engine(tmp_path / "provider-v4.db")
@@ -118,7 +201,7 @@ def test_v4_migration_preserves_data_and_creates_no_role_assignments(tmp_path):
     _apply_schema_migrations(engine)
 
     with factory() as session:
-        assert session.execute(text("SELECT version FROM schema_version")).scalar() == 5
+        assert session.execute(text("SELECT version FROM schema_version")).scalar() == 6
         assert session.query(User).count() == 2
         assert session.query(Task).filter_by(title="preserved task").count() == 1
         assert session.query(Reminder).count() == 1
@@ -139,9 +222,53 @@ def test_v4_migration_preserves_data_and_creates_no_role_assignments(tmp_path):
             "legacy_model": "gguf/old-model"
         }
 
-    assert schema_status(engine) == {"ready": True, "version": 5, "missing": []}
+    assert schema_status(engine) == {"ready": True, "version": 6, "missing": []}
     _apply_schema_migrations(engine)
     assert schema_status(engine)["ready"] is True
+    engine.dispose()
+
+
+def test_previous_a1a_v5_migration_preserves_cache_and_assignments(tmp_path):
+    engine, factory, user_id = _create_previous_a1a_v5_engine(
+        tmp_path / "previous-a1a-v5.db"
+    )
+
+    _apply_schema_migrations(engine)
+
+    with factory() as session:
+        assert session.execute(text("SELECT version FROM schema_version")).scalar() == 6
+        cache = ProviderConnection.get_owned(
+            session, user_id, "previous-a1a-connection"
+        ).current_capability_cache(session, "existing-model")
+        assert cache is not None
+        assert cache.tools == "supported"
+        assert cache.json_mode == "unsupported"
+        assert cache.context_length == 4096
+        assert cache.tools_source == "unknown"
+        assert cache.json_mode_source == "unknown"
+        assert cache.context_length_source == "unknown"
+        assert cache.vision_source == "unknown"
+        assert cache.streaming_source == "unknown"
+        assert cache.embeddings_source == "unknown"
+        role = ModelRoleSelection.get_for_user(session, user_id, "chat")
+        assert role is not None
+        assert role.connection_id == "previous-a1a-connection"
+        assert role.model_id == "existing-model"
+        assert UserModelPreference.get_or_default(session, user_id).local_only is False
+        cache.tools_source = "raw provider diagnostics"
+        with pytest.raises(IntegrityError):
+            session.commit()
+        session.rollback()
+        assert (
+            ProviderConnection.get_owned(
+                session, user_id, "previous-a1a-connection"
+            )
+            .current_capability_cache(session, "existing-model")
+            .tools_source
+            == "unknown"
+        )
+
+    assert schema_status(engine) == {"ready": True, "version": 6, "missing": []}
     engine.dispose()
 
 
@@ -164,7 +291,8 @@ def test_fresh_schema_bootstrap_creates_default_preference(tmp_path):
 
     with factory() as session:
         assert session.get(UserModelPreference, user_id).local_only is True
-    assert schema_status(engine)["ready"] is True
+        assert session.query(ModelRoleSelection).count() == 0
+    assert schema_status(engine) == {"ready": True, "version": 6, "missing": []}
     engine.dispose()
 
 
@@ -349,6 +477,12 @@ def test_capability_cache_is_scoped_by_user_connection_revision_and_model(provid
         config_revision=0,
         model_id="same-model-id",
         checked_at=utc_now(),
+        tools="supported",
+        tools_source="controlled_probe",
+        json_mode="unsupported",
+        json_mode_source="provider_metadata",
+        context_length=8192,
+        context_length_source="provider_metadata",
     )
     cache_other_model = ProviderCapabilityCache(
         user_id=alice_id,
@@ -393,6 +527,14 @@ def test_capability_cache_is_scoped_by_user_connection_revision_and_model(provid
     )
     session.commit()
 
+    session.expire(cache_a)
+    assert cache_a.tools_source == "controlled_probe"
+    assert cache_a.json_mode_source == "provider_metadata"
+    assert cache_a.context_length_source == "provider_metadata"
+    assert cache_a.vision_source == "unknown"
+    assert cache_a.streaming_source == "unknown"
+    assert cache_a.embeddings_source == "unknown"
+
     assert alice_one.current_capability_cache(session, "same-model-id") is cache_a
     assert alice_two.current_capability_cache(session, "same-model-id") is cache_other_connection
     assert bob_one.current_capability_cache(session, "same-model-id") is cache_other_user
@@ -403,6 +545,38 @@ def test_capability_cache_is_scoped_by_user_connection_revision_and_model(provid
     assert alice_one.current_capability_cache(session, "same-model-id") is None
     assert alice_two.current_capability_cache(session, "same-model-id") is cache_other_connection
     assert bob_one.current_capability_cache(session, "same-model-id") is cache_other_user
+
+
+def test_capability_cache_rejects_unbounded_or_unrecognized_provenance(provider_db):
+    session, (alice_id, _bob_id) = provider_db
+    connection = ProviderConnection(
+        id="alice-provenance-check",
+        user_id=alice_id,
+        name="Provenance check",
+        provider_type="openai_compatible",
+    )
+    session.add(connection)
+    session.flush()
+    cache = ProviderCapabilityCache(
+        user_id=alice_id,
+        connection_id=connection.id,
+        config_revision=0,
+        model_id="model-a",
+        checked_at=utc_now(),
+        tools="supported",
+        tools_source="raw provider response containing diagnostic text",
+    )
+    session.add(cache)
+
+    with pytest.raises(IntegrityError):
+        session.flush()
+    session.rollback()
+    assert (
+        session.query(ProviderCapabilityCache)
+        .filter_by(user_id=alice_id, connection_id=connection.id)
+        .count()
+        == 0
+    )
 
 
 def test_credential_records_contain_only_ciphertext_and_are_owner_scoped(provider_db):
@@ -468,12 +642,12 @@ def test_local_only_defaults_true_and_no_roles_are_implicitly_selected(provider_
     assert UserModelPreference.get_or_default(session, bob_id).local_only is True
 
 
-def test_schema_v5_requires_provider_tables_composite_ownership_and_embedding_identity(
+def test_schema_v6_requires_provider_tables_composite_ownership_and_embedding_identity(
     provider_db,
 ):
     session, _user_ids = provider_db
     engine = session.get_bind()
-    assert schema_status(engine) == {"ready": True, "version": 5, "missing": []}
+    assert schema_status(engine) == {"ready": True, "version": 6, "missing": []}
     tables = set(inspect(engine).get_table_names())
     assert {
         "provider_connections",
@@ -482,7 +656,18 @@ def test_schema_v5_requires_provider_tables_composite_ownership_and_embedding_id
         "provider_capability_cache",
         "user_model_preferences",
     }.issubset(tables)
+    capability_columns = {
+        column["name"] for column in inspect(engine).get_columns("provider_capability_cache")
+    }
+    assert {
+        "context_length_source",
+        "tools_source",
+        "json_mode_source",
+        "vision_source",
+        "streaming_source",
+        "embeddings_source",
+    }.issubset(capability_columns)
     assert "embedding_model_id" in {
         column["name"] for column in inspect(engine).get_columns("documents")
     }
-    assert REQUIRED_SCHEMA_VERSION == 5
+    assert REQUIRED_SCHEMA_VERSION == 6

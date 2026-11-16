@@ -53,3 +53,15 @@ The final review identified that a connection tombstone initially left its encry
 **PASS_SYNTHETIC** — `tests/test_provider_secrets.py` passed 10 tests on Python 3.11.7 and 3.12.10. The final combined command `python -m pytest tests/test_provider_secrets.py tests/test_provider_storage.py tests/test_database_integrity.py -q` passed 31 tests on each version, with three existing Pydantic warnings per run.
 
 **PASS_SYNTHETIC** — Final full backend command `AURA_ENVIRONMENT=test python -m pytest -m "not browser" -q` passed 124 tests and deselected 7 browser tests on Python 3.11.7 (three existing Pydantic warnings) and Python 3.12.10 (three Pydantic warnings and one Python tar extraction warning). `ruff check backend tests scripts --select E4,E7,E9,F` and `pip check` passed.
+
+## A1-A-R1 targeted correction evidence
+
+**PASS_SYNTHETIC** — Provider-independent message contracts now carry tool declarations with bounded JSON input schemas, assistant calls with bounded provider IDs and redacted untrusted JSON arguments, and tool replies correlated by the original call ID. Stream chunks carry bounded partial call deltas and reject invalid indexes, identities, duplicate indexes, and oversized fragments. No action parsing, tool execution, registry, or agent loop was added.
+
+**PASS_SYNTHETIC** — Schema v6 stores a constrained source label for context length and each tri-state capability: `controlled_probe`, `provider_metadata`, or `unknown`. Isolated tests cover a fresh schema, v4→v6 migration, and additive migration of a database with the previous A1-A v5 shape. The v5 migration preserves cached capability states, existing roles and preferences, defaults prior provenance to `unknown`, and rejects arbitrary diagnostic text. Cache ownership/connection/model/revision isolation remains covered.
+
+**PASS_SYNTHETIC** — Focused command `python -m pytest tests/test_provider_contracts.py tests/test_provider_storage.py tests/test_provider_secrets.py tests/test_database_integrity.py -q` passed 44 tests on Python 3.11.7 and 44 on Python 3.12.10. Each run emitted three existing Pydantic deprecation warnings.
+
+**PASS_SYNTHETIC** — Full non-browser command `AURA_ENVIRONMENT=test python -m pytest -m 'not browser' -q` passed 129 tests and deselected 7 browser tests on Python 3.11.7 (three existing Pydantic deprecation warnings) and Python 3.12.10 (the same three warnings plus one existing Python tar extraction deprecation warning). `ruff check backend tests scripts --select E4,E7,E9,F`, `git diff --check`, and `pip check` passed; no dependency manifest changed.
+
+**NOT_TESTED** — Actual provider integrations/probes and actual Windows Credential Manager credential write/read/recovery. The Windows backend configuration test does not read or modify the owner's credentials. No real AURA database, credential, provider API, or model was used; A1-B remains unstarted.

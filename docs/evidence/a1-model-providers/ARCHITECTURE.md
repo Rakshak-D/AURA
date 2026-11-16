@@ -35,3 +35,9 @@ Connection changes advance a configuration revision, so a cache lookup only retu
 `Document.embedding_model_id` is nullable. Existing indexed documents remain null after migration because their stored vectors have no trustworthy model identity; they must be re-indexed before use with a selected embedding model. Migration preserves existing users, tasks, reminders, documents, Chat history, and routine events. The Pydantic `ModelRoleSelectionValue` validates the exact role/connection/model shape without introducing a Settings route.
 
 Task D transport enforcement, provider adapters, model loading, Settings APIs, and A1-B have not started.
+
+## A1-A-R1 correction checkpoint
+
+The provider-neutral chat contracts now carry bounded tool declarations, assistant-proposed calls with provider call IDs, and tool response messages correlated by those IDs. Call arguments remain bounded untrusted JSON text; validation checks only that the payload is a JSON object and does not turn it into an application action. Stream chunks carry partial tool-call deltas keyed by their stream index. No tool execution, registry, or agent loop is included.
+
+Capability values carry an allow-listed evidence source per capability: `controlled_probe`, `provider_metadata`, or `unknown`. Schema v6 stores a separate bounded source value for context length and each capability. The v5→v6 migration only adds constrained source columns; it preserves earlier capability states, roles, connection/model/revision cache keys, and preferences while marking legacy provenance `unknown`. Fresh schema and v4→v6 migration use the same source fields. Provider responses, prompts, credentials, and diagnostic text are not stored in the cache.

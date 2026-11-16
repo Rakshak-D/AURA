@@ -5,6 +5,7 @@ network clients, and credential backends are loaded only by later operations.
 """
 
 from .contracts import (
+    CapabilityEvidenceSource,
     CapabilityState,
     CapabilityValue,
     ChatChunk,
@@ -21,11 +22,15 @@ from .contracts import (
     ProviderId,
     ProviderMessage,
     ProviderModel,
+    ToolCall,
+    ToolCallDelta,
+    ToolDefinition,
 )
 from .errors import ProviderError, ProviderErrorCode, normalize_provider_error
 from .registry import ProviderDefinition, ProviderRegistry
 
 __all__ = [
+    "CapabilityEvidenceSource",
     "CapabilityState",
     "CapabilityValue",
     "ChatChunk",
@@ -46,5 +51,8 @@ __all__ = [
     "ProviderMessage",
     "ProviderModel",
     "ProviderRegistry",
+    "ToolCall",
+    "ToolCallDelta",
+    "ToolDefinition",
     "normalize_provider_error",
 ]

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import math
 from collections.abc import AsyncIterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -39,6 +41,92 @@ class CapabilityState(StrEnum):
     UNKNOWN = "unknown"
 
 
+class CapabilityEvidenceSource(StrEnum):
+    CONTROLLED_PROBE = "controlled_probe"
+    PROVIDER_METADATA = "provider_metadata"
+    UNKNOWN = "unknown"
+
+
+_MAX_TOOL_NAME_LENGTH = 64
+_MAX_TOOL_CALL_ID_LENGTH = 128
+_MAX_TOOL_PAYLOAD_BYTES = 65_536
+_MAX_TOOL_COUNT = 128
+
+
+def _validate_identity(value: object, label: str, maximum_length: int) -> str:
+    if (
+        not isinstance(value, str)
+        or not value
+        or value != value.strip()
+        or len(value) > maximum_length
+        or any(character.isspace() or ord(character) < 32 or ord(character) == 127 for character in value)
+    ):
+        raise ValueError(f"{label} must be a bounded, non-whitespace identity")
+    return value
+
+
+def _validate_tool_name(value: object) -> str:
+    if (
+        not isinstance(value, str)
+        or not value
+        or len(value) > _MAX_TOOL_NAME_LENGTH
+        or not value.isascii()
+        or not all(character.isalnum() or character in "_.-" for character in value)
+        or not any(character.isalnum() or character == "_" for character in value)
+    ):
+        raise ValueError("tool name must be a valid bounded identifier")
+    return value
+
+
+def _copy_json_value(value: object) -> object:
+    if isinstance(value, Mapping):
+        if not all(isinstance(key, str) for key in value):
+            raise ValueError("JSON object keys must be strings")
+        return {key: _copy_json_value(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_copy_json_value(item) for item in value]
+    if value is None or type(value) in (str, int, bool):
+        return value
+    if type(value) is float and math.isfinite(value):
+        return value
+    raise ValueError("tool payload must contain only finite JSON values")
+
+
+def _copy_json_object(value: object, label: str) -> dict[str, object]:
+    if not isinstance(value, Mapping):
+        raise ValueError(f"{label} must be a JSON object")
+    try:
+        copied = _copy_json_value(value)
+        encoded = json.dumps(copied, ensure_ascii=False, allow_nan=False, separators=(",", ":"))
+        payload_size = len(encoded.encode("utf-8"))
+    except (RecursionError, TypeError, UnicodeEncodeError, ValueError):
+        raise ValueError(f"{label} must be a bounded JSON object") from None
+    if payload_size > _MAX_TOOL_PAYLOAD_BYTES:
+        raise ValueError(f"{label} exceeds the maximum size")
+    return copied
+
+
+def _reject_nonstandard_json_constant(_constant: str) -> None:
+    raise ValueError("non-standard JSON constant")
+
+
+def _validate_tool_arguments(value: object) -> str:
+    if not isinstance(value, str):
+        raise ValueError("tool arguments must be untrusted JSON text")
+    try:
+        if len(value.encode("utf-8")) > _MAX_TOOL_PAYLOAD_BYTES:
+            raise ValueError("tool arguments exceed the maximum size")
+        parsed = json.loads(
+            value,
+            parse_constant=_reject_nonstandard_json_constant,
+        )
+    except (RecursionError, TypeError, UnicodeDecodeError, UnicodeEncodeError, ValueError):
+        raise ValueError("tool arguments must be bounded valid JSON") from None
+    if not isinstance(parsed, dict):
+        raise ValueError("tool arguments must be a JSON object")
+    return value
+
+
 @dataclass(frozen=True, slots=True)
 class EphemeralCredential:
     """A transient secret value whose default representations are redacted."""
@@ -61,6 +149,7 @@ class ProviderMessage:
     role: MessageRole
     content: str
     tool_call_id: str | None = None
+    tool_calls: Sequence[ToolCall] = field(default_factory=tuple, repr=False)
 
     def __post_init__(self) -> None:
         try:
@@ -72,12 +161,23 @@ class ProviderMessage:
             raise ValueError("message content must be text")
 
         if role is MessageRole.TOOL:
-            if not isinstance(self.tool_call_id, str) or not self.tool_call_id.strip():
-                raise ValueError("tool messages require a non-empty tool_call_id")
+            _validate_identity(self.tool_call_id, "tool_call_id", _MAX_TOOL_CALL_ID_LENGTH)
         elif self.tool_call_id is not None:
             raise ValueError("tool_call_id is only valid for tool messages")
 
+        tool_calls = tuple(self.tool_calls)
+        if len(tool_calls) > _MAX_TOOL_COUNT:
+            raise ValueError("assistant tool-call count exceeds the maximum")
+        if not all(isinstance(call, ToolCall) for call in tool_calls):
+            raise ValueError("assistant tool calls must be ToolCall values")
+        call_ids = [call.call_id for call in tool_calls]
+        if len(call_ids) != len(set(call_ids)):
+            raise ValueError("assistant tool-call ids must be unique")
+        if tool_calls and role is not MessageRole.ASSISTANT:
+            raise ValueError("tool calls are only valid on assistant messages")
+
         object.__setattr__(self, "role", role)
+        object.__setattr__(self, "tool_calls", tool_calls)
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,14 +194,19 @@ class ProviderModel:
 @dataclass(frozen=True, slots=True)
 class CapabilityValue:
     state: CapabilityState = CapabilityState.UNKNOWN
-    evidence: str | None = None
+    source: CapabilityEvidenceSource = CapabilityEvidenceSource.UNKNOWN
 
     def __post_init__(self) -> None:
         try:
             state = CapabilityState(self.state)
         except (TypeError, ValueError):
             raise ValueError("capability state must be supported, unsupported, or unknown") from None
+        try:
+            source = CapabilityEvidenceSource(self.source)
+        except (TypeError, ValueError):
+            raise ValueError("capability evidence source is not recognized") from None
         object.__setattr__(self, "state", state)
+        object.__setattr__(self, "source", source)
 
 
 @dataclass(frozen=True, slots=True)
@@ -115,7 +220,7 @@ class ModelCapabilities:
     streaming: CapabilityValue = field(default_factory=CapabilityValue)
     embeddings: CapabilityValue = field(default_factory=CapabilityValue)
     checked_at: datetime | None = None
-    source: str | None = None
+    context_length_source: CapabilityEvidenceSource = CapabilityEvidenceSource.UNKNOWN
 
     def __post_init__(self) -> None:
         try:
@@ -126,7 +231,76 @@ class ModelCapabilities:
             raise ValueError("model id must be a non-empty string")
         if self.context_length is not None and self.context_length <= 0:
             raise ValueError("context_length must be positive when known")
+        try:
+            context_length_source = CapabilityEvidenceSource(self.context_length_source)
+        except (TypeError, ValueError):
+            raise ValueError("context_length evidence source is not recognized") from None
         object.__setattr__(self, "provider_id", provider_id)
+        object.__setattr__(self, "context_length_source", context_length_source)
+
+
+@dataclass(frozen=True, slots=True)
+class ToolDefinition:
+    """Provider-neutral tool declaration; its schema remains inert JSON data."""
+
+    name: str
+    input_schema: Mapping[str, object] = field(repr=False)
+
+    def __post_init__(self) -> None:
+        name = _validate_tool_name(self.name)
+        schema = _copy_json_object(self.input_schema, "tool input schema")
+        object.__setattr__(self, "name", name)
+        object.__setattr__(self, "input_schema", schema)
+
+
+@dataclass(frozen=True, slots=True)
+class ToolCall:
+    """Provider-proposed call with bounded, untrusted arguments that are never executed here."""
+
+    call_id: str
+    name: str
+    arguments_json: str = field(repr=False)
+
+    def __post_init__(self) -> None:
+        call_id = _validate_identity(self.call_id, "tool call id", _MAX_TOOL_CALL_ID_LENGTH)
+        name = _validate_tool_name(self.name)
+        arguments_json = _validate_tool_arguments(self.arguments_json)
+        object.__setattr__(self, "call_id", call_id)
+        object.__setattr__(self, "name", name)
+        object.__setattr__(self, "arguments_json", arguments_json)
+
+
+@dataclass(frozen=True, slots=True)
+class ToolCallDelta:
+    """One inert partial tool-call event from a provider stream."""
+
+    index: int
+    call_id: str | None = None
+    name_fragment: str | None = None
+    arguments_fragment: str = field(default="", repr=False)
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.index, int) or isinstance(self.index, bool) or self.index < 0:
+            raise ValueError("tool-call stream index must be a non-negative integer")
+        if self.call_id is not None:
+            _validate_identity(self.call_id, "tool call id", _MAX_TOOL_CALL_ID_LENGTH)
+        if self.name_fragment is not None and (
+            not isinstance(self.name_fragment, str)
+            or len(self.name_fragment) > _MAX_TOOL_NAME_LENGTH
+            or not self.name_fragment.isascii()
+            or not all(character.isalnum() or character in "_.-" for character in self.name_fragment)
+        ):
+            raise ValueError("tool-call name fragment is malformed")
+        if not isinstance(self.arguments_fragment, str):
+            raise ValueError("tool-call argument fragment must be text")
+        try:
+            size = len(self.arguments_fragment.encode("utf-8"))
+        except UnicodeEncodeError:
+            raise ValueError("tool-call argument fragment is malformed") from None
+        if size > _MAX_TOOL_PAYLOAD_BYTES:
+            raise ValueError("tool-call argument fragment exceeds the maximum size")
+        if self.call_id is None and not self.name_fragment and not self.arguments_fragment:
+            raise ValueError("tool-call stream delta must contain data")
 
 
 @dataclass(frozen=True, slots=True)
@@ -186,6 +360,7 @@ class ChatRequest:
     model_id: str
     messages: Sequence[ProviderMessage]
     options: ChatOptions = field(default_factory=ChatOptions)
+    tools: Sequence[ToolDefinition] = field(default_factory=tuple)
 
     def __post_init__(self) -> None:
         if not isinstance(self.model_id, str) or not self.model_id.strip():
@@ -195,7 +370,16 @@ class ChatRequest:
             raise ValueError("chat requests require at least one structured message")
         if not all(isinstance(message, ProviderMessage) for message in messages):
             raise ValueError("chat messages must be ProviderMessage values")
+        tools = tuple(self.tools)
+        if len(tools) > _MAX_TOOL_COUNT:
+            raise ValueError("chat tool count exceeds the maximum")
+        if not all(isinstance(tool, ToolDefinition) for tool in tools):
+            raise ValueError("chat tools must be ToolDefinition values")
+        tool_names = [tool.name for tool in tools]
+        if len(tool_names) != len(set(tool_names)):
+            raise ValueError("chat tool names must be unique")
         object.__setattr__(self, "messages", messages)
+        object.__setattr__(self, "tools", tools)
 
 
 @dataclass(frozen=True, slots=True)
@@ -203,6 +387,23 @@ class ChatChunk:
     model_id: str
     delta: str
     finish_reason: str | None = None
+    tool_call_deltas: Sequence[ToolCallDelta] = field(default_factory=tuple)
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.model_id, str) or not self.model_id.strip():
+            raise ValueError("stream model_id must be a non-empty string")
+        if not isinstance(self.delta, str):
+            raise ValueError("stream text delta must be text")
+        tool_call_deltas = tuple(self.tool_call_deltas)
+        if len(tool_call_deltas) > _MAX_TOOL_COUNT:
+            raise ValueError("stream tool-call count exceeds the maximum")
+        if not all(isinstance(delta, ToolCallDelta) for delta in tool_call_deltas):
+            raise ValueError("stream tool calls must be ToolCallDelta values")
+        indexes = [delta.index for delta in tool_call_deltas]
+        call_ids = [delta.call_id for delta in tool_call_deltas if delta.call_id is not None]
+        if len(indexes) != len(set(indexes)) or len(call_ids) != len(set(call_ids)):
+            raise ValueError("stream tool-call identities must be unique within a chunk")
+        object.__setattr__(self, "tool_call_deltas", tool_call_deltas)
 
 
 @dataclass(frozen=True, slots=True)
@@ -212,6 +413,12 @@ class ChatResult:
     finish_reason: str | None = None
     input_tokens: int | None = None
     output_tokens: int | None = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.model_id, str) or not self.model_id.strip():
+            raise ValueError("result model_id must be a non-empty string")
+        if not isinstance(self.message, ProviderMessage):
+            raise ValueError("chat result message must be a ProviderMessage")
 
 
 class ProviderAdapter(Protocol):

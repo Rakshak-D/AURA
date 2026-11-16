@@ -311,6 +311,20 @@ class ProviderCapabilityCache(Base):
     vision = Column(String(16), nullable=False, default="unknown", server_default="unknown")
     streaming = Column(String(16), nullable=False, default="unknown", server_default="unknown")
     embeddings = Column(String(16), nullable=False, default="unknown", server_default="unknown")
+    context_length_source = Column(
+        String(24), nullable=False, default="unknown", server_default="unknown"
+    )
+    tools_source = Column(String(24), nullable=False, default="unknown", server_default="unknown")
+    json_mode_source = Column(
+        String(24), nullable=False, default="unknown", server_default="unknown"
+    )
+    vision_source = Column(String(24), nullable=False, default="unknown", server_default="unknown")
+    streaming_source = Column(
+        String(24), nullable=False, default="unknown", server_default="unknown"
+    )
+    embeddings_source = Column(
+        String(24), nullable=False, default="unknown", server_default="unknown"
+    )
     checked_at = Column(UTCDateTime, nullable=False, default=utc_now)
 
     __table_args__ = (
@@ -344,6 +358,30 @@ class ProviderCapabilityCache(Base):
         CheckConstraint(
             "embeddings IN ('supported', 'unsupported', 'unknown')",
             name="ck_provider_capability_cache_embeddings",
+        ),
+        CheckConstraint(
+            "context_length_source IN ('controlled_probe', 'provider_metadata', 'unknown')",
+            name="ck_provider_capability_cache_context_length_source",
+        ),
+        CheckConstraint(
+            "tools_source IN ('controlled_probe', 'provider_metadata', 'unknown')",
+            name="ck_provider_capability_cache_tools_source",
+        ),
+        CheckConstraint(
+            "json_mode_source IN ('controlled_probe', 'provider_metadata', 'unknown')",
+            name="ck_provider_capability_cache_json_mode_source",
+        ),
+        CheckConstraint(
+            "vision_source IN ('controlled_probe', 'provider_metadata', 'unknown')",
+            name="ck_provider_capability_cache_vision_source",
+        ),
+        CheckConstraint(
+            "streaming_source IN ('controlled_probe', 'provider_metadata', 'unknown')",
+            name="ck_provider_capability_cache_streaming_source",
+        ),
+        CheckConstraint(
+            "embeddings_source IN ('controlled_probe', 'provider_metadata', 'unknown')",
+            name="ck_provider_capability_cache_embeddings_source",
         ),
     )
 
