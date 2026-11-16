@@ -56,7 +56,7 @@ def _enable_sqlite_foreign_keys(dbapi_connection, _connection_record):
         cursor.close()
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-REQUIRED_SCHEMA_VERSION = 4
+REQUIRED_SCHEMA_VERSION = 5
 
 _chroma_client = None
 _collection = None
@@ -179,6 +179,7 @@ def _apply_schema_migrations(target_engine=None) -> None:
 
             existing_missing = schema_status(target_engine)["missing"]
             if version == 0 and all(item in {"table:schema_version", "schema_version"} for item in existing_missing):
+                _migrate_provider_storage(connection)
                 connection.execute(text("UPDATE schema_version SET version = :version"), {"version": REQUIRED_SCHEMA_VERSION})
                 transaction.commit()
                 return
@@ -192,6 +193,7 @@ def _apply_schema_migrations(target_engine=None) -> None:
             _rebuild_documents(connection, first_user)
             _create_integrity_indexes(connection)
             _migrate_user_authentication(connection)
+            _migrate_provider_storage(connection)
             connection.execute(text("UPDATE schema_version SET version = :version"), {"version": REQUIRED_SCHEMA_VERSION})
             transaction.commit()
         except Exception:
@@ -202,7 +204,7 @@ def _apply_schema_migrations(target_engine=None) -> None:
 
     result = schema_status(target_engine)
     if not result["ready"]:
-        raise DatabaseIntegrityError("Database migration completed without a valid authentication schema")
+        raise DatabaseIntegrityError("Database migration completed without a valid schema")
 
 
 def _rebuild_tasks(connection, first_user: int) -> None:
@@ -408,6 +410,42 @@ def _migrate_user_authentication(connection) -> None:
     )
 
 
+def _migrate_provider_storage(connection) -> None:
+    """Add provider-owned records and identify legacy embeddings additively."""
+    from sqlalchemy import text
+
+    from .models import sql_models
+
+    for model in (
+        sql_models.ProviderConnection,
+        sql_models.ProviderCredential,
+        sql_models.ModelRoleSelection,
+        sql_models.ProviderCapabilityCache,
+        sql_models.UserModelPreference,
+    ):
+        model.__table__.create(connection, checkfirst=True)
+
+    tables = {
+        row[0]
+        for row in connection.execute(
+            text("SELECT name FROM sqlite_master WHERE type='table'")
+        )
+    }
+    if "documents" in tables and "embedding_model_id" not in _table_columns(
+        connection, "documents"
+    ):
+        connection.exec_driver_sql(
+            "ALTER TABLE documents ADD COLUMN embedding_model_id VARCHAR(255)"
+        )
+
+    # Existing accounts start with Local only enabled. Preserve a row that was
+    # explicitly set already if this migration is retried or resumed.
+    connection.exec_driver_sql(
+        """INSERT OR IGNORE INTO user_model_preferences (user_id, local_only, updated_at)
+           SELECT id, 1, CURRENT_TIMESTAMP FROM users"""
+    )
+
+
 def schema_status(target_engine=None) -> dict:
     """Validate the actual active SQLite schema, not only ORM declarations."""
     target_engine = target_engine or engine
@@ -418,7 +456,20 @@ def schema_status(target_engine=None) -> dict:
     missing = []
     inspector = inspect(target_engine)
     tables = set(inspector.get_table_names())
-    required_tables = {"users", "tasks", "reminders", "documents", "chat_history", "routine_events", "schema_version"}
+    required_tables = {
+        "users",
+        "tasks",
+        "reminders",
+        "documents",
+        "chat_history",
+        "routine_events",
+        "schema_version",
+        "provider_connections",
+        "provider_credentials",
+        "model_role_selections",
+        "provider_capability_cache",
+        "user_model_preferences",
+    }
     missing.extend(f"table:{table}" for table in sorted(required_tables - tables))
     version = None
     if "schema_version" in tables:
@@ -437,6 +488,8 @@ def schema_status(target_engine=None) -> dict:
     for table, column in (("tasks", "user_id"), ("reminders", "user_id"), ("documents", "user_id")):
         if column not in columns(table) or columns(table)[column]["nullable"] is not False:
             missing.append(f"{table}:{column}_not_null")
+    if "embedding_model_id" not in columns("documents"):
+        missing.append("documents:embedding_model_id")
     for column in ("login_identifier", "password_hash", "is_active"):
         if column not in columns("users"):
             missing.append(f"users:{column}")
@@ -464,4 +517,19 @@ def schema_status(target_engine=None) -> dict:
             missing.append("reminders:attempt_count_check")
         if "indexing_state in" not in (connection.execute(text("SELECT sql FROM sqlite_master WHERE type='table' AND name='documents'")).scalar() or "").lower():
             missing.append("documents:indexing_state_check")
+        for table in (
+            "provider_credentials",
+            "model_role_selections",
+            "provider_capability_cache",
+        ):
+            groups = {}
+            for row in connection.exec_driver_sql(f"PRAGMA foreign_key_list('{table}')"):
+                groups.setdefault(row[0], []).append(row)
+            if not any(
+                rows[0][2] == "provider_connections"
+                and {row[3] for row in rows} == {"user_id", "connection_id"}
+                and {row[4] for row in rows} == {"user_id", "id"}
+                for rows in groups.values()
+            ):
+                missing.append(f"{table}:same_owner_connection_foreign_key")
     return {"ready": not missing, "version": version, "missing": missing}
