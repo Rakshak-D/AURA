@@ -89,7 +89,7 @@ Only at A1-D, create the approved proof directory and its static source/screensh
 
 - docs/proofs/a1-model-settings/index.html
 - docs/proofs/a1-model-settings/models.css
-- Three final screenshots at 1440×900, 1024×768, and 390×844.
+- Three final responsive screenshots at 1440×900, 1024×768, and 390×844, plus one readable eight-state contact sheet showing all proof states. The failed-connection and unavailable-role states in the contact sheet must show mobile presentation.
 
 Do not add a separate test folder, plan folder, adapter-specific directories, placeholder files, or duplicate evidence folders. No A1-E UI files are authorized until the A1-D proof receives approval.
 
@@ -125,7 +125,7 @@ Each task below is a gated checkpoint. Do not skip its test-first sequence or hy
 
 ### A1-A — Baseline, contracts, dependencies, and persistence
 
-#### Task A — Reconfirm baseline and define provider contracts
+#### Task 1 — Task A: Reconfirm baseline and define provider contracts
 
 **Files:** add tests/test_provider_contracts.py, then backend/app/providers/__init__.py, contracts.py, errors.py, and registry.py.
 
@@ -142,7 +142,7 @@ Each task below is a gated checkpoint. Do not skip its test-first sequence or hy
 
 **Hygiene:** Only the four provider package files and the contract test are new. Confirm no package cache, generated fixture, or downloaded model entered the repository.
 
-#### Task B — Minimal dependencies and secret protection
+#### Task 2 — Task B: Minimal dependencies and secret protection
 
 **Files:** add tests/test_provider_secrets.py; add backend/app/providers/secret_store.py; update requirements.txt and, only if needed, requirements-dev.txt.
 
@@ -161,7 +161,7 @@ Each task below is a gated checkpoint. Do not skip its test-first sequence or hy
 
 **Hygiene:** No test key, local credential, environment file, or temporary vault dump remains. Keep dependency lock or cache output out of Git unless an existing repository convention requires it.
 
-#### Task C — Schema v5 and user-owned provider records
+#### Task 3 — Task C: Schema v5 and user-owned provider records
 
 **Files:** add tests/test_provider_storage.py; update backend/app/models/sql_models.py, backend/app/models/pydantic_models.py, and backend/app/database.py.
 
@@ -188,7 +188,7 @@ Each task below is a gated checkpoint. Do not skip its test-first sequence or hy
 
 **Hygiene:** Use isolated temporary database fixtures owned by tests; verify they are not committed and that no real AURA database was touched.
 
-### A1-B — Shared network boundary and provider adapters
+### A1-B.1 — Shared network boundary and provider adapters
 
 #### Task D — SSRF endpoint policy and pinned transport
 
@@ -201,7 +201,8 @@ Each task below is a gated checkpoint. Do not skip its test-first sequence or hy
 1. Add the named Review Focus tests and coverage for both policy modes, valid public HTTPS, literal loopback, localhost, loopback that resolves to non-loopback, empty DNS, mixed public/private answers, and exact peer pinning.
 2. Cover IPv4-mapped loopback/private/metadata, IPv4 and IPv6 metadata endpoints (169.254.169.254, 169.254.170.2, 100.100.100.200, fd00:ec2::254, fd20:ce::254, metadata.google.internal), every provider operation, redirects from loopback and public HTTPS, and no proxy use.
 3. Use a fake resolver and recording socket/transport; for every rejected destination assert zero connection attempts. Exercise DNS rebinding between configuration and connect and between successive requests.
-4. Run python -m pytest tests/test_provider_network_policy.py -q, implement the policy/transport, then run the entire module and service contract tests.
+4. Add actual HTTPX transport tests, beyond fake-policy tests: the connected numeric peer equals the validated IP; no second hostname resolution occurs; TLS SNI and certificate hostname verification use the original hostname; HTTP Host and authority are correct; redirects and ambient proxies cannot bypass policy; and pooled connection reuse still triggers destination revalidation. Use official HTTPX/HTTPCore extension points where supported. If a custom transport is necessary, document its exact dependencies, pinned versions, and security consequences.
+5. Run python -m pytest tests/test_provider_network_policy.py -q, implement the policy/transport, then run the entire module and service contract tests.
 
 **Gate:** No adapter can bypass policy by passing a URL, supplying its own client, using redirects, or using proxy environment variables. Policy errors are safe and do not disclose internal resolution details beyond a useful blocked-destination category.
 
@@ -257,7 +258,7 @@ Each task below is a gated checkpoint. Do not skip its test-first sequence or hy
 
 **Hygiene:** No live credentials, requests, or provider responses are retained.
 
-### A1-B — Authenticated model Settings and provider service
+### A1-B.2 — Authenticated model Settings and provider service
 
 #### Task I — Role resolution and safe authenticated APIs
 
@@ -322,7 +323,7 @@ Each task below is a gated checkpoint. Do not skip its test-first sequence or hy
 
 **Test-first steps:** Update only relevant job inputs. Preserve six existing checks: Linux Python 3.11, Linux Python 3.12, Windows Python 3.12, frontend syntax/security, Playwright browser regressions, and container smoke. Add provider tests and source scan to existing jobs rather than replacing coverage or relaxing gates. Keep live providers, keys, models, and GPU out of CI.
 
-**Exact verification commands at this checkpoint:**
+**Local verification commands at this checkpoint:**
 
 - Linux/Python 3.11 and Linux/Python 3.12: python -m pytest --collect-only -q; AURA_ENVIRONMENT=test python -m pytest -m "not browser" --cov=backend.app --cov-report=term-missing --cov-report=xml; python -m compileall -q backend tests scripts; python -m ruff check backend tests scripts --select E4,E7,E9,F; python -m pip check.
 - Windows/Python 3.12: python -m pytest --collect-only -q; AURA_ENVIRONMENT=test python -m pytest -m "not browser" -q; python -m pip check. This job validates imports and compatibility but never requires a real Windows credential write.
@@ -330,7 +331,9 @@ Each task below is a gated checkpoint. Do not skip its test-first sequence or hy
 - Browser: install existing browser requirements, run python -m playwright install --with-deps chromium, then AURA_RUN_BROWSER=1 AURA_BROWSER_EVIDENCE_DIR=tests/browser-artifacts python -m pytest -m browser -q.
 - Container: preserve production image, readiness, restart, and backup/restore smoke tests; verify Linux credential operations fail closed and local credentialless health remains usable.
 
-**Gate:** All six jobs pass on the feature branch. No job is removed, skipped, made permissive, or made dependent on a paid/live provider.
+Run all checks executable in the local environment at the relevant checkpoint. If a platform-specific job cannot run locally, record that job as NOT_TESTED. Keep hosted CI as NOT_TESTED until a branch push is explicitly authorized. Do not push just to trigger CI.
+
+**Gate:** Existing CI jobs are not removed, skipped, weakened, or made dependent on a paid/live provider. Hosted CI must pass before final A1 acceptance after a separately authorized push; local success does not substitute for hosted CI.
 
 **Evidence:** Update DEPENDENCY_CHANGES.md, TEST_RESULTS.md, CAPABILITY_PROBES.md, PROVIDER_MATRIX.md, and SECURITY_REVIEW.md with exact versions, OS matrix, exact commands, result counts, synthetic labels, and unverified capabilities.
 
@@ -342,13 +345,13 @@ Each task below is a gated checkpoint. Do not skip its test-first sequence or hy
 
 **Files:** create docs/proofs/a1-model-settings/index.html, models.css, and final required screenshots. Do not change application Settings code or wire APIs.
 
-**Proof states:** Clearly mark all sample names/endpoints illustrative. Show no connection; illustrative Ollama models; exact Router/Chat/Embedding selections; supported/unsupported/unknown capability; two independent OpenAI-compatible connections; a selected role bound to a specific connection/model pair; Local only blocking a remote connection while loopback remains usable; failed test; removed/unavailable connection with its saved role still visible and explicit reassignment required; credential indicator without key value.
+**Eight proof states:** Clearly mark all sample names/endpoints illustrative. Include: (1) no connection configured; (2) illustrative installed Ollama models; (3) Router, Chat, and Embedding roles selected; (4) supported, unsupported, and unknown capability states; (5) two independent named OpenAI-compatible connections with exact role-to-connection/model bindings and a configured-key indicator that reveals no key; (6) Local only blocking remote access while a loopback provider remains available; (7) a failed connection with a safe error; and (8) a removed/unavailable connection whose role reference remains visible and requires explicit reassignment.
 
-**Verification:** Local assets only; capture screenshots at 1440×900, 1024×768, 390×844; check 768×1024 and 320×844 for overflow; use keyboard/focus and contrast checks against approved design; ensure every dimension has no clipped label or horizontal overflow. Keep only the three final screenshots and necessary static source.
+**Verification:** Use local assets only. Capture the mandatory 1440×900, 1024×768, and 390×844 responsive screenshots. Additionally create one readable contact sheet of the eight named proof states; the failed-connection and unavailable-role states must show their 390×844 mobile presentation. Check 768×1024 and 320×844 for overflow; use keyboard/focus and contrast checks against the approved design; ensure every dimension has no clipped label or horizontal overflow. Keep the three responsive screenshots, one contact sheet, and only individually named source captures that are necessary to make the contact sheet legible. Do not keep redundant viewport variants.
 
 **Gate — hard stop:** Commit the proof and evidence, report A1_UI_PROOF_REVIEW, and wait for explicit owner approval. Do not begin A1-E. No elapsed-time assumption or CI success substitutes for approval.
 
-**Evidence:** Store the proof, screenshots, and concise review note only in docs/proofs/a1-model-settings/; add visual dimensions, browser/version, and outcomes to TEST_RESULTS.md.
+**Evidence:** Store the proof, three responsive screenshots, eight-state contact sheet, and concise review note only in docs/proofs/a1-model-settings/; add visual dimensions, browser/version, state coverage, and outcomes to TEST_RESULTS.md.
 
 **Hygiene:** Create this one proof directory only because the approved design requires it at A1-D. Remove only temporary screenshots created by this task after final screenshots are verified; preserve historical evidence.
 

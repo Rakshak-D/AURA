@@ -2,7 +2,7 @@
 
 | Field | Value |
 |---|---|
-| Status | Proposed; awaiting owner approval |
+| Status | Approved for staged implementation |
 | Milestone | A1 only |
 | Repository | `Rakshak-D/AURA` |
 | Branch | `feat/a1-model-providers` |
@@ -12,7 +12,7 @@
 
 Replace AURA's single in-process GGUF path with an authenticated, provider-independent model layer. A1 adds five provider adapters, user-scoped provider and role settings, capability reporting, provider-level streaming, secure credential storage, server-enforced Local only mode, and migration of existing model call sites. The existing authenticated Chat API and strict action validation remain compatible.
 
-This document is the proposed architecture for review. No product code or Settings UI has been implemented. The complete staged sequence and acceptance checklist are included below so this document can be used without the original request. The static Settings → Models proof is a separate approval gate; the UI itself must not be implemented before that proof is approved.
+This document is the approved architecture for staged A1 implementation. No product code or Settings UI has been implemented. The complete staged sequence and acceptance checklist are included below so this document can be used without the original request. The static Settings → Models proof is a separate approval gate; the UI itself must not be implemented before that proof is approved.
 
 ## Goals and boundaries
 
@@ -129,7 +129,7 @@ The Settings proof and final UI must plainly state that remote inference sends t
 
 After backend work and before implementing the Settings UI, create static HTML/CSS proofs under `docs/proofs/a1-model-settings/`. The proof demonstrates: no provider connected; illustrative Ollama models; selected Router, Chat, and Embedding roles; supported/unsupported/unknown capability states; at least two named OpenAI-compatible connections with distinct illustrative endpoints and credential indicators; roles independently assigned to particular connection/model pairs; Local only blocking a remote provider while a loopback provider remains available; a failed connection; a removed/unavailable connection that leaves its role assignment visible and requires explicit reassignment; and a configured key without revealing it. Label sample providers/models/endpoints as illustrative. Use local assets only.
 
-Capture 1440×900, 1024×768, and 390×844 screenshots; check 768×1024 and 320×844 for overflow. At that point stop with `A1_UI_PROOF_REVIEW`. Do not wire or implement the Settings UI until the owner approves the proof. After approval, the vanilla-JS interface implements every control and connects to the actual authenticated API.
+Capture the mandatory 1440×900, 1024×768, and 390×844 responsive screenshots; check 768×1024 and 320×844 for overflow. Also provide one readable contact sheet showing all eight distinct proof states: no connection configured; installed illustrative Ollama models; Router/Chat/Embedding selections; tri-state capabilities; two independent named OpenAI-compatible connections with exact role bindings and a redacted configured-key indicator; Local only blocking remote access while loopback remains available; failed connection; and removed/unavailable connection with its role reference preserved. The failed-connection and unavailable-role states must show mobile presentation at 390×844. Avoid redundant screenshot variants and duplicate proof folders. At that point stop with `A1_UI_PROOF_REVIEW`. Do not wire or implement the Settings UI until the owner approves the proof. After approval, the vanilla-JS interface implements every control and connects to the actual authenticated API.
 
 Follow the existing AURA design bible and frontend structure; prepare model settings without redesigning the application or creating a generic settings dashboard. Reuse the established dark tokens (`#0B0F19`, `#151B2B`, `#E2E8F0`, `#5EEAD4`, `#A78BFA`, `#FB7185`, `#F59E0B`, `#34D399`) and self-hosted Sora, Inter, and JetBrains Mono. Keep the existing no-CDN policy and add no animation library. Use plain labels including “Choose a model”, “Test connection”, “Keep everything on this device”, “Currently using”, “This model cannot use tools”, and “No models found”. Explain technical terms only where needed.
 
