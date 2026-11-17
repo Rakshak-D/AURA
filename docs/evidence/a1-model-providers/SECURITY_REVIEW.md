@@ -156,3 +156,47 @@ Result: `222 passed, 7 deselected` on each version. The first emitted 3 warnings
 **Adversarial review** — A model can submit arbitrarily many stream events, but assembly rejects excess indexes/calls, per-call overflow, cumulative payload overflow, ID conflicts, missing IDs, and malformed final JSON before returning any calls; it never dispatches names or parses arguments into actions. If a portable deployment loses or changes its configured key, the configured key ID cannot match the stored key ID, so decryption returns the existing safe re-entry state without altering ciphertext. Missing/invalid key configuration remains a safe store-unavailable failure. Environment-variable exposure and external key backup remain operator risks documented above.
 
 **Review result** — No code finding identified in the reviewed A1-E diff. Confidence is limited to the tested Windows environment and deterministic test doubles; native Linux/container key configuration and real Credential Manager persistence remain unverified.
+
+## A1-F adapter implementation and differential security review
+
+**Scope and baseline** — Reviewed the A1-F changes against starting commit `92d01c272086957964cf4ab74d7b6ce9de4e745d`. The added production modules are `backend/app/providers/adapter_utils.py`, `backend/app/providers/ollama.py`, and `backend/app/providers/openai_compatible.py`; `tests/test_provider_adapters.py` and this document plus `ARCHITECTURE.md` carry the tests/evidence. No existing A1-A/A1-D/A1-E contract, credential, schema, endpoint-policy, transport, frontend, route, Chat, or dependency file is changed. No new directory or dependency is introduced.
+
+**Adversarial review** — Each adapter receives the existing transport through its constructor; request and streaming call sites use only `ProviderTransport.request` / `.stream`. OpenAI-compatible credentials are added only as an Authorization header from the injected ephemeral credential and are never placed in URLs or parsed into error text. Ollama does not send an Authorization header. Provider error bodies are used only for bounded, allow-listed unsupported-feature classification; upstream messages are discarded. Duplicate JSON keys, nonstandard numeric constants, malformed response structures, nonfinite embeddings, unknown/incomplete stream termination, and tool proposals not declared in the request fail with fixed normalized errors. Model-generated tools remain inert, and all assembled streaming calls are checked by the accepted `ToolCallAssembler`.
+
+**Transport and resource evidence** — Adapter HTTP tests use the production A1-D `ProviderTransport` with a synthetic DNS resolver and fake HTTPCore network backend. They assert numeric peer pinning, original-host SNI, certificate verification, HTTP authority, Local only preflight before DNS/connection, denied credentials not sent, redirect rejection, response/stream bounds, and response closure on cancellation. A socket-function guard verifies importing/reloading both adapters does not resolve names or open connections. A1-D remains responsible for production endpoint policy and its own verified timeout, response-size, stream-duration, pool, proxy, redirect, and cleanup controls; no adapter can bypass those controls.
+
+**PASS_SYNTHETIC** — A1-F focused adapter tests cover Ollama model listing/metadata, health timeout and unavailability, capabilities and provenance, structured chat, JSON mode, missing models without pulling/substitution, native tool proposals, NDJSON fragmentation/UTF-8, terminal-only completion, cancellation, EOF, and embeddings; OpenAI-compatible safe path prefixes, credentialless local use, synthetic bearer auth, discovery/unsupported discovery, unknown capability state, structured chat/tool-history, duplicate-key rejection in complete and streamed tool arguments, normalized unsupported optional features, SSE parsing/tool deltas/completion, cancellation, and embeddings; shared transport policy and confidentiality regressions. These are synthetic provider responses through fake DNS/network, not live service compatibility evidence.
+
+**PASS_REAL** — Windows Python 3.11.7 and Python 3.12.10 executed the local compile, Ruff, and package consistency checks. Exact final verification commands and results are listed below. The complete non-browser suite passed on each interpreter; 7 browser tests were deselected by the requested marker.
+
+**NOT_TESTED** — No real provider request, model inference, model download, LAN/cloud/metadata request, real socket, or owner credential-store operation was performed. Windows had no running Ollama process and no listener on the default port `11434` at inspection time; the Ollama executable was installed, but no daemon was started and no model list could be queried safely. No owner-selected model was supplied, so real Ollama inference is NOT_TESTED. No configured OpenAI-compatible service was authorized for a real request. Native Linux/Ubuntu/Docker and hosted CI are NOT_TESTED; all platform evidence in this round is Windows-only.
+
+**Exact verification** — These commands were run on both Windows Python 3.11.7 and 3.12.10 from the repository root:
+
+```powershell
+& 'C:\Users\abhis\AppData\Local\Temp\aura-a1d-checks-1794898204120\py311\Scripts\python.exe' -m pytest -q tests/test_provider_adapters.py
+& 'C:\Users\abhis\AppData\Local\Temp\aura-a1d-checks-1794898204120\py312\Scripts\python.exe' -m pytest -q tests/test_provider_adapters.py
+```
+
+Result: `66 passed, 3 warnings` on Python 3.11.7 and `66 passed, 3 warnings` on Python 3.12.10, including the terminal-only completion and duplicate-key regressions.
+
+```powershell
+$env:AURA_ENVIRONMENT = 'test'
+& 'C:\Users\abhis\AppData\Local\Temp\aura-a1d-checks-1794898204120\py311\Scripts\python.exe' -m pytest -q tests/test_provider_adapters.py tests/test_provider_contracts.py tests/test_provider_secrets.py tests/test_provider_storage.py tests/test_provider_network_policy.py tests/test_database_integrity.py tests/test_authentication.py tests/test_ai_security.py tests/test_web_security.py
+& 'C:\Users\abhis\AppData\Local\Temp\aura-a1d-checks-1794898204120\py312\Scripts\python.exe' -m pytest -q tests/test_provider_adapters.py tests/test_provider_contracts.py tests/test_provider_secrets.py tests/test_provider_storage.py tests/test_provider_network_policy.py tests/test_database_integrity.py tests/test_authentication.py tests/test_ai_security.py tests/test_web_security.py
+& 'C:\Users\abhis\AppData\Local\Temp\aura-a1d-checks-1794898204120\py311\Scripts\python.exe' -m pytest -m 'not browser' -q
+& 'C:\Users\abhis\AppData\Local\Temp\aura-a1d-checks-1794898204120\py312\Scripts\python.exe' -m pytest -m 'not browser' -q
+$env:PYTHONPYCACHEPREFIX = 'C:\Users\abhis\AppData\Local\Temp\aura-a1f-compile-311-20261117'
+& 'C:\Users\abhis\AppData\Local\Temp\aura-a1d-checks-1794898204120\py311\Scripts\python.exe' -m compileall -q backend tests scripts
+& 'C:\Users\abhis\AppData\Local\Temp\aura-a1d-checks-1794898204120\py311\Scripts\python.exe' -m ruff check backend tests scripts --select E4,E7,E9,F
+& 'C:\Users\abhis\AppData\Local\Temp\aura-a1d-checks-1794898204120\py311\Scripts\python.exe' -m pip check
+$env:PYTHONPYCACHEPREFIX = 'C:\Users\abhis\AppData\Local\Temp\aura-a1f-compile-312-20261117'
+& 'C:\Users\abhis\AppData\Local\Temp\aura-a1d-checks-1794898204120\py312\Scripts\python.exe' -m compileall -q backend tests scripts
+& 'C:\Users\abhis\AppData\Local\Temp\aura-a1d-checks-1794898204120\py312\Scripts\python.exe' -m ruff check backend tests scripts --select E4,E7,E9,F
+& 'C:\Users\abhis\AppData\Local\Temp\aura-a1d-checks-1794898204120\py312\Scripts\python.exe' -m pip check
+git diff --check
+```
+
+The focused regression selection passed 263 tests on each interpreter. The full non-browser suite passed 324 tests and deselected 7 browser tests on each interpreter. Each Python 3.11 run emitted 3 existing Pydantic deprecation warnings; Python 3.12 emitted those 3 plus the existing tar-extraction deprecation warning. Both versions reported `All checks passed!` for Ruff and `No broken requirements found.` for `pip check`; `compileall` was quiet with exit code 0. An initial Ruff pass found five issues (three unused imports and two `anext` name checks); those were corrected, and the final Ruff runs passed. `git diff --check` is run again on the final reviewed diff before commit.
+
+**Repository hygiene** — No directories, manifests, models, or generated evidence files were added to the repository. The pre-existing untracked `docs/evidence/a1-model-providers.zip` remains unchanged and unstaged. Tests created ignored bytecode for the three new adapter helpers and their test module; the exact A1-F files are `backend/app/providers/__pycache__/adapter_utils.cpython-{311,312}.pyc`, `ollama.cpython-{311,312}.pyc`, `openai_compatible.cpython-{311,312}.pyc`, and `tests/__pycache__/test_provider_adapters.cpython-{311,312}-pytest-7.4.3.pyc`. Compileall used the task-specific system-temp directories `aura-a1f-compile-311-20261117` and `aura-a1f-compile-312-20261117`. The exact-path cleanup command was rejected by the command safety policy before execution; these artifacts remain preserved and ignored, and no alternate deletion method was attempted. Other ignored bytecode, including `tests/browser/__pycache__`, was preserved because it is unrelated or ownership-uncertain. No temporary project scripts or network traces were created.
