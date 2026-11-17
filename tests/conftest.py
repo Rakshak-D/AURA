@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 import asyncio
 import json
+import threading
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session, sessionmaker
 from starlette.testclient import TestClient
@@ -31,6 +32,9 @@ class SyntheticProviderTransport:
         self.streams_opened = 0
         self.streams_closed = 0
         self.slow_stream_started = False
+        self.next_stream_behavior: str | None = None
+        self.streams_closed_event = threading.Event()
+        self.release_slow_stream = threading.Event()
         self.limits = SimpleNamespace(
             max_response_bytes=1_048_576,
             max_streamed_response_bytes=4_194_304,
@@ -47,12 +51,16 @@ class SyntheticProviderTransport:
         return str(payload.get("model", "")), str(user_message)
 
     @staticmethod
-    def _status(message: str) -> int:
-        if "SYNTHETIC_AUTH_FAILURE" in message:
+    def _status(message: str, url: str = "", headers=None, model_id: str = "") -> int:
+        authorization = next(
+            (str(value) for key, value in (headers or {}).items() if key.lower() == "authorization"),
+            "",
+        )
+        if "SYNTHETIC_AUTH_FAILURE" in message or "SYNTHETIC_BROWSER_API_KEY" in authorization:
             return 401
-        if "SYNTHETIC_MODEL_MISSING" in message:
+        if "SYNTHETIC_MODEL_MISSING" in message or "SYNTHETIC_MODEL_MISSING" in model_id or "synthetic-model-missing" in url:
             return 404
-        if "SYNTHETIC_UNAVAILABLE" in message:
+        if "SYNTHETIC_UNAVAILABLE" in message or "synthetic-unavailable" in url:
             return 503
         return 200
 
@@ -77,7 +85,7 @@ class SyntheticProviderTransport:
 
     async def request(self, method, url, *, context, headers=None, body=None):
         model_id, message = self._record(method, url, context, headers, body)
-        status = self._status(message)
+        status = self._status(message, url, headers, model_id)
         path = url.split("?", 1)[0]
         if path.endswith("/api/tags"):
             value = {"models": [{"name": "qwen2.5:latest", "model": "qwen2.5:latest"}]}
@@ -120,12 +128,27 @@ class SyntheticProviderStream:
         self.status_code = 200
         self.headers = (("content-type", "application/x-ndjson"),)
         self.frames: list[bytes] = []
+        self.after_gate_frames: list[bytes] = []
+        self.behavior: str | None = None
 
     async def __aenter__(self):
         from backend.app.providers.endpoint_policy import EndpointPolicy
 
         EndpointPolicy().preflight_local_only(self.context)
         model_id, message = self.transport._message(self.body)
+        self.behavior = self.transport.next_stream_behavior or next(
+            (
+                behavior
+                for marker, behavior in (
+                    ("SYNTHETIC_STREAM_INTERRUPTED", "interrupted"),
+                    ("SYNTHETIC_PROGRESSIVE_STREAM", "progressive"),
+                    ("SYNTHETIC_SLOW_STREAM", "slow"),
+                )
+                if marker in message
+            ),
+            None,
+        )
+        self.transport.next_stream_behavior = None
         self.transport.requests.append({
             "method": self.method,
             "url": self.url,
@@ -133,12 +156,20 @@ class SyntheticProviderStream:
             "headers": dict(self.headers_in or {}),
             "body": self.body,
         })
-        self.status_code = self.transport._status(message)
+        self.status_code = self.transport._status(message, self.url, self.headers_in, model_id)
         self.transport.streams_opened += 1
+        self.transport.streams_closed_event.clear()
+        self.transport.release_slow_stream.clear()
         if self.url.split("?", 1)[0].endswith("/api/chat"):
-            if "SYNTHETIC_STREAM_INTERRUPTED" in message:
+            if self.behavior == "interrupted":
                 self.frames = [json.dumps({"model": model_id, "message": {"role": "assistant", "content": "partial"}, "done": False}).encode() + b"\n"]
-            elif "SYNTHETIC_SLOW_STREAM" in message:
+            elif self.behavior == "progressive":
+                self.frames = [json.dumps({"model": model_id, "message": {"role": "assistant", "content": "Synthetic "}, "done": False}).encode() + b"\n"]
+                self.after_gate_frames = [
+                    json.dumps({"model": model_id, "message": {"role": "assistant", "content": "stream response."}, "done": False}).encode() + b"\n",
+                    json.dumps({"model": model_id, "message": {"role": "assistant", "content": ""}, "done": True, "done_reason": "stop"}).encode() + b"\n",
+                ]
+            elif self.behavior == "slow":
                 self.frames = [json.dumps({"model": model_id, "message": {"role": "assistant", "content": "Synthetic partial"}, "done": False}).encode() + b"\n"]
             else:
                 self.frames = [
@@ -146,7 +177,17 @@ class SyntheticProviderStream:
                     json.dumps({"model": model_id, "message": {"role": "assistant", "content": "stream response."}, "done": False}).encode() + b"\n",
                     json.dumps({"model": model_id, "message": {"role": "assistant", "content": ""}, "done": True, "done_reason": "stop"}).encode() + b"\n",
                 ]
-        elif "SYNTHETIC_SLOW_STREAM" in message:
+        elif self.behavior == "progressive":
+            self.headers = (("content-type", "text/event-stream"),)
+            self.frames = [
+                f"data: {json.dumps({'model': model_id, 'choices': [{'index': 0, 'delta': {'content': 'Synthetic '}, 'finish_reason': None}]})}\n\n".encode()
+            ]
+            self.after_gate_frames = [
+                f"data: {json.dumps({'model': model_id, 'choices': [{'index': 0, 'delta': {'content': 'stream response.'}, 'finish_reason': None}]})}\n\n".encode(),
+                f"data: {json.dumps({'model': model_id, 'choices': [{'index': 0, 'delta': {}, 'finish_reason': 'stop'}]})}\n\n".encode(),
+                b"data: [DONE]\n\n",
+            ]
+        elif self.behavior == "slow":
             self.headers = (("content-type", "text/event-stream"),)
             self.frames = [
                 f"data: {json.dumps({'model': model_id, 'choices': [{'index': 0, 'delta': {'content': 'Synthetic partial'}, 'finish_reason': None}]})}\n\n".encode()
@@ -165,6 +206,9 @@ class SyntheticProviderStream:
 
     async def __aexit__(self, exc_type, exc_value, traceback):
         self.transport.streams_closed += 1
+        self.transport.release_slow_stream.set()
+        if self.transport.streams_closed == self.transport.streams_opened:
+            self.transport.streams_closed_event.set()
 
     def __aiter__(self):
         return self
@@ -172,9 +216,16 @@ class SyntheticProviderStream:
     async def __anext__(self):
         if self.frames:
             return self.frames.pop(0)
-        if "SYNTHETIC_SLOW_STREAM" in self.message:
+        if self.behavior == "progressive":
             self.transport.slow_stream_started = True
-            await asyncio.Future()
+            await asyncio.to_thread(self.transport.release_slow_stream.wait)
+            self.frames.extend(self.after_gate_frames)
+            self.after_gate_frames.clear()
+            if self.frames:
+                return self.frames.pop(0)
+        if self.behavior == "slow":
+            self.transport.slow_stream_started = True
+            await asyncio.to_thread(self.transport.release_slow_stream.wait)
         raise StopAsyncIteration
 
 

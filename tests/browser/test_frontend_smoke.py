@@ -13,8 +13,7 @@ import os
 import re
 import secrets
 import socket
-import subprocess
-import sys
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -24,6 +23,12 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 import pytest
+import uvicorn
+from sqlalchemy.orm import sessionmaker
+
+from backend.app import main
+from backend.app.providers.secret_store import MasterKeyMaterial, SecretStore
+from backend.app.providers.service import ProviderService, get_provider_service
 
 pytestmark = [
     pytest.mark.browser,
@@ -45,8 +50,9 @@ NO_MODEL_CHAT_RESPONSE = "No AI model is available right now, so I can't answer 
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
-@dataclass
+@dataclass(repr=False)
 class BrowserSession:
+    application: "BrowserApplication"
     base_url: str
     page: object
     context: object
@@ -56,6 +62,14 @@ class BrowserSession:
     page_errors: list[str]
     encoded_resource_bytes: dict[str, int]
     recording_dir: Path | None = None
+
+
+@dataclass(repr=False)
+class BrowserApplication:
+    base_url: str
+    provider_transport: object
+    session_factory: sessionmaker
+    startup_ms: float
 
 
 @dataclass(repr=False)
@@ -98,100 +112,81 @@ def _free_local_port() -> int:
         return int(listener.getsockname()[1])
 
 
-def _wait_for_app(process: subprocess.Popen[bytes], base_url: str, log_path: Path) -> None:
+def _wait_for_app(base_url: str, server_thread: threading.Thread) -> None:
     deadline = time.monotonic() + 45
     while time.monotonic() < deadline:
-        if process.poll() is not None:
-            raise RuntimeError(
-                "AURA exited before becoming ready. Server log:\n"
-                + log_path.read_text(encoding="utf-8", errors="replace")[-12000:]
-            )
+        if not server_thread.is_alive():
+            raise RuntimeError("The AURA test server exited before becoming ready.")
         try:
             with urllib.request.urlopen(f"{base_url}/health", timeout=1) as response:
                 if response.status == 200:
                     return
         except (OSError, urllib.error.URLError):
             time.sleep(0.25)
-    raise RuntimeError(
-        "AURA did not become ready. Server log:\n"
-        + log_path.read_text(encoding="utf-8", errors="replace")[-12000:]
-    )
+    raise RuntimeError("AURA did not become ready within the server startup limit.")
 
 
-@pytest.fixture(scope="session")
-def aura_server(tmp_path_factory: pytest.TempPathFactory) -> str:
-    """Launch the real app with no model and a database isolated to this run."""
-    runtime_dir = tmp_path_factory.mktemp("aura-browser-runtime")
+class BrowserKeyProtector:
+    """Synthetic test-only protector; no real OS vault or key is accessed."""
+
+    _key = b"B" * 32
+
+    def active_key(self) -> MasterKeyMaterial:
+        return MasterKeyMaterial("browser-synthetic-key", self._key)
+
+    def load_key(self, key_id: str) -> bytes | None:
+        return self._key if key_id == "browser-synthetic-key" else None
+
+    def create_key(self) -> MasterKeyMaterial:
+        return self.active_key()
+
+
+@pytest.fixture
+def aura_server(isolated_runtime, synthetic_provider_transport) -> BrowserApplication:
+    """Serve the real FastAPI app with isolated SQLite and fake upstream I/O."""
+    from backend.app.models.llm_models import llm
+
     port = _free_local_port()
     base_url = f"http://127.0.0.1:{port}"
-    data_dir = runtime_dir / "data"
-    data_dir.mkdir()
-    log_path = runtime_dir / "uvicorn.log"
-    environment = os.environ.copy()
-    environment.update(
-        {
-            "PYTHONPATH": str(_PROJECT_ROOT),
-            "ENVIRONMENT": "development",
-            "BASE_DIR": str(_PROJECT_ROOT),
-            "DATA_DIR": str(data_dir),
-            "DB_PATH": str(data_dir / "aura-browser-test.sqlite3"),
-            "DATABASE_URL": "",
-            "UPLOADS_DIR": str(data_dir / "uploads"),
-            "LOGS_DIR": str(data_dir / "logs"),
-            "MODELS_DIR": str(runtime_dir / "models-empty"),
-            "CHROMA_PATH": str(runtime_dir / "chroma-empty"),
-            "AUTH_SECRET_KEY": secrets.token_urlsafe(48),
-            "SECRET_KEY": secrets.token_urlsafe(48),
-            "REMINDER_SCHEDULER_ENABLED": "false",
-            "HOST": "127.0.0.1",
-            "PORT": str(port),
-            "ALLOWED_ORIGINS": base_url,
-            "LOG_LEVEL": "WARNING",
-            "USE_GPU": "false",
-        }
+    service = ProviderService(
+        transport=synthetic_provider_transport,
+        secret_store=SecretStore(BrowserKeyProtector()),
     )
-
-    with log_path.open("wb") as log_file:
-        process = subprocess.Popen(
-            [
-                sys.executable,
-                "-m",
-                "uvicorn",
-                "backend.app.main:app",
-                "--host",
-                "127.0.0.1",
-                "--port",
-                str(port),
-                "--log-level",
-                "warning",
-            ],
-            cwd=_PROJECT_ROOT,
-            env=environment,
-            stdout=log_file,
-            stderr=subprocess.STDOUT,
+    main.app.dependency_overrides[get_provider_service] = lambda: service
+    server = uvicorn.Server(
+        uvicorn.Config(main.app, host="127.0.0.1", port=port, log_level="warning")
+    )
+    thread = threading.Thread(target=server.run, name="aura-browser-server", daemon=True)
+    startup_started = time.perf_counter()
+    thread.start()
+    try:
+        _wait_for_app(base_url, thread)
+        startup_ms = (time.perf_counter() - startup_started) * 1000
+        if llm.llm is not None or llm.embedding_model is not None or llm._llm_attempted or llm._embedding_attempted:
+            raise AssertionError("A model initialized during model-free application startup.")
+        yield BrowserApplication(
+            base_url,
+            synthetic_provider_transport,
+            isolated_runtime,
+            startup_ms,
         )
-        try:
-            _wait_for_app(process, base_url, log_path)
-            yield base_url
-        finally:
-            if process.poll() is None:
-                process.terminate()
-                try:
-                    process.wait(timeout=10)
-                except subprocess.TimeoutExpired:
-                    process.kill()
-                    process.wait(timeout=5)
+    finally:
+        server.should_exit = True
+        thread.join(timeout=10)
+        main.app.dependency_overrides.pop(get_provider_service, None)
+        if thread.is_alive():
+            raise RuntimeError("The AURA browser test server did not shut down cleanly.")
 
 
-@pytest.fixture(scope="session")
-def browser_account(aura_server: str) -> BrowserCredentials:
+@pytest.fixture
+def browser_account(aura_server: BrowserApplication) -> BrowserCredentials:
     """Create one ephemeral account through the actual local auth endpoint."""
     credentials = BrowserCredentials(
         identifier=f"a0-browser-{uuid.uuid4().hex[:12]}@example.test",
         password=secrets.token_urlsafe(24),
     )
     request = urllib.request.Request(
-        f"{aura_server}/api/auth/register",
+        f"{aura_server.base_url}/api/auth/register",
         data=json.dumps(
             {"identifier": credentials.identifier, "password": credentials.password}
         ).encode("utf-8"),
@@ -206,7 +201,7 @@ def browser_account(aura_server: str) -> BrowserCredentials:
 
 @pytest.fixture
 def browser_session(
-    aura_server: str, request: pytest.FixtureRequest, tmp_path: Path
+    aura_server: BrowserApplication, request: pytest.FixtureRequest, tmp_path: Path
 ) -> BrowserSession:
     playwright = pytest.importorskip("playwright.sync_api")
     playwright_runtime = playwright.sync_playwright().start()
@@ -294,7 +289,8 @@ def browser_session(
         lambda message: console_errors.append(message.text) if message.type == "error" else None,
     )
     session = BrowserSession(
-        base_url=aura_server,
+        application=aura_server,
+        base_url=aura_server.base_url,
         page=page,
         context=context,
         external_attempts=external_attempts,
@@ -312,7 +308,7 @@ def browser_session(
         if video and recording_dir:
             output_dir = Path(evidence_dir) / "recordings" if evidence_dir else Path("tests/browser-artifacts/recordings")
             output_dir.mkdir(parents=True, exist_ok=True)
-            video.save_as(str(output_dir / "a0-user-journey.webm"))
+            video.save_as(str(output_dir / "a1g-models-streaming-journey.webm"))
         browser.close()
         playwright_runtime.stop()
 
@@ -344,6 +340,10 @@ def _capture(session: BrowserSession, name: str) -> None:
     evidence_dir = os.getenv("AURA_BROWSER_EVIDENCE_DIR")
     if not evidence_dir:
         return
+    session.page.wait_for_function(
+        "() => ![...document.body.children].some(element => "
+        "element.style.zIndex === '1000' && element.style.animation.includes('slideIn'))"
+    )
     output_dir = Path(evidence_dir) / "screenshots"
     output_dir.mkdir(parents=True, exist_ok=True)
     session.page.screenshot(path=str(output_dir / name), full_page=True)
@@ -396,6 +396,181 @@ def _capture_initial_payload(session: BrowserSession) -> None:
 
 def _assert_no_uncaught_errors(session: BrowserSession) -> None:
     assert not session.page_errors, "Uncaught JavaScript errors: " + " | ".join(session.page_errors)
+
+
+def _open_models(page: object) -> None:
+    menu = page.locator(".mobile-menu-btn")
+    if menu.is_visible() and not page.locator("#sidebar").evaluate(
+        "element => element.classList.contains('open')"
+    ):
+        menu.click()
+    settings_button = page.get_by_role("button", name="Settings", exact=True)
+    if menu.is_visible():
+        settings_button.focus()
+        page.keyboard.press("Enter")
+    else:
+        settings_button.click()
+    page.locator("#settings-modal.active").wait_for(state="visible")
+    page.get_by_role("tab", name="Models", exact=True).click()
+
+
+def _add_connection(
+    page: object,
+    name: str,
+    provider_type: str,
+    base_url: str,
+    *,
+    api_key: str = "",
+    token_parameter: str = "max_tokens",
+    keyboard: bool = False,
+) -> object:
+    add_button = page.get_by_role("button", name="Add connection", exact=True)
+    if keyboard:
+        add_button.focus()
+        page.keyboard.press("Enter")
+    else:
+        add_button.click()
+    form = page.locator("#connection-form")
+    form.wait_for(state="visible")
+    if keyboard:
+        assert page.locator("#connection-provider").input_value() == provider_type
+    else:
+        page.locator("#connection-provider").select_option(provider_type)
+    if keyboard:
+        assert page.evaluate("() => document.activeElement.id") == "connection-name"
+        page.keyboard.type(name)
+        page.keyboard.press("Tab")
+        page.keyboard.type(base_url)
+        page.keyboard.press("Tab")
+        assert page.evaluate("() => document.activeElement.textContent.trim()") == "Save connection"
+        page.keyboard.press("Enter")
+    else:
+        page.locator("#connection-name").fill(name)
+        page.locator("#connection-url").fill(base_url)
+    if provider_type == "openai_compatible":
+        page.locator("#token-parameter").select_option(token_parameter)
+        if api_key:
+            page.locator("#connection-key").fill(api_key)
+    if not keyboard:
+        page.get_by_role("button", name="Save connection", exact=True).click()
+    row = page.locator(".connection-row").filter(has_text=name)
+    row.wait_for(state="visible")
+    return row
+
+
+def _set_model_role(
+    page: object,
+    role: str,
+    connection_id: str,
+    model_id: str,
+    *,
+    discovered: bool,
+    keyboard: bool = False,
+) -> None:
+    if keyboard:
+        role_select = page.locator("#role-name")
+        role_select.focus()
+        page.keyboard.press("Home")
+        page.keyboard.press("Enter")
+        connection_select = page.locator("#role-connection")
+        connection_select.focus()
+        page.keyboard.press("ArrowDown")
+        model_select = page.locator("#role-model")
+        model_select.focus()
+        page.keyboard.press("ArrowDown")
+        assert connection_select.input_value() == connection_id
+        assert model_select.input_value() == model_id
+    else:
+        page.locator("#role-name").select_option(role)
+        page.locator("#role-connection").select_option(connection_id)
+    if discovered:
+        if not keyboard:
+            page.locator("#role-model").select_option(model_id)
+        page.locator("#role-model-manual").fill("")
+    else:
+        page.locator("#role-model-manual").fill(model_id)
+    save_role = page.get_by_role("button", name="Save role", exact=True)
+    if keyboard:
+        save_role.focus()
+        page.keyboard.press("Enter")
+    else:
+        save_role.click()
+    page.wait_for_function(
+        "({role, model}) => [...document.querySelectorAll('.role-summary-row')].some(row => "
+        "row.querySelector('.role-label')?.textContent.trim().toLowerCase() === role && "
+        "row.querySelector('.role-value')?.textContent.includes(model))",
+        arg={"role": role, "model": model_id},
+    )
+
+
+def _assistant_history_count(session: BrowserSession) -> int:
+    from backend.app.models.sql_models import ChatHistory
+
+    with session.application.session_factory() as db:
+        return db.query(ChatHistory).filter(ChatHistory.role == "assistant").count()
+
+
+def _clear_test_rate_limit_state() -> None:
+    """Keep the multi-scenario browser journey independent of the 5/minute gate."""
+    from backend.app.utils.security import limiter
+
+    if hasattr(limiter, "_storage"):
+        limiter._storage.reset()
+
+
+def _wait_for_layout_transition(page: object, width: int) -> None:
+    page.wait_for_function(
+        "width => { const app = document.querySelector('.app-container').getBoundingClientRect(); "
+        "const composer = document.querySelector('.input-area').getBoundingClientRect(); "
+        "return app.width <= width + 1 && composer.right <= width + 1; }",
+        arg=width,
+    )
+
+
+def _contrast_failures(page: object, selector: str) -> list[dict[str, object]]:
+    return page.evaluate(
+        """selector => {
+            const root = document.querySelector(selector);
+            const parse = value => {
+                const parts = value.match(/[\\d.]+/g)?.map(Number);
+                if (!parts || parts.length < 3) return null;
+                return {rgb: parts.slice(0, 3), alpha: parts.length > 3 ? parts[3] : 1};
+            };
+            const composite = (top, bottom) => top.rgb.map((value, index) =>
+                value * top.alpha + bottom[index] * (1 - top.alpha)
+            );
+            const luminance = rgb => {
+                const channels = rgb.map(value => value / 255).map(value =>
+                    value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4
+                );
+                return channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722;
+            };
+            const failures = [];
+            const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+            while (walker.nextNode()) {
+                const node = walker.currentNode;
+                const text = node.textContent.trim();
+                const element = node.parentElement;
+                if (!text || !element || element.closest('.visually-hidden, [aria-hidden="true"]')
+                    || !element.getClientRects().length) continue;
+                const ancestors = [];
+                for (let current = element; current; current = current.parentElement) ancestors.push(current);
+                let background = [255, 255, 255];
+                for (const current of ancestors.reverse()) {
+                    const layer = parse(getComputedStyle(current).backgroundColor);
+                    if (layer && layer.alpha > 0) background = composite(layer, background);
+                }
+                const foreground = parse(getComputedStyle(element).color);
+                if (!foreground) continue;
+                const shown = composite(foreground, background);
+                const values = [luminance(shown), luminance(background)].sort((a, b) => b - a);
+                const ratio = (values[0] + 0.05) / (values[1] + 0.05);
+                if (ratio < 4.5) failures.push({text: text.slice(0, 60), ratio: Number(ratio.toFixed(2))});
+            }
+            return failures;
+        }""",
+        selector,
+    )
 
 
 def _sign_in(session: BrowserSession, credentials: BrowserCredentials) -> None:
@@ -530,26 +705,28 @@ def test_chat_returns_a_real_graceful_no_model_response(
     page.on(
         "response",
         lambda response: chat_responses.append(response)
-        if urlsplit(response.url).path == "/api/chat"
+        if urlsplit(response.url).path == "/api/chat/stream"
         else None,
     )
     page.locator("#chat-input").fill("Please say hello for the A0 browser check.")
     page.locator(".send-btn").click()
     response = page.locator(".message.assistant .message-content").last
-    response.wait_for(state="visible", timeout=30000)
     page.wait_for_function(
-        "() => !document.querySelector('.message.assistant.loading')"
+        "expected => [...document.querySelectorAll('.message.assistant .message-content')]"
+        ".some(element => element.textContent.trim() === expected)",
+        arg=NO_MODEL_CHAT_RESPONSE,
+        timeout=30000,
     )
     response_text = response.inner_text().strip()
     assert response_text == NO_MODEL_CHAT_RESPONSE
     assert chat_responses, "The authenticated Chat API did not return a response."
     api_response = chat_responses[-1]
     assert api_response.status == 200
-    api_payload = api_response.json()
-    assert api_payload["response"] == NO_MODEL_CHAT_RESPONSE
-    assert isinstance(api_payload.get("action_taken"), str)
-    assert isinstance(api_payload.get("data"), dict)
-    assert isinstance(api_payload.get("suggestions"), list)
+    assert "text/event-stream" in api_response.headers.get("content-type", "")
+    stream_body = api_response.text()
+    assert "event: failed" in stream_body
+    assert '"code":"no_model_available"' in stream_body
+    assert NO_MODEL_CHAT_RESPONSE in stream_body
     _capture(browser_session, "chat-1440x900.png")
 
     geometry: list[dict[str, object]] = []
@@ -645,7 +822,7 @@ def test_functional_navigation_and_chart_rendering(
 
     page.get_by_role("button", name="Settings", exact=True).click()
     assert page.locator("#settings-modal").is_visible()
-    page.get_by_role("button", name="Cancel", exact=True).click()
+    page.get_by_role("button", name="Close settings", exact=True).click()
     _assert_no_uncaught_errors(browser_session)
 
 
@@ -747,36 +924,418 @@ def test_layout_keyboard_focus_and_touch_sizing_at_required_viewports(
     _assert_no_uncaught_errors(browser_session)
 
 
+def test_a1g_models_and_streaming_regressions(
+    browser_session: BrowserSession, browser_account: BrowserCredentials
+) -> None:
+    """Exercise Settings, secrets, privacy, roles and Chat in the real app."""
+    from backend.app.models.sql_models import ChatHistory
+
+    _sign_in(browser_session, browser_account)
+    page = browser_session.page
+    transport = browser_session.application.provider_transport
+    measurements: dict[str, object] = {
+        "local_test_application_startup_ms": round(browser_session.application.startup_ms, 2),
+        "startup_models_initialized": False,
+    }
+    page.on("dialog", lambda dialog: dialog.accept())
+
+    settings_started = time.perf_counter()
+    _open_models(page)
+    page.locator(".connections-empty").wait_for(state="visible")
+    measurements["models_initial_render_ms"] = round((time.perf_counter() - settings_started) * 1000, 2)
+    assert page.locator("#local-only-toggle").is_checked()
+    assert "On" in page.locator("#local-only-state").inner_text()
+    assert page.locator("#chat-model-indicator").inner_text() == "No Chat model selected"
+    assert page.locator(".role-summary-row .role-value").all_inner_texts() == [
+        "Not selected",
+        "Not selected",
+        "Not selected",
+    ]
+    _capture(browser_session, "a1g-models-empty-desktop.png")
+
+    local = _add_connection(
+        page,
+        "Studio Ollama",
+        "ollama",
+        "http://127.0.0.1:11434",
+        keyboard=True,
+    )
+    local_id = local.get_attribute("data-connection-id")
+    assert local_id
+    test_started = time.perf_counter()
+    local.get_by_role("button", name="Test", exact=True).click()
+    local.locator(".connection-state").filter(has_text="Connected").wait_for(state="visible")
+    measurements["local_connection_test_ms"] = round((time.perf_counter() - test_started) * 1000, 2)
+    listing_started = time.perf_counter()
+    local.get_by_role("button", name="Discover models", exact=True).click()
+    page.locator("#role-model option[value='qwen2.5:latest']").wait_for(state="attached")
+    measurements["synthetic_model_listing_ms"] = round((time.perf_counter() - listing_started) * 1000, 2)
+    _capture(browser_session, "a1g-models-ollama-connected.png")
+
+    page.locator("#role-connection").select_option(local_id)
+    page.locator("#role-model").select_option("qwen2.5:latest")
+    page.get_by_role("button", name="Check capabilities", exact=True).click()
+    page.locator("#capability-panel").get_by_text("provider metadata", exact=False).first.wait_for(state="visible")
+    assert "unsupported" in page.locator("#capability-panel").inner_text()
+    assert "unknown" in page.locator("#capability-panel").inner_text()
+    page.locator("#role-connection").select_option("")
+    page.locator("#role-model").select_option("")
+    _set_model_role(page, "chat", local_id, "qwen2.5:latest", discovered=True, keyboard=True)
+    _set_model_role(page, "router", local_id, "qwen2.5:latest", discovered=True)
+    assert "Studio Ollama · qwen2.5:latest" in page.locator("#role-summary").inner_text()
+    _capture(browser_session, "a1g-models-role-selections.png")
+
+    synthetic_key = "SYNTHETIC_BROWSER_API_KEY_SENTINEL"
+    remote_a = _add_connection(
+        page,
+        "Remote Alpha",
+        "openai_compatible",
+        "https://api.example.test/v1",
+        api_key=synthetic_key,
+    )
+    remote_a_id = remote_a.get_attribute("data-connection-id")
+    assert remote_a_id
+    assert page.locator("#connection-key").input_value() == ""
+    calls_before_block = len(transport.requests)
+    remote_a.get_by_role("button", name="Test", exact=True).click()
+    remote_a.locator(".connection-state").filter(has_text="Blocked by Local only").wait_for(state="visible")
+    assert len(transport.requests) == calls_before_block
+    _capture(browser_session, "a1g-models-cloud-blocked.png")
+
+    snapshot = page.evaluate(
+        """async () => {
+            const token = sessionStorage.getItem('aura_access_token');
+            const response = await fetch('/api/settings/models', {
+                headers: {Authorization: `Bearer ${token}`}
+            });
+            return await response.json();
+        }"""
+    )
+    assert synthetic_key not in json.dumps(snapshot)
+    storage_dump = page.evaluate(
+        "() => JSON.stringify([localStorage, sessionStorage].map(storage => "
+        "Object.keys(storage).map(key => [key, storage.getItem(key)])))"
+    )
+    assert synthetic_key not in storage_dump
+    assert any(item["has_api_key"] for item in snapshot["connections"] if item["id"] == remote_a_id)
+
+    remote_b = _add_connection(
+        page,
+        "Remote Beta",
+        "openai_compatible",
+        "https://alternate.example.test/v1",
+        token_parameter="max_completion_tokens",
+    )
+    remote_b_id = remote_b.get_attribute("data-connection-id")
+    assert remote_b_id and remote_a_id != remote_b_id
+
+    page.locator("#local-only-toggle").uncheck()
+    page.wait_for_function("() => document.querySelector('#local-only-state').textContent.includes('Off')")
+    assert "may leave this device" in page.locator("#local-only-state").inner_text()
+    remote_a.get_by_role("button", name="Test", exact=True).click()
+    remote_a.locator(".connection-state").filter(has_text="Authentication failed").wait_for(state="visible")
+    _capture(browser_session, "a1g-models-connection-failed.png")
+    remote_a.get_by_role("button", name="Remove key", exact=True).click()
+    remote_a.get_by_role("button", name="Key not set", exact=True).wait_for(state="visible")
+    assert synthetic_key not in page.evaluate(
+        "() => JSON.stringify([localStorage, sessionStorage].map(storage => "
+        "Object.keys(storage).map(key => [key, storage.getItem(key)])))"
+    )
+
+    remote_b.get_by_role("button", name="Test", exact=True).click()
+    remote_b.locator(".connection-state").filter(has_text="Connected").wait_for(state="visible")
+    remote_b.get_by_role("button", name="Discover models", exact=True).click()
+    page.locator("#role-model option[value='gpt-test-2']").wait_for(state="attached")
+    _set_model_role(page, "router", remote_b_id, "gpt-test-2", discovered=True)
+    assert "Remote Beta · gpt-test-2" in page.locator("#role-summary").inner_text()
+
+    _set_model_role(page, "chat", remote_b_id, "gpt-test", discovered=True)
+    page.get_by_role("button", name="Close settings", exact=True).click()
+    remote_prompt = "A private prompt for synthetic remote Chat."
+    page.locator("#chat-input").fill(remote_prompt)
+    _clear_test_rate_limit_state()
+    page.get_by_role("button", name="Send message", exact=True).click()
+    remote_response = page.locator(".streaming-message").last
+    remote_response.locator(".streamed-content").get_by_text("Synthetic stream response.", exact=True).wait_for(state="visible")
+    assert remote_response.locator(".message-source").inner_text() == "OpenAI-compatible"
+    remote_chat_request = next(
+        item for item in reversed(transport.requests)
+        if item["url"].endswith("/v1/chat/completions")
+    )
+    remote_payload = json.loads(remote_chat_request["body"])
+    assert [item["role"] for item in remote_payload["messages"]] == ["system", "user"]
+    assert remote_payload["messages"][1]["content"] == remote_prompt
+
+    _open_models(page)
+    page.locator("#local-only-toggle").check()
+    page.wait_for_function("() => document.querySelector('#local-only-state').textContent.includes('On')")
+    assert "On" in page.locator("#local-only-state").inner_text()
+    blocked_chat_requests = len(transport.requests)
+    page.get_by_role("button", name="Close settings", exact=True).click()
+    page.locator("#chat-input").fill("Try to send while Local only is on.")
+    _clear_test_rate_limit_state()
+    page.get_by_role("button", name="Send message", exact=True).click()
+    blocked_chat = page.locator(".streaming-message").last
+    blocked_chat.locator(".streamed-content").get_by_text("Local only settings blocked this provider request.", exact=True).wait_for(state="visible")
+    assert len(transport.requests) == blocked_chat_requests
+    _open_models(page)
+    _set_model_role(page, "chat", local_id, "qwen2.5:latest", discovered=True)
+
+    # A separate failed local connection demonstrates an actionable unavailable state.
+    unavailable = _add_connection(
+        page,
+        "Unavailable local",
+        "ollama",
+        "http://127.0.0.1:11434/synthetic-unavailable",
+    )
+    unavailable.get_by_role("button", name="Test", exact=True).click()
+    unavailable.locator(".connection-state").filter(has_text="Unavailable").wait_for(state="visible")
+
+    remote_b.get_by_role("button", name="Remove", exact=True).click()
+    page.get_by_text("Remote Beta · gpt-test-2 · Unavailable", exact=False).wait_for(state="visible")
+    assert "Studio Ollama · qwen2.5:latest" in page.locator("#role-summary").inner_text()
+    _capture(browser_session, "a1g-models-removed-role-unavailable.png")
+
+    # The role persists across a real application reload and still names the exact model.
+    page.reload(wait_until="domcontentloaded")
+    page.locator("#aura-auth-panel").wait_for(state="hidden")
+    _open_models(page)
+    assert "Studio Ollama · qwen2.5:latest" in page.locator("#role-summary").inner_text()
+    page.get_by_role("button", name="Close settings", exact=True).click()
+
+    # Models Settings remain usable without horizontal overflow at every target width.
+    for width, height, capture_name in (
+        (1440, 900, None),
+        (390, 844, "a1g-models-mobile-390x844.png"),
+        (320, 844, "a1g-models-mobile-320x844.png"),
+        (768, 1024, "a1g-models-tablet-768x1024.png"),
+        (1024, 768, "a1g-models-tablet-1024x768.png"),
+    ):
+        page.set_viewport_size({"width": width, "height": height})
+        _wait_for_layout_transition(page, width)
+        _open_models(page)
+        assert page.evaluate("() => document.documentElement.scrollWidth") <= width + 1
+        if width <= 768:
+            targets = page.locator("#models-panel button:visible").evaluate_all(
+                "elements => elements.map(element => { const r = element.getBoundingClientRect(); "
+                "return {name: element.innerText, width: r.width, height: r.height}; })"
+            )
+            assert all(item["width"] >= 44 and item["height"] >= 44 for item in targets), targets
+        if capture_name:
+            _capture(browser_session, capture_name)
+        page.get_by_role("button", name="Close settings", exact=True).click()
+
+    _open_models(page)
+    model_contrast_failures = _contrast_failures(page, "#models-panel")
+    assert not model_contrast_failures, f"Models text contrast below 4.5:1: {model_contrast_failures}"
+    page.get_by_role("button", name="Close settings", exact=True).click()
+
+    page.set_viewport_size({"width": 1440, "height": 900})
+    page.get_by_role("button", name="Chat", exact=True).click()
+
+    # Release one controlled frame only after the browser has rendered it, proving progressive UI.
+    transport.next_stream_behavior = "progressive"
+    page.locator("#chat-input").fill("Could you give me a short example?")
+    _clear_test_rate_limit_state()
+    first_token_started = time.perf_counter()
+    page.get_by_role("button", name="Send message", exact=True).click()
+    progressive = page.locator(".streaming-message").last
+    progressive.locator(".streamed-content").get_by_text("Synthetic", exact=False).wait_for(state="visible")
+    measurements["first_synthetic_token_ms"] = round((time.perf_counter() - first_token_started) * 1000, 2)
+    assert page.get_by_role("button", name="Stop", exact=True).is_visible()
+    assert page.get_by_role("button", name="Send message", exact=True).is_hidden()
+    assert progressive.locator(".message-source").inner_text() == "Local"
+    _capture(browser_session, "a1g-chat-active-streaming.png")
+    transport.release_slow_stream.set()
+    page.wait_for_function(
+        "() => document.querySelector('.streaming-message:last-of-type .streamed-content')"
+        "?.textContent === 'Synthetic stream response.'"
+    )
+    page.get_by_text("Response complete", exact=True).wait_for(state="visible")
+
+    before_stop_count = _assistant_history_count(browser_session)
+    transport.next_stream_behavior = "slow"
+    page.locator("#chat-input").fill("Please start an answer and wait.")
+    _clear_test_rate_limit_state()
+    page.get_by_role("button", name="Send message", exact=True).click()
+    stopped = page.locator(".streaming-message").last
+    stopped.locator(".streamed-content").get_by_text("Synthetic partial", exact=False).wait_for(state="visible")
+    stop_button = page.get_by_role("button", name="Stop", exact=True)
+    cancellation_started = time.perf_counter()
+    stop_button.focus()
+    page.keyboard.press("Enter")
+    stopped.locator(".message-completion-status").get_by_text("Stopped", exact=True).wait_for(state="visible")
+    stopped = page.locator(".streaming-message.stopped").last
+    assert transport.streams_closed_event.wait(timeout=5), "Cancelled upstream response was not closed."
+    measurements["stream_cancellation_cleanup_ms"] = round(
+        (time.perf_counter() - cancellation_started) * 1000, 2
+    )
+    assert _assistant_history_count(browser_session) == before_stop_count
+    stopped_text = stopped.locator(".streamed-content").inner_text()
+    assert stopped_text == "Synthetic partial"
+    _capture(browser_session, "a1g-chat-stopped.png")
+
+    # Another request is accepted after cancellation, with no stale stream append.
+    page.locator("#chat-input").fill("Can you answer after cancellation?")
+    _clear_test_rate_limit_state()
+    page.get_by_role("button", name="Send message", exact=True).click()
+    subsequent = page.locator(".streaming-message").last
+    subsequent.locator(".streamed-content").get_by_text("Synthetic stream response.", exact=True).wait_for(state="visible")
+    page.get_by_text("Response complete", exact=True).wait_for(state="visible")
+    assert stopped.locator(".streamed-content").inner_text() == stopped_text
+
+    # Unavailable, missing-model and interrupted outputs remain visibly unsuccessful.
+    _open_models(page)
+    unavailable_id = unavailable.get_attribute("data-connection-id")
+    assert unavailable_id
+    _set_model_role(page, "chat", unavailable_id, "qwen2.5:latest", discovered=False)
+    page.get_by_role("button", name="Close settings", exact=True).click()
+
+    page.locator("#chat-input").fill("Can you help me with this?")
+    _clear_test_rate_limit_state()
+    page.get_by_role("button", name="Send message", exact=True).click()
+    failed = page.locator(".streaming-message").last
+    failed.locator(".streamed-content").get_by_text("Provider is unavailable.", exact=True).wait_for(state="visible")
+    assert "error" in (failed.get_attribute("class") or "")
+    _capture(browser_session, "a1g-chat-provider-error.png")
+
+    _open_models(page)
+    _set_model_role(page, "chat", local_id, "SYNTHETIC_MODEL_MISSING", discovered=False)
+    page.get_by_role("button", name="Close settings", exact=True).click()
+    page.locator("#chat-input").fill("Check the selected model.")
+    _clear_test_rate_limit_state()
+    page.get_by_role("button", name="Send message", exact=True).click()
+    missing = page.locator(".streaming-message").last
+    missing.locator(".streamed-content").get_by_text("The selected model is unavailable.", exact=True).wait_for(state="visible")
+
+    _open_models(page)
+    page.locator(".connection-row").filter(has_text="Studio Ollama").get_by_role(
+        "button", name="Discover models", exact=True
+    ).click()
+    page.locator("#role-model option[value='qwen2.5:latest']").wait_for(state="attached")
+    _set_model_role(page, "chat", local_id, "qwen2.5:latest", discovered=True)
+    page.get_by_role("button", name="Close settings", exact=True).click()
+    transport.next_stream_behavior = "interrupted"
+    page.locator("#chat-input").fill("Please finish this response.")
+    _clear_test_rate_limit_state()
+    page.get_by_role("button", name="Send message", exact=True).click()
+    interrupted = page.locator(".streaming-message").last
+    interrupted.locator(".streamed-content").get_by_text("partial", exact=True).wait_for(state="visible")
+    interrupted.locator(".message-completion-status").get_by_text("Incomplete response", exact=True).wait_for(state="visible")
+
+    # Reduced motion is checked in the real browser and captured for review.
+    page.emulate_media(reduced_motion="reduce")
+    _open_models(page)
+    motion = page.evaluate(
+        """() => [...document.querySelectorAll('*')].map(element => {
+            const style = getComputedStyle(element);
+            const parse = value => value.split(',').map(item => {
+                const text = item.trim();
+                if (text.endsWith('ms')) return Number.parseFloat(text);
+                if (text.endsWith('s')) return Number.parseFloat(text) * 1000;
+                return 0;
+            });
+            return Math.max(...parse(style.animationDuration), ...parse(style.transitionDuration));
+        }).reduce((max, value) => Math.max(max, value), 0)"""
+    )
+    assert motion <= 120, f"Reduced motion duration exceeded 120 ms: {motion}"
+    _capture(browser_session, "a1g-reduced-motion-models.png")
+    page.get_by_role("button", name="Close settings", exact=True).click()
+    page.get_by_role("button", name="Chat", exact=True).click()
+    _assert_active_view(page, "chat")
+    _capture(browser_session, "a1g-reduced-motion-chat.png")
+
+    # No provider key is stored in the database as plaintext or sent to the browser storage APIs.
+    with browser_session.application.session_factory() as db:
+        rows = db.query(ChatHistory).all()
+        assert all(row.user_id is not None for row in rows)
+    database_path = browser_session.application.session_factory.kw["bind"].url.database
+    assert synthetic_key.encode() not in Path(database_path).read_bytes()
+    assert not browser_session.external_attempts
+    assert not browser_session.unauthenticated_data_requests
+    _assert_no_uncaught_errors(browser_session)
+    assert not browser_session.console_errors, (
+        "Browser console errors: " + " | ".join(browser_session.console_errors)
+    )
+    # Chat also remains horizontally contained at all required viewport widths.
+    responsive_chat_layout: list[dict[str, object]] = []
+    for width, height in _VIEWPORTS:
+        page.set_viewport_size({"width": width, "height": height})
+        _wait_for_layout_transition(page, width)
+        _assert_active_view(page, "chat")
+        page.wait_for_function(
+            "Number.parseFloat(getComputedStyle(document.querySelector('#view-chat')).opacity) >= 0.99"
+        )
+        page.locator("#chat-history").evaluate(
+            "element => { element.scrollTop = element.scrollHeight; }"
+        )
+        assert page.locator(".input-area").is_visible(), (
+            f"Chat composer is not visible at {width}x{height}"
+        )
+        geometry = page.evaluate(
+            "() => { const bounds = selector => { const element = document.querySelector(selector); "
+            "const r = element.getBoundingClientRect(); return {left:r.left,right:r.right,top:r.top,bottom:r.bottom, "
+            "width:r.width,height:r.height, "
+            "cssWidth:getComputedStyle(element).width, inlineWidth:element.style.width}; }; return {width: innerWidth, "
+            "clientWidth: document.documentElement.clientWidth, visualWidth: visualViewport.width, "
+            "documentWidth: document.documentElement.scrollWidth, app: bounds('.app-container'), "
+            "main: bounds('.main-content'), chat: bounds('.chat-container'), "
+                "chatView: (() => { const e = document.querySelector('#view-chat'); const s = getComputedStyle(e); "
+                "return {display:s.display,visibility:s.visibility,opacity:s.opacity}; })(), "
+                "latestMessage: (() => { const items = document.querySelectorAll('#chat-history .message'); "
+                "if (!items.length) return null; const e = items[items.length - 1]; const r = e.getBoundingClientRect(); "
+                "const s = getComputedStyle(e); return {left:r.left,right:r.right,top:r.top,bottom:r.bottom, "
+                "width:r.width,height:r.height,visibility:s.visibility,opacity:s.opacity}; })(), "
+                "composer: bounds('.input-area')}; }"
+        )
+        responsive_chat_layout.append(geometry)
+        if width == 1024:
+            page.screenshot(
+                path=str(
+                    Path(os.getenv("AURA_BROWSER_EVIDENCE_DIR"))
+                    / "screenshots"
+                    / f"a1g-chat-tablet-{width}x{height}.png"
+                )
+            )
+        assert geometry["documentWidth"] <= width + 1, geometry
+        assert geometry["composer"]["left"] >= -1 and geometry["composer"]["right"] <= width + 1, geometry
+        assert geometry["composer"]["top"] >= -1 and geometry["composer"]["bottom"] <= height + 1, geometry
+        assert geometry["latestMessage"] is not None, geometry
+        assert geometry["latestMessage"]["bottom"] <= geometry["composer"]["top"], (
+            f"Latest Chat message is obscured by the composer at {width}x{height}: {geometry}"
+        )
+    measurements["chat_responsive_layout"] = responsive_chat_layout
+    chat_contrast_failures = _contrast_failures(page, "#view-chat")
+    assert not chat_contrast_failures, f"Chat text contrast below 4.5:1: {chat_contrast_failures}"
+    evidence_dir = os.getenv("AURA_BROWSER_EVIDENCE_DIR")
+    if evidence_dir:
+        measurement_path = Path(evidence_dir) / "a1g-browser-measurements.json"
+        measurement_path.write_text(json.dumps(measurements, indent=2), encoding="utf-8")
+
+
 def test_recorded_user_journey(
     browser_session: BrowserSession, browser_account: BrowserCredentials
 ) -> None:
-    """One real user journey; optionally recorded when AURA_CAPTURE_VIDEO=1."""
+    """Settings-to-Chat workflow; optionally recorded when AURA_CAPTURE_VIDEO=1."""
     _sign_in(browser_session, browser_account)
     page = browser_session.page
-    page.get_by_role("button", name="Tasks", exact=True).click()
-    _assert_active_view(page, "tasks")
-    page.locator("#add-task-btn").click()
-    title = f"Recorded A0 task {uuid.uuid4().hex[:8]}"
-    page.locator("#task-title").fill(title)
-    page.get_by_role("button", name="Save Task", exact=True).click()
-    page.locator("#todo-list .task-title").filter(has_text=title).wait_for(state="visible")
-    page.locator("#todo-list .task-checkbox").click()
-    page.locator("#done-list .task-title").filter(has_text=title).wait_for(state="visible")
-
+    _open_models(page)
+    connection = _add_connection(page, "Recorded Ollama", "ollama", "http://127.0.0.1:11434")
+    connection_id = connection.get_attribute("data-connection-id")
+    connection.get_by_role("button", name="Test", exact=True).click()
+    connection.locator(".connection-state").filter(has_text="Connected").wait_for(state="visible")
+    connection.get_by_role("button", name="Discover models", exact=True).click()
+    page.locator("#role-connection").select_option(connection_id)
+    page.locator("#role-model").select_option("qwen2.5:latest")
+    page.get_by_role("button", name="Save role", exact=True).click()
+    page.get_by_role("button", name="Close settings", exact=True).click()
     page.get_by_role("button", name="Chat", exact=True).click()
-    _assert_active_view(page, "chat")
-    page.locator("#chat-input").fill("Hello, this is the A0 local chat check.")
-    page.locator(".send-btn").click()
-    page.wait_for_function(
-        "() => document.querySelector('.message.assistant .message-content')?.textContent.trim() "
-        "&& !document.querySelector('.message.assistant.loading')",
-        timeout=30000,
-    )
-
-    page.get_by_role("button", name="Calendar", exact=True).click()
-    _assert_active_view(page, "calendar")
-    page.get_by_role("button", name="Insights", exact=True).click()
-    _assert_active_view(page, "insights")
-    for dead_label in ("Recents", "Saved", "Projects"):
-        assert page.get_by_role("button", name=dead_label, exact=True).count() == 0
+    browser_session.application.provider_transport.next_stream_behavior = "slow"
+    page.locator("#chat-input").fill("Please start a short answer.")
+    _clear_test_rate_limit_state()
+    page.get_by_role("button", name="Send message", exact=True).click()
+    page.locator(".streaming-message .streamed-content").get_by_text("Synthetic partial", exact=False).wait_for(state="visible")
+    page.get_by_role("button", name="Stop", exact=True).click()
+    page.locator(".streaming-message .message-completion-status").get_by_text("Stopped", exact=True).wait_for(state="visible")
+    assert browser_session.application.provider_transport.streams_closed_event.wait(timeout=5)
     _assert_no_uncaught_errors(browser_session)

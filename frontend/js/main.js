@@ -94,18 +94,12 @@ async function apiJson(url, options = {}) {
 
 function showAuthPanel() {
     const panel = document.getElementById('aura-auth-panel');
-    if (panel) {
-        panel.hidden = false;
-        panel.style.display = 'grid';
-    }
+    if (panel) panel.hidden = false;
 }
 
 function hideAuthPanel() {
     const panel = document.getElementById('aura-auth-panel');
-    if (panel) {
-        panel.hidden = true;
-        panel.style.display = 'none';
-    }
+    if (panel) panel.hidden = true;
 }
 
 async function authenticate(action = 'login') {
@@ -142,10 +136,10 @@ function ensureAuthenticated() {
     if (document.getElementById('aura-auth-panel')) return;
     const panel = document.createElement('section');
     panel.id = 'aura-auth-panel';
+    panel.className = 'aura-auth-panel';
     panel.hidden = Boolean(getAuthToken());
-    panel.style.cssText = `position:fixed;inset:0;background:rgba(10,15,30,.96);z-index:2000;display:${getAuthToken() ? 'none' : 'grid'};place-items:center;color:white`;
     const form = document.createElement('form');
-    form.style.cssText = 'display:grid;gap:12px;width:min(360px,90vw);padding:24px;background:#172033;border-radius:12px';
+    form.className = 'aura-auth-form';
     const title = AuraSafe.element('h2', null, 'Sign in to AURA');
     const identifier = AuraSafe.element('input');
     identifier.id = 'aura-auth-identifier';
@@ -184,7 +178,7 @@ function switchView(viewId) {
     // Update Sidebar Active State
     document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
     // Find button that calls this view
-    const btn = document.querySelector(`button[onclick="switchView('${viewId}')"]`);
+    const btn = document.querySelector(`button[data-view="${CSS.escape(viewId)}"]`);
     if (btn) btn.classList.add('active');
 
     // Close sidebar on mobile after selection
@@ -200,6 +194,49 @@ function switchView(viewId) {
         setTimeout(() => loadTasks(), 100);
     }
 }
+
+document.addEventListener('click', (event) => {
+    const target = event.target instanceof Element ? event.target.closest('[data-action], [data-view], [data-suggestion]') : null;
+    if (!target) return;
+
+    if (target.dataset.view) {
+        switchView(target.dataset.view);
+        return;
+    }
+    if (target.dataset.suggestion) {
+        useSuggestion(target.dataset.suggestion);
+        return;
+    }
+
+    const actions = {
+        'open-settings': openSettings,
+        'close-settings': closeSettings,
+        'toggle-sidebar': toggleSidebar,
+        'send-message': sendMessage,
+        'stop-generation': stopGeneration,
+        'toggle-voice': toggleVoice,
+        'clear-chat': clearChatHistory,
+        'open-task-modal': openTaskModal,
+        'clear-completed': clearCompletedTasks,
+        'calendar-prev': prevDay,
+        'calendar-next': nextDay,
+        'calendar-today': goToToday,
+        'calendar-auto': autoSchedule,
+        'save-settings': saveSettings,
+        'logout': () => { logout(); closeSettings(); },
+        'save-task': saveTask,
+        'close-task-modal': closeTaskModal,
+    };
+    const action = target.dataset.action;
+    if (action && actions[action]) actions[action]();
+});
+
+document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+        closeSettings();
+        closeTaskModal();
+    }
+});
 
 // Sidebar Toggle (Mobile)
 function toggleSidebar() {

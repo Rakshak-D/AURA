@@ -1,79 +1,202 @@
 // Chat Functionality
-let currentChatContext = {};
 let chatRequestActive = false;
+
+// A1-G authenticated SSE client. Provider output is always assigned via textContent.
+let activeChatController = null;
+let chatGeneration = 0;
+let chatAutoFollow = true;
 
 async function sendMessage() {
     const input = document.getElementById('chat-input');
-    const message = input.value.trim();
+    const message = input?.value.trim();
+    if (!message || chatRequestActive) return;
 
-    if (!message) return;
-    if (chatRequestActive) {
-        showToast('Please wait for the current response to finish.', 'error');
-        return;
-    }
     chatRequestActive = true;
-
-    // Clear input and reset height to base size
+    const generation = ++chatGeneration;
+    const controller = new AbortController();
+    activeChatController = controller;
+    setChatBusy(true);
     input.value = '';
     input.style.height = 'auto';
-
-    // If welcome panel is visible, clear it before adding messages
     clearWelcomePanel();
-
-    // Add User Message immediately
+    chatAutoFollow = true;
     addMessage(message, 'user');
 
-    // Show typing indicator bubble
-    const loadingId = addLoadingIndicator();
+    const responseBubble = createStreamingBubble();
+    const content = responseBubble.querySelector('.streamed-content');
+    const sourceBadge = responseBubble.querySelector('.message-source');
+    let requestId = null;
+    let outputBytes = 0;
+    let complete = false;
+    let failed = false;
 
     try {
-        const data = await apiJson(`${API_URL}/chat`, {
+        setChatStatus('Connecting…');
+        const response = await apiFetch(`${API_URL}/chat/stream`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                message: message,
-                context: currentChatContext
-            })
+            body: JSON.stringify({ message }),
+            signal: controller.signal,
         });
-        if (!data || (data.type !== 'widget' && typeof data.response !== 'string')) {
-            throw new Error('Invalid chat response');
+        if (!response.ok || !response.body) {
+            throw new Error('Chat could not connect to the selected model. Check Settings → Models and try again.');
         }
 
-        // Handle Widget Response
-        if (data.type === 'widget') {
-            renderWidget(data);
-        } else if (data.response) {
-            // Handle schedule queries with formatted lists
-            if (data.action_taken === 'query_schedule' && data.data && data.data.events) {
-                // Format schedule as markdown list for better display
-                let scheduleText = data.response;
-                if (data.data.events && data.data.events.length > 0) {
-                    scheduleText += '\n\n**Events:**\n';
-                    data.data.events.forEach((event, idx) => {
-                        const start = new Date(event.start);
-                        const timeStr = start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                        scheduleText += `${idx + 1}. ${event.title} - ${timeStr}\n`;
-                    });
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        while (generation === chatGeneration) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            if (buffer.length > 32_768) throw new Error('The Chat stream exceeded its event limit.');
+            let boundary;
+            while ((boundary = buffer.indexOf('\n\n')) >= 0) {
+                const parsed = parseChatEvent(buffer.slice(0, boundary));
+                buffer = buffer.slice(boundary + 2);
+                if (!parsed) continue;
+                const { event, payload } = parsed;
+                if (event === 'started' && typeof payload.request_id !== 'string') {
+                    throw new Error('The Chat stream returned an invalid request identity.');
                 }
-                addMessage(scheduleText, 'assistant');
-            } else if (data.action_taken === 'task_query' && data.data && data.data.tasks) {
-                renderWidget({ type: 'widget', widget_type: 'task_list', data: { title: data.response, tasks: data.data.tasks } });
-            } else {
-                addMessage(data.response, 'assistant');
+                if (event !== 'started' && !requestId) {
+                    throw new Error('The Chat stream did not start correctly.');
+                }
+                if (requestId && payload.request_id !== requestId) continue;
+                if (event === 'started') {
+                    requestId = payload.request_id;
+                    if (payload.model_id && typeof payload.model_id === 'string') {
+                        const locality = payload.locality === 'local' ? 'Local' : providerDisplayName(payload.provider_type);
+                        sourceBadge.textContent = locality;
+                        sourceBadge.hidden = false;
+                        sourceBadge.setAttribute('aria-label', `Response source: ${locality}`);
+                        updateChatModelIndicator(payload.model_id, locality);
+                    }
+                    setChatStatus(payload.model_id ? 'Generating response…' : 'Working…');
+                } else if (event === 'text_delta') {
+                    if (typeof payload.delta !== 'string') throw new Error('The Chat stream returned an invalid text event.');
+                    outputBytes += new TextEncoder().encode(payload.delta).length;
+                    if (outputBytes > 1_048_576) throw new Error('The Chat response exceeded the display limit.');
+                    content.textContent += payload.delta;
+                    responseBubble.classList.toggle('has-content', Boolean(content.textContent));
+                    if (chatAutoFollow) scrollToBottom(false);
+                } else if (event === 'completed') {
+                    complete = true;
+                    failed = false;
+                    responseBubble.classList.remove('incomplete');
+                    setChatStatus('Response complete');
+                    if (payload.action_taken) handleAction(payload.action_taken, payload.data || {});
+                } else if (event === 'failed') {
+                    failed = true;
+                    const safeMessage = typeof payload.message === 'string'
+                        ? payload.message
+                        : 'The selected model could not complete this request.';
+                    if (!content.textContent) content.textContent = safeMessage;
+                    if (payload.incomplete) markStreamIncomplete(responseBubble, true);
+                    else responseBubble.classList.add('error');
+                    setChatStatus('Response unavailable');
+                } else if (event === 'cancelled') {
+                    failed = true;
+                    markStreamStopped(responseBubble);
+                    setChatStatus('Generation stopped');
+                }
             }
         }
 
-        // Handle Actions
-        if (data.action_taken) {
-            handleAction(data.action_taken, data.data);
+        if (!complete && !failed && generation === chatGeneration && !controller.signal.aborted) {
+            markStreamIncomplete(responseBubble, Boolean(content.textContent), 'The response ended before the model completed it.');
+            setChatStatus('Response interrupted');
         }
-
     } catch (error) {
-        addMessage('I encountered an error. Please check your connection.', 'assistant', true);
-        showToast(error.message || 'Chat request failed', 'error');
+        if (generation === chatGeneration) {
+            if (controller.signal.aborted) {
+                markStreamStopped(responseBubble);
+                setChatStatus('Generation stopped');
+            } else {
+                if (!content.textContent) content.textContent = error.message || 'The selected model could not complete this request.';
+                responseBubble.classList.add('error');
+                setChatStatus('Response unavailable');
+            }
+        }
     } finally {
-        removeLoadingIndicator(loadingId);
-        chatRequestActive = false;
+        if (generation === chatGeneration) {
+            chatRequestActive = false;
+            activeChatController = null;
+            setChatBusy(false);
+            if (chatAutoFollow) scrollToBottom(false);
+        }
+    }
+}
+
+function stopGeneration() {
+    if (activeChatController) activeChatController.abort();
+}
+
+function setChatBusy(busy) {
+    const send = document.querySelector('[data-action="send-message"]');
+    const stop = document.querySelector('[data-action="stop-generation"]');
+    if (send) send.hidden = busy;
+    if (stop) stop.hidden = !busy;
+    if (stop) stop.disabled = !busy;
+    const input = document.getElementById('chat-input');
+    if (input) input.setAttribute('aria-busy', String(busy));
+}
+
+function setChatStatus(value) {
+    const status = document.getElementById('chat-status');
+    if (status) status.textContent = value;
+}
+
+function providerDisplayName(providerType) {
+    if (providerType === 'ollama') return 'Ollama';
+    if (providerType === 'openai_compatible') return 'OpenAI-compatible';
+    return 'Cloud provider';
+}
+
+function updateChatModelIndicator(modelId, locality) {
+    const indicator = document.getElementById('chat-model-indicator');
+    if (indicator) indicator.textContent = `${locality} · ${modelId}`;
+}
+
+function createStreamingBubble() {
+    const bubble = document.createElement('div');
+    bubble.className = 'message assistant streaming-message';
+    const badge = AuraSafe.element('span', 'message-source');
+    badge.hidden = true;
+    const content = AuraSafe.element('div', 'message-content streamed-content');
+    const status = AuraSafe.element('span', 'message-completion-status');
+    bubble.append(badge, content, status);
+    document.getElementById('chat-history').appendChild(bubble);
+    if (chatAutoFollow) scrollToBottom(false);
+    return bubble;
+}
+
+function markStreamIncomplete(bubble, partial, message = 'Incomplete response') {
+    bubble.classList.add('incomplete');
+    const status = bubble.querySelector('.message-completion-status');
+    if (status) status.textContent = partial ? message : '';
+}
+
+function markStreamStopped(bubble) {
+    bubble.classList.add('stopped');
+    const status = bubble.querySelector('.message-completion-status');
+    if (status) status.textContent = 'Stopped';
+}
+
+function parseChatEvent(rawEvent) {
+    let eventName = '';
+    const dataLines = [];
+    for (const line of rawEvent.split(/\r?\n/)) {
+        if (line.startsWith('event:')) eventName = line.slice(6).trim();
+        else if (line.startsWith('data:')) dataLines.push(line.slice(5).trimStart());
+    }
+    if (!eventName || !dataLines.length) return null;
+    try {
+        const payload = JSON.parse(dataLines.join('\n'));
+        if (!payload || typeof payload !== 'object') throw new Error('invalid event');
+        return { event: eventName, payload };
+    } catch (_error) {
+        throw new Error('The Chat stream returned an invalid event.');
     }
 }
 
@@ -98,8 +221,7 @@ function addMessage(text, sender, isError = false) {
 
     history.appendChild(div);
 
-    // Auto-scroll with smooth behavior
-    setTimeout(() => scrollToBottom(), 50);
+    if (chatAutoFollow) scrollToBottom(false);
 
     return div;
 }
@@ -173,20 +295,11 @@ function removeLoadingIndicator(id) {
     if (el) el.remove();
 }
 
-function scrollToBottom() {
+function scrollToBottom(force = false) {
     const history = document.getElementById('chat-history');
     if (!history) return;
-    
-    // Smooth scroll to bottom
-    history.scrollTo({
-        top: history.scrollHeight,
-        behavior: 'smooth'
-    });
-    
-    // Fallback for browsers that don't support smooth scroll
-    if (history.scrollTop !== history.scrollHeight) {
-        history.scrollTop = history.scrollHeight;
-    }
+    if (!force && !chatAutoFollow) return;
+    history.scrollTop = history.scrollHeight;
 }
 
 function handleChatInput(e) {
@@ -233,7 +346,7 @@ function renderWelcomeIfEmpty() {
 function clearWelcomePanel() {
     const history = document.getElementById('chat-history');
     if (!history) return;
-    const welcome = history.querySelector('.chat-welcome');
+    const welcome = history.querySelector('.chat-welcome, .welcome-panel');
     if (welcome) {
         welcome.remove();
     }
@@ -277,6 +390,13 @@ function handleAction(action, data) {
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
     const input = document.getElementById('chat-input');
+    const history = document.getElementById('chat-history');
+    if (history) {
+        history.addEventListener('scroll', () => {
+            const remaining = history.scrollHeight - history.clientHeight - history.scrollTop;
+            chatAutoFollow = remaining <= 80;
+        }, { passive: true });
+    }
     if (input) {
         // Auto-resize textarea
         input.addEventListener('input', function () {
