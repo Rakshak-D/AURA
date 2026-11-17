@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import base64
+import hashlib
+import hmac
 import json
 import os
 import sys
@@ -22,6 +24,10 @@ _KEYRING_KEY_USERNAME = "aura-master-key"
 _CREDENTIAL_FORMAT_VERSION = 1
 _AES_KEY_BYTES = 32
 _AES_GCM_NONCE_BYTES = 12
+_PORTABLE_KEY_ENV = "AURA_PROVIDER_MASTER_KEY"
+_PORTABLE_KEY_FILE_ENV = "AURA_PROVIDER_MASTER_KEY_FILE"
+_PORTABLE_KEY_ID_CONTEXT = b"aura-provider-master-key-id-v1"
+_MAX_ENCODED_KEY_FILE_BYTES = 128
 
 
 class CredentialState(StrEnum):
@@ -83,6 +89,72 @@ class UnsupportedKeyProtector:
         raise self._unavailable()
 
     def create_key(self) -> MasterKeyMaterial:
+        raise self._unavailable()
+
+
+class PortableKeyProtector:
+    """Protect provider records with an explicitly configured 256-bit secret."""
+
+    @staticmethod
+    def _unavailable() -> ProviderError:
+        return ProviderError(ProviderErrorCode.SECRET_STORE_UNAVAILABLE)
+
+    @staticmethod
+    def _configured_key() -> bytes:
+        direct_value = os.environ.get(_PORTABLE_KEY_ENV)
+        file_value = os.environ.get(_PORTABLE_KEY_FILE_ENV)
+        if direct_value is not None and file_value is not None:
+            raise PortableKeyProtector._unavailable()
+        if direct_value is None and file_value is None:
+            raise PortableKeyProtector._unavailable()
+
+        if direct_value is not None:
+            encoded_key = direct_value
+        else:
+            try:
+                with open(file_value, "rb") as secret_file:
+                    encoded_bytes = secret_file.read(_MAX_ENCODED_KEY_FILE_BYTES + 1)
+                if len(encoded_bytes) > _MAX_ENCODED_KEY_FILE_BYTES:
+                    raise ValueError
+                encoded_key = encoded_bytes.decode("ascii").strip()
+            except (OSError, UnicodeError, ValueError):
+                raise PortableKeyProtector._unavailable() from None
+
+        try:
+            if not isinstance(encoded_key, str) or len(encoded_key) != 44:
+                raise ValueError
+            key = base64.b64decode(encoded_key, validate=True)
+            if (
+                len(key) != _AES_KEY_BYTES
+                or base64.b64encode(key).decode("ascii") != encoded_key
+            ):
+                raise ValueError
+        except (ValueError, TypeError):
+            raise PortableKeyProtector._unavailable() from None
+        return key
+
+    @staticmethod
+    def _key_id(key: bytes) -> str:
+        return hmac.new(key, _PORTABLE_KEY_ID_CONTEXT, hashlib.sha256).hexdigest()
+
+    def active_key(self) -> MasterKeyMaterial:
+        key = self._configured_key()
+        return MasterKeyMaterial(self._key_id(key), key)
+
+    def load_key(self, key_id: str) -> bytes | None:
+        key = self._configured_key()
+        if (
+            not isinstance(key_id, str)
+            or len(key_id) != 64
+            or not key_id.isascii()
+            or any(character not in "0123456789abcdef" for character in key_id)
+            or not hmac.compare_digest(self._key_id(key), key_id)
+        ):
+            return None
+        return key
+
+    def create_key(self) -> MasterKeyMaterial:
+        # Portable key material is operator-managed; never invent a replacement.
         raise self._unavailable()
 
 
@@ -429,11 +501,16 @@ class SecretStore:
 
 
 def build_production_secret_store() -> SecretStore:
-    """Select only the approved Windows protector; other platforms fail closed."""
+    """Keep Windows vault defaults and require explicit portable Linux key setup."""
 
     protector: KeyProtector
     if sys.platform == "win32":
         protector = WindowsCredentialKeyProtector()
+    elif sys.platform.startswith("linux") and (
+        os.environ.get(_PORTABLE_KEY_ENV) is not None
+        or os.environ.get(_PORTABLE_KEY_FILE_ENV) is not None
+    ):
+        protector = PortableKeyProtector()
     else:
         protector = UnsupportedKeyProtector()
     return SecretStore(protector)

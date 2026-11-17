@@ -157,6 +157,8 @@ Each task below is a gated checkpoint. Do not skip its test-first sequence or hy
 
 **Gate:** Only Windows Credential Manager is a production key backend in A1. Linux CI fakes are injectable only in tests and cannot be enabled through production configuration. Secret values remain transient in memory and do not enter database settings, logs, responses, prompts, exports, or exception text.
 
+**Owner-approved A1-E correction:** The Linux/container fail-closed rule above remains the original Task B decision record. A1-E adds a portable production protector only when the operator explicitly configures exactly one of `AURA_PROVIDER_MASTER_KEY` or `AURA_PROVIDER_MASTER_KEY_FILE`, containing base64 for a 32-byte key. Windows continues to use Credential Manager by default. The portable protector does not generate keys or fall back to application authentication secrets; `_FILE` with a protected secret mount is preferred. This correction is limited to the A1-E tool-contract and credential-storage foundation and does not authorize adapters, Settings APIs, or UI work.
+
 **Evidence:** Document exact dependency versions and installation-size delta in DEPENDENCY_CHANGES.md; document supported Windows account/profile recovery, unsupported Linux/container behavior, backup/restore limitations, and per-connection re-entry in SECURITY_REVIEW.md.
 
 **Hygiene:** No test key, local credential, environment file, or temporary vault dump remains. Keep dependency lock or cache output out of Git unless an existing repository convention requires it.

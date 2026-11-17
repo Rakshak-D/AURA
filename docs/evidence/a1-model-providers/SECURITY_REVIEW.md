@@ -134,3 +134,25 @@ Result: `222 passed, 7 deselected` on each version. The first emitted 3 warnings
 **PASS_REAL** — On Windows Python 3.11.7 and 3.12.10, `python -m compileall -q backend tests scripts`, `python -m ruff check backend tests scripts --select E4,E7,E9,F`, and `python -m pip check` passed. `git diff --check` passed. No dependency, schema, route, frontend, adapter, or A1-A change was introduced.
 
 **NOT_TESTED** — Native Linux/Ubuntu, hosted CI and real network/socket behavior remain untested. All network assertions use the deterministic fake resolver and network backend.
+
+## A1-E tool-contract and portable credential checkpoint
+
+**PASS_SYNTHETIC** — The provider-independent stream contracts now expose text, tool-fragment, and completion event semantics. `ToolCallAssembler` reconstructs interleaved calls by stable index and ID, limits responses to 128 calls, bounds each name and argument payload plus the cumulative payload, rejects conflicting/missing identities and incomplete/non-object JSON, and redacts argument representations. No tool is resolved or executed. On Windows Python 3.11.7 and 3.12.10, `python -m pytest -q tests/test_provider_contracts.py tests/test_provider_secrets.py` passed 44 tests on each version.
+
+**PASS_SYNTHETIC** — The portable protector was exercised with synthetic 32-byte keys through both direct environment configuration and a `_FILE` secret file. Tests cover strict key length/base64 checks, conflicting/missing/oversized/unreadable configuration, stable cross-instance AES-GCM decryption, wrong-key re-entry, no generated replacement, no application-secret fallback, Linux factory selection, unchanged Windows factory selection, encrypted database records, owner-scoped deletion, and key redaction. The Windows protector's key save/load path was exercised against an in-memory Credential Manager double. No real key or credential was used and no owner vault was accessed. No dependency or schema change was required.
+
+**PASS_REAL** — On Windows Python 3.11.7 and 3.12.10, the complete non-browser suite `AURA_ENVIRONMENT=test python -m pytest -m 'not browser' -q` passed 246 tests and deselected 7 browser tests on each version. `python -m compileall -q backend tests scripts`, `python -m ruff check backend tests scripts --select E4,E7,E9,F`, `python -m pip check`, and `git diff --check` passed on both versions. Existing Pydantic deprecation warnings were reported; Python 3.12 also reported the existing tar-extraction deprecation warning.
+
+**PASS_SYNTHETIC** — The unchanged A1-D transport/policy regression suite `python -m pytest -q tests/test_provider_network_policy.py` passed 94 tests on both Windows Python versions using deterministic resolver/network doubles; no real network or socket was used.
+
+**NOT_TESTED** — Native Linux/Ubuntu or Docker execution: this host had no separate WSL Linux distribution and the Docker Desktop Linux daemon was unavailable. Actual Windows Credential Manager credential write/read/recovery was not performed; the Windows test only verifies explicit backend configuration. Hosted CI, provider requests, models, and real network access were not used. Portable key behavior therefore has synthetic configuration evidence on Windows, not native Linux/container evidence.
+
+### A1-E differential review summary
+
+**Baseline and scope** — Reviewed changes against `84eefef4d9b2ab8c95d2f915738cc85b438ddceb`. `git blame` attributes the prior Linux `UnsupportedKeyProtector` selection to accepted A1-A commit `1aec1ed`; this round retains that fail-closed class and changes selection only for Linux with an explicitly set provider-key variable. No accepted validation, encryption, AAD, owner checks, or A1-D policy code was removed. No schema or dependency file changed.
+
+**Blast radius** — `build_production_secret_store()` has no application call sites in the current tree; its only call sites are tests. `ToolCallAssembler` and `ChatChunk.event_types` likewise have no runtime consumers yet, because adapters are outside this round. The new APIs therefore do not silently change existing Chat or credential flows.
+
+**Adversarial review** — A model can submit arbitrarily many stream events, but assembly rejects excess indexes/calls, per-call overflow, cumulative payload overflow, ID conflicts, missing IDs, and malformed final JSON before returning any calls; it never dispatches names or parses arguments into actions. If a portable deployment loses or changes its configured key, the configured key ID cannot match the stored key ID, so decryption returns the existing safe re-entry state without altering ciphertext. Missing/invalid key configuration remains a safe store-unavailable failure. Environment-variable exposure and external key backup remain operator risks documented above.
+
+**Review result** — No code finding identified in the reviewed A1-E diff. Confidence is limited to the tested Windows environment and deterministic test doubles; native Linux/container key configuration and real Credential Manager persistence remain unverified.
