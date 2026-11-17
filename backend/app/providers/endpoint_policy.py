@@ -385,6 +385,29 @@ class EndpointPolicy:
         self._lan_grants = tuple(local_network_grants)
         self._resolution_timeout = _validated_resolution_timeout(resolution_timeout)
 
+    def preflight_local_only(self, context: ProviderConnectionContext) -> None:
+        """Apply the side-effect-free policy gate before transport queueing."""
+
+        self._preflight_connection(context)
+
+    def _preflight_connection(
+        self, context: ProviderConnectionContext
+    ) -> tuple[_ParsedEndpoint, bool]:
+        if type(context.local_only) is not bool:
+            raise _endpoint_blocked()
+        try:
+            provider_id = ProviderId(context.provider_id)
+        except (TypeError, ValueError):
+            raise _endpoint_blocked() from None
+        if context.local_only and provider_id in _CLOUD_PROVIDER_IDS:
+            raise ProviderError(ProviderErrorCode.LOCAL_ONLY_BLOCKED)
+
+        configured_endpoint = _parse_endpoint(context.base_url or "", allow_query=False)
+        is_local = _destination_is_local(context, configured_endpoint, self._lan_grants)
+        if context.local_only and not is_local:
+            raise ProviderError(ProviderErrorCode.LOCAL_ONLY_BLOCKED)
+        return configured_endpoint, is_local
+
     async def resolve_and_pin(
         self,
         url: str,
@@ -394,16 +417,7 @@ class EndpointPolicy:
     ) -> PinnedDestination:
         if resolution_timeout is not None:
             resolution_timeout = _validated_resolution_timeout(resolution_timeout)
-        if type(context.local_only) is not bool:
-            raise _endpoint_blocked()
-        provider_id = ProviderId(context.provider_id)
-        if context.local_only and provider_id in _CLOUD_PROVIDER_IDS:
-            raise ProviderError(ProviderErrorCode.LOCAL_ONLY_BLOCKED)
-
-        configured_endpoint = _parse_endpoint(context.base_url or "", allow_query=False)
-        is_local = _destination_is_local(context, configured_endpoint, self._lan_grants)
-        if context.local_only and not is_local:
-            raise ProviderError(ProviderErrorCode.LOCAL_ONLY_BLOCKED)
+        configured_endpoint, is_local = self._preflight_connection(context)
 
         requested_endpoint = _parse_endpoint(url)
         if (

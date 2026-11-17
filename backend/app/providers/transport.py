@@ -369,6 +369,7 @@ class ProviderStreamResponse:
         self._entered = True
         self._started_at = self._transport._monotonic()
         try:
+            self._transport.endpoint_policy.preflight_local_only(self._context)
             await self._transport._acquire_pool_slot()
             self._lease_acquired = True
 

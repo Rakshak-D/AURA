@@ -1007,6 +1007,58 @@ async def test_connection_pool_acquisition_has_a_bounded_wait() -> None:
 
 @pytest.mark.unit
 @pytest.mark.asyncio
+async def test_local_only_denial_precedes_pool_wait_and_preserves_active_request() -> (
+    None
+):
+    endpoint_policy, resolver = policy()
+    backend = FakeNetworkBackend(
+        (
+            response_bytes(body=b"active request remains usable"),
+            response_bytes(body=b"must not be reached"),
+        )
+    )
+    client = transport(
+        endpoint_policy,
+        backend,
+        limits=TransportLimits(max_concurrent_requests=1, pool_timeout=0),
+    )
+    local_context = context(
+        "http://127.0.0.1:11434",
+        provider=ProviderId.OLLAMA,
+        local_only=True,
+    )
+
+    async with client.stream(
+        "GET", "http://127.0.0.1:11434/events", context=local_context
+    ) as active_request:
+        assert backend.connect_calls == [("127.0.0.1", 11434, 5.0)]
+        assert not backend.streams[0].closed
+
+        with pytest.raises(ProviderError) as caught:
+            await client.request(
+                "POST",
+                "https://api.example.com/v1/chat",
+                headers={"Authorization": "Bearer SENTINEL-SECRET"},
+                body=b"SENTINEL-PROMPT",
+                context=context(
+                    "https://api.example.com/v1",
+                    provider=ProviderId.ANTHROPIC,
+                    local_only=True,
+                ),
+            )
+
+        assert caught.value.code is ProviderErrorCode.LOCAL_ONLY_BLOCKED
+        assert resolver.calls == []
+        assert backend.connect_calls == [("127.0.0.1", 11434, 5.0)]
+        assert not backend.streams[0].closed
+        chunks = [chunk async for chunk in active_request]
+        assert chunks == [b"active request remains usable"]
+
+    assert backend.streams[0].closed
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
 async def test_url_cannot_cross_the_stored_connection_origin() -> None:
     endpoint_policy, resolver = policy(("93.184.216.34",))
     backend = FakeNetworkBackend()

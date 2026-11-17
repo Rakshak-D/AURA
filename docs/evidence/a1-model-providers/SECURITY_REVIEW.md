@@ -122,3 +122,15 @@ Result: `222 passed, 7 deselected` on each version. The first emitted 3 warnings
 **Recommendation and limits** — A1-D is ready for supervising-engineer source review. Destination, SNI, certificate, authority, and cleanup assertions use HTTPCore's supported fake network-backend boundary; they are not real socket or TLS-handshake evidence. No real network was used, and native Linux/Ubuntu plus hosted CI remain NOT_TESTED. This round leaves LAN grants fail-closed because no trusted persisted authorization source exists yet.
 
 **Method** — Read the baseline provider contracts/errors and connection context, inspected the implementation and tests, checked commit history for prior transport code, traced references with `rg`, reviewed HTTPX/HTTPCore versions and extension points, and exercised the denial and success paths with deterministic resolver/backend doubles. No A1-A behavior was modified.
+
+## A1-D-R1 Local only queue preflight
+
+**PASS_SYNTHETIC** — `ProviderStreamResponse.__aenter__` now invokes `EndpointPolicy.preflight_local_only` before acquiring a concurrency slot. The preflight and `resolve_and_pin` share `_preflight_connection`, so the Local only classification has one implementation. This preflight parses only the stored connection context and performs no DNS or network work. Full requested-endpoint resolution, DNS validation and numeric-IP pinning still complete before pool construction or connection.
+
+**PASS_SYNTHETIC** — `test_local_only_denial_precedes_pool_wait_and_preserves_active_request` occupies the single slot with an in-flight authorized loopback stream, then attempts a cloud request while Local only is enabled. It verifies `local_only_blocked`, zero DNS calls for the rejected request, no additional fake network connection, and successful completion of the already active stream. The test first reproduced the defect as `TIMEOUT`; it passes after the correction.
+
+**PASS_SYNTHETIC** — On Windows, `python -m pytest -q tests/test_provider_network_policy.py` passed 94 tests on Python 3.11.7 and 94 on Python 3.12.10, with 3 existing Pydantic warnings per run. `AURA_ENVIRONMENT=test python -m pytest -m 'not browser' -q` passed 223 tests and deselected 7 browser tests on each version; Python 3.11.7 emitted 3 existing warnings and Python 3.12.10 emitted 4, including the existing tar-extraction deprecation warning.
+
+**PASS_REAL** — On Windows Python 3.11.7 and 3.12.10, `python -m compileall -q backend tests scripts`, `python -m ruff check backend tests scripts --select E4,E7,E9,F`, and `python -m pip check` passed. `git diff --check` passed. No dependency, schema, route, frontend, adapter, or A1-A change was introduced.
+
+**NOT_TESTED** — Native Linux/Ubuntu, hosted CI and real network/socket behavior remain untested. All network assertions use the deterministic fake resolver and network backend.
