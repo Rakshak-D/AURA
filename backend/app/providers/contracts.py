@@ -35,6 +35,12 @@ class MessageRole(StrEnum):
     TOOL = "tool"
 
 
+class ChatStreamEventType(StrEnum):
+    TEXT_DELTA = "text_delta"
+    TOOL_CALL_FRAGMENT = "tool_call_fragment"
+    COMPLETION = "completion"
+
+
 class CapabilityState(StrEnum):
     SUPPORTED = "supported"
     UNSUPPORTED = "unsupported"
@@ -51,6 +57,7 @@ _MAX_TOOL_NAME_LENGTH = 64
 _MAX_TOOL_CALL_ID_LENGTH = 128
 _MAX_TOOL_PAYLOAD_BYTES = 65_536
 _MAX_TOOL_COUNT = 128
+_MAX_CUMULATIVE_TOOL_PAYLOAD_BYTES = 1_048_576
 
 
 def _validate_identity(value: object, label: str, maximum_length: int) -> str:
@@ -404,6 +411,121 @@ class ChatChunk:
         if len(indexes) != len(set(indexes)) or len(call_ids) != len(set(call_ids)):
             raise ValueError("stream tool-call identities must be unique within a chunk")
         object.__setattr__(self, "tool_call_deltas", tool_call_deltas)
+
+    @property
+    def event_types(self) -> tuple[ChatStreamEventType, ...]:
+        """Describe every event carried by this chunk, including mixed chunks."""
+        events: list[ChatStreamEventType] = []
+        if self.delta:
+            events.append(ChatStreamEventType.TEXT_DELTA)
+        if self.tool_call_deltas:
+            events.append(ChatStreamEventType.TOOL_CALL_FRAGMENT)
+        if self.finish_reason is not None:
+            events.append(ChatStreamEventType.COMPLETION)
+        return tuple(events)
+
+
+@dataclass(slots=True)
+class _ToolCallAssembly:
+    call_id: str | None = None
+    name: bytearray = field(default_factory=bytearray, repr=False)
+    arguments: bytearray = field(default_factory=bytearray, repr=False)
+
+
+class ToolCallAssembler:
+    """Bounded assembler for inert, provider-proposed tool-call stream data."""
+
+    def __init__(self) -> None:
+        self._calls: dict[int, _ToolCallAssembly] = {}
+        self._indexes_by_id: dict[str, int] = {}
+        self._cumulative_payload_bytes = 0
+        self._model_id: str | None = None
+        self._finished = False
+        self._failed = False
+
+    def consume(self, chunk: ChatChunk) -> tuple[ToolCall, ...] | None:
+        """Add one chunk; return reconstructed calls only on its completion event."""
+        if self._finished or self._failed:
+            raise ValueError("tool-call stream is already closed")
+        if not isinstance(chunk, ChatChunk):
+            self._failed = True
+            self._discard_partial_calls()
+            raise ValueError("tool-call stream requires ChatChunk values")
+
+        try:
+            return self._consume(chunk)
+        except (UnicodeError, ValueError, RecursionError):
+            self._failed = True
+            self._discard_partial_calls()
+            raise ValueError("invalid or incomplete tool-call stream") from None
+
+    def _record_payload_size(self, size: int) -> None:
+        if self._cumulative_payload_bytes + size > _MAX_CUMULATIVE_TOOL_PAYLOAD_BYTES:
+            raise ValueError("cumulative tool-call payload exceeds the maximum")
+        self._cumulative_payload_bytes += size
+
+    def _discard_partial_calls(self) -> None:
+        self._calls.clear()
+        self._indexes_by_id.clear()
+        self._cumulative_payload_bytes = 0
+
+    def _consume(self, chunk: ChatChunk) -> tuple[ToolCall, ...] | None:
+        if self._model_id is None:
+            self._model_id = chunk.model_id
+        elif self._model_id != chunk.model_id:
+            raise ValueError("stream model changed")
+
+        for delta in chunk.tool_call_deltas:
+            if delta.index >= _MAX_TOOL_COUNT:
+                raise ValueError("tool-call stream index exceeds the maximum")
+            assembly = self._calls.get(delta.index)
+            if assembly is None:
+                if len(self._calls) >= _MAX_TOOL_COUNT:
+                    raise ValueError("tool-call response exceeds the maximum call count")
+                assembly = _ToolCallAssembly()
+                self._calls[delta.index] = assembly
+
+            if delta.call_id is not None:
+                if assembly.call_id is not None and assembly.call_id != delta.call_id:
+                    raise ValueError("tool-call identity changed during streaming")
+                if assembly.call_id is None:
+                    existing_index = self._indexes_by_id.get(delta.call_id)
+                    if existing_index is not None and existing_index != delta.index:
+                        raise ValueError("tool-call identity is assigned to multiple indexes")
+                    self._record_payload_size(len(delta.call_id.encode("utf-8")))
+                    assembly.call_id = delta.call_id
+                    self._indexes_by_id[delta.call_id] = delta.index
+
+            if delta.name_fragment is not None:
+                name_bytes = delta.name_fragment.encode("ascii")
+                if len(assembly.name) + len(name_bytes) > _MAX_TOOL_NAME_LENGTH:
+                    raise ValueError("assembled tool name exceeds the maximum")
+                self._record_payload_size(len(name_bytes))
+                assembly.name.extend(name_bytes)
+
+            argument_bytes = delta.arguments_fragment.encode("utf-8")
+            if len(assembly.arguments) + len(argument_bytes) > _MAX_TOOL_PAYLOAD_BYTES:
+                raise ValueError("assembled tool arguments exceed the maximum")
+            self._record_payload_size(len(argument_bytes))
+            assembly.arguments.extend(argument_bytes)
+
+        if chunk.finish_reason is None:
+            return None
+
+        calls: list[ToolCall] = []
+        for index in sorted(self._calls):
+            assembly = self._calls[index]
+            if assembly.call_id is None or not assembly.name or not assembly.arguments:
+                raise ValueError("completed tool call is missing identity or payload")
+            call = ToolCall(
+                call_id=assembly.call_id,
+                name=assembly.name.decode("ascii"),
+                arguments_json=assembly.arguments.decode("utf-8"),
+            )
+            calls.append(call)
+        self._finished = True
+        self._discard_partial_calls()
+        return tuple(calls)
 
 
 @dataclass(frozen=True, slots=True)

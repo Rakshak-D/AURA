@@ -211,6 +211,263 @@ def test_stream_chunks_carry_partial_tool_call_deltas_without_executing_them():
         )
 
 
+def test_stream_events_and_assembler_reconstruct_interleaved_calls():
+    contracts = _contracts()
+    assembler = contracts.ToolCallAssembler()
+
+    text_only = contracts.ChatChunk(model_id="model-a", delta="thinking")
+    assert text_only.event_types == (contracts.ChatStreamEventType.TEXT_DELTA,)
+    assert assembler.consume(text_only) is None
+
+    first = contracts.ChatChunk(
+        model_id="model-a",
+        delta="",
+        tool_call_deltas=(
+            contracts.ToolCallDelta(
+                index=0,
+                call_id="call-weather",
+                name_fragment="lookup_weather",
+                arguments_fragment='{"city":',
+            ),
+            contracts.ToolCallDelta(
+                index=1,
+                call_id="call-count",
+                name_fragment="count_items",
+                arguments_fragment='{"count":',
+            ),
+        ),
+    )
+    second = contracts.ChatChunk(
+        model_id="model-a",
+        delta="answer preamble",
+        tool_call_deltas=(
+            contracts.ToolCallDelta(index=1, arguments_fragment="2}"),
+            contracts.ToolCallDelta(index=0, arguments_fragment='"Paris"}'),
+        ),
+    )
+    completion = contracts.ChatChunk(
+        model_id="model-a",
+        delta="",
+        finish_reason="tool_calls",
+    )
+
+    assert first.event_types == (contracts.ChatStreamEventType.TOOL_CALL_FRAGMENT,)
+    assert second.event_types == (
+        contracts.ChatStreamEventType.TEXT_DELTA,
+        contracts.ChatStreamEventType.TOOL_CALL_FRAGMENT,
+    )
+    assert completion.event_types == (contracts.ChatStreamEventType.COMPLETION,)
+    assert assembler.consume(first) is None
+    assert assembler.consume(second) is None
+    calls = assembler.consume(completion)
+
+    assert calls is not None
+    assert [(call.call_id, call.name, call.arguments_json) for call in calls] == [
+        ("call-weather", "lookup_weather", '{"city":"Paris"}'),
+        ("call-count", "count_items", '{"count":2}'),
+    ]
+    assert "Paris" not in repr(calls)
+
+
+def test_tool_call_assembler_rejects_missing_or_conflicting_identities():
+    contracts = _contracts()
+    missing_id = contracts.ToolCallAssembler()
+    with pytest.raises(ValueError):
+        missing_id.consume(
+            contracts.ChatChunk(
+                model_id="model-a",
+                delta="",
+                finish_reason="tool_calls",
+                tool_call_deltas=(
+                    contracts.ToolCallDelta(
+                        index=0,
+                        name_fragment="lookup",
+                        arguments_fragment="{}",
+                    ),
+                ),
+            )
+        )
+
+    conflicting_id = contracts.ToolCallAssembler()
+    assert conflicting_id.consume(
+        contracts.ChatChunk(
+            model_id="model-a",
+            delta="",
+            tool_call_deltas=(
+                contracts.ToolCallDelta(
+                    index=0,
+                    call_id="call-one",
+                    name_fragment="lookup",
+                    arguments_fragment="{",
+                ),
+            ),
+        )
+    ) is None
+    with pytest.raises(ValueError):
+        conflicting_id.consume(
+            contracts.ChatChunk(
+                model_id="model-a",
+                delta="",
+                tool_call_deltas=(
+                    contracts.ToolCallDelta(
+                        index=0,
+                        call_id="call-two",
+                        arguments_fragment="}",
+                    ),
+                ),
+            )
+        )
+
+    duplicate_id = contracts.ToolCallAssembler()
+    assert duplicate_id.consume(
+        contracts.ChatChunk(
+            model_id="model-a",
+            delta="",
+            tool_call_deltas=(
+                contracts.ToolCallDelta(
+                    index=0,
+                    call_id="call-one",
+                    name_fragment="lookup",
+                    arguments_fragment="{}",
+                ),
+                contracts.ToolCallDelta(
+                    index=1,
+                    name_fragment="count",
+                    arguments_fragment="{}",
+                ),
+            ),
+        )
+    ) is None
+    with pytest.raises(ValueError):
+        duplicate_id.consume(
+            contracts.ChatChunk(
+                model_id="model-a",
+                delta="",
+                tool_call_deltas=(
+                    contracts.ToolCallDelta(index=1, call_id="call-one"),
+                ),
+            )
+        )
+
+
+def test_tool_call_assembler_bounds_indexes_and_cumulative_payload():
+    contracts = _contracts()
+    with pytest.raises(ValueError):
+        contracts.ToolCallAssembler().consume(
+            contracts.ChatChunk(
+                model_id="model-a",
+                delta="",
+                tool_call_deltas=(
+                    contracts.ToolCallDelta(index=128, arguments_fragment="{}"),
+                ),
+            )
+        )
+
+    exactly_maximum = contracts.ToolCallAssembler()
+    maximum_chunk = contracts.ChatChunk(
+        model_id="model-a",
+        delta="",
+        tool_call_deltas=tuple(
+            contracts.ToolCallDelta(
+                index=index,
+                call_id=f"call-{index}",
+                name_fragment="lookup",
+                arguments_fragment="{}",
+            )
+            for index in range(128)
+        ),
+    )
+    assert exactly_maximum.consume(maximum_chunk) is None
+    completed = exactly_maximum.consume(
+        contracts.ChatChunk(model_id="model-a", delta="", finish_reason="tool_calls")
+    )
+    assert completed is not None and len(completed) == 128
+
+    oversized = contracts.ToolCallAssembler()
+    fragments = tuple(
+        contracts.ToolCallDelta(
+            index=index,
+            call_id=f"call-{index}",
+            name_fragment="tool",
+            arguments_fragment="x" * 62_000,
+        )
+        for index in range(17)
+    )
+    with pytest.raises(ValueError):
+        oversized.consume(
+            contracts.ChatChunk(
+                model_id="model-a",
+                delta="",
+                tool_call_deltas=fragments,
+            )
+        )
+
+    per_call = contracts.ToolCallAssembler()
+    assert per_call.consume(
+        contracts.ChatChunk(
+            model_id="model-a",
+            delta="",
+            tool_call_deltas=(
+                contracts.ToolCallDelta(
+                    index=0,
+                    call_id="call-one",
+                    name_fragment="lookup",
+                    arguments_fragment="x" * 40_000,
+                ),
+            ),
+        )
+    ) is None
+    with pytest.raises(ValueError):
+        per_call.consume(
+            contracts.ChatChunk(
+                model_id="model-a",
+                delta="",
+                tool_call_deltas=(
+                    contracts.ToolCallDelta(index=0, arguments_fragment="x" * 26_000),
+                ),
+            )
+        )
+
+
+@pytest.mark.parametrize("arguments", ['{"incomplete":', "[]", "null"])
+def test_tool_call_assembler_rejects_invalid_final_arguments(arguments):
+    contracts = _contracts()
+    assembler = contracts.ToolCallAssembler()
+
+    assert assembler.consume(
+        contracts.ChatChunk(
+            model_id="model-a",
+            delta="",
+            tool_call_deltas=(
+                contracts.ToolCallDelta(
+                    index=0,
+                    call_id="call-one",
+                    name_fragment="lookup",
+                    arguments_fragment=arguments,
+                ),
+            ),
+        )
+    ) is None
+    with pytest.raises(ValueError):
+        assembler.consume(
+            contracts.ChatChunk(model_id="model-a", delta="", finish_reason="stop")
+        )
+
+
+def test_tool_call_fragment_representations_redact_arguments():
+    contracts = _contracts()
+    sentinel = "synthetic-private-tool-arguments"
+    delta = contracts.ToolCallDelta(index=0, arguments_fragment=sentinel)
+    chunk = contracts.ChatChunk(
+        model_id="model-a",
+        delta="",
+        tool_call_deltas=(delta,),
+    )
+
+    assert sentinel not in repr(delta)
+    assert sentinel not in repr(chunk)
+
+
 def test_capabilities_default_to_unknown():
     contracts = _contracts()
 
