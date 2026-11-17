@@ -44,16 +44,23 @@ async function sendMessage() {
 
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
+        const encoder = new TextEncoder();
         let buffer = '';
+        const byteLength = value => encoder.encode(value).byteLength;
         while (generation === chatGeneration) {
             const { value, done } = await reader.read();
             if (done) break;
-            buffer += decoder.decode(value, { stream: true });
-            if (buffer.length > 32_768) throw new Error('The Chat stream exceeded its event limit.');
+            const decoded = decoder.decode(value, { stream: true });
+            const pending = buffer + decoded;
+            let offset = 0;
             let boundary;
-            while ((boundary = buffer.indexOf('\n\n')) >= 0) {
-                const parsed = parseChatEvent(buffer.slice(0, boundary));
-                buffer = buffer.slice(boundary + 2);
+            while ((boundary = pending.indexOf('\n\n', offset)) >= 0) {
+                const eventText = pending.slice(offset, boundary);
+                if (byteLength(eventText) > 32_768) {
+                    throw new Error('The Chat stream exceeded its event limit.');
+                }
+                const parsed = parseChatEvent(eventText);
+                offset = boundary + 2;
                 if (!parsed) continue;
                 const { event, payload } = parsed;
                 if (event === 'started' && typeof payload.request_id !== 'string') {
@@ -100,6 +107,10 @@ async function sendMessage() {
                     markStreamStopped(responseBubble);
                     setChatStatus('Generation stopped');
                 }
+            }
+            buffer = pending.slice(offset);
+            if (byteLength(buffer) > 32_768) {
+                throw new Error('The Chat stream exceeded its event limit.');
             }
         }
 

@@ -1002,6 +1002,24 @@ def test_a1g_models_and_streaming_regressions(
     assert len(transport.requests) == calls_before_block
     _capture(browser_session, "a1g-models-cloud-blocked.png")
 
+    remote_a.get_by_role("button", name="Edit", exact=True).click()
+    page.locator("#connection-url").fill("https://changed-origin.example.test/v1")
+    page.get_by_role("button", name="Save connection", exact=True).click()
+    origin_error = "Remove the stored API key before changing the endpoint origin."
+    page.get_by_text(origin_error, exact=True).wait_for(state="visible")
+    assert remote_a.locator(".connection-endpoint").inner_text() == "https://api.example.test/v1"
+    assert remote_a.get_by_role("button", name="Remove key", exact=True).is_visible()
+    evidence_dir = os.getenv("AURA_BROWSER_EVIDENCE_DIR")
+    if evidence_dir:
+        page.screenshot(
+            path=str(
+                Path(evidence_dir)
+                / "screenshots"
+                / "a1g-credentialed-origin-change-rejected.png"
+            ),
+            full_page=True,
+        )
+
     snapshot = page.evaluate(
         """async () => {
             const token = sessionStorage.getItem('aura_access_token');
@@ -1184,6 +1202,49 @@ def test_a1g_models_and_streaming_regressions(
     page.get_by_text("Response complete", exact=True).wait_for(state="visible")
     assert stopped.locator(".streamed-content").inner_text() == stopped_text
 
+    # Leaving Chat aborts the same active controller and does not commit the partial answer.
+    before_navigation_count = _assistant_history_count(browser_session)
+    transport.next_stream_behavior = "navigation"
+    navigation_bubble_index = page.locator(".streaming-message").count()
+    page.locator("#chat-input").fill("Stop this answer by navigating away.")
+    _clear_test_rate_limit_state()
+    page.get_by_role("button", name="Send message", exact=True).click()
+    navigation_stopped = page.locator(".streaming-message").nth(navigation_bubble_index)
+    navigation_stopped.locator(".streamed-content").get_by_text(
+        "Synthetic partial", exact=False
+    ).wait_for(state="visible")
+    page.get_by_role("button", name="Tasks", exact=True).click()
+    _assert_active_view(page, "tasks")
+    assert transport.streams_closed_event.wait(timeout=5), (
+        "Navigating away did not close the upstream provider stream."
+    )
+    page.get_by_role("button", name="Chat", exact=True).click()
+    navigation_stopped.locator(".message-completion-status").get_by_text(
+        "Stopped", exact=True
+    ).wait_for(state="visible")
+    navigation_text = navigation_stopped.locator(".streamed-content").inner_text()
+    assert navigation_text == "Synthetic partial"
+    assert _assistant_history_count(browser_session) == before_navigation_count
+    page.wait_for_function(
+        "() => Number.parseFloat(getComputedStyle(document.querySelector('#view-chat')).opacity) >= 0.99"
+    )
+    _capture(browser_session, "a1g-chat-stopped-on-navigation.png")
+
+    # Ordinary navigation with no active stream remains usable, and a new request can run.
+    page.get_by_role("button", name="Tasks", exact=True).click()
+    _assert_active_view(page, "tasks")
+    page.get_by_role("button", name="Chat", exact=True).click()
+    _assert_active_view(page, "chat")
+    assert navigation_stopped.locator(".streamed-content").inner_text() == navigation_text
+    page.locator("#chat-input").fill("Can Chat run after navigation cancellation?")
+    _clear_test_rate_limit_state()
+    page.get_by_role("button", name="Send message", exact=True).click()
+    after_navigation = page.locator(".streaming-message").last
+    after_navigation.locator(".streamed-content").get_by_text(
+        "Synthetic stream response.", exact=True
+    ).wait_for(state="visible")
+    assert navigation_stopped.locator(".streamed-content").inner_text() == navigation_text
+
     # Unavailable, missing-model and interrupted outputs remain visibly unsuccessful.
     _open_models(page)
     unavailable_id = unavailable.get_attribute("data-connection-id")
@@ -1254,8 +1315,15 @@ def test_a1g_models_and_streaming_regressions(
     assert not browser_session.external_attempts
     assert not browser_session.unauthenticated_data_requests
     _assert_no_uncaught_errors(browser_session)
-    assert not browser_session.console_errors, (
-        "Browser console errors: " + " | ".join(browser_session.console_errors)
+    expected_origin_rejection = [
+        error for error in browser_session.console_errors if "409 (Conflict)" in error
+    ]
+    unexpected_console_errors = [
+        error for error in browser_session.console_errors if error not in expected_origin_rejection
+    ]
+    assert len(expected_origin_rejection) == 1, browser_session.console_errors
+    assert not unexpected_console_errors, (
+        "Unexpected browser console errors: " + " | ".join(unexpected_console_errors)
     )
     # Chat also remains horizontally contained at all required viewport widths.
     responsive_chat_layout: list[dict[str, object]] = []
@@ -1338,4 +1406,136 @@ def test_recorded_user_journey(
     page.get_by_role("button", name="Stop", exact=True).click()
     page.locator(".streaming-message .message-completion-status").get_by_text("Stopped", exact=True).wait_for(state="visible")
     assert browser_session.application.provider_transport.streams_closed_event.wait(timeout=5)
+    _assert_no_uncaught_errors(browser_session)
+
+
+def test_chat_sse_buffers_coalesced_frames_and_bounds_single_frames(
+    browser_session: BrowserSession, browser_account: BrowserCredentials
+) -> None:
+    """Accept coalesced valid frames while bounding complete and incomplete frames."""
+    _sign_in(browser_session, browser_account)
+    page = browser_session.page
+    _assert_active_view(page, "chat")
+
+    page.evaluate(
+        """() => {
+            window.__auraSsePayload = '';
+            window.__auraSseChunks = null;
+            window.apiFetch = async function(url, options = {}) {
+                if (!String(url).endsWith('/chat/stream')) return fetch(url, options);
+                const chunks = window.__auraSseChunks
+                    || [new TextEncoder().encode(window.__auraSsePayload)];
+                const body = new ReadableStream({
+                    start(controller) {
+                        for (const chunk of chunks) controller.enqueue(new Uint8Array(chunk));
+                        controller.close();
+                    }
+                });
+                return new Response(body, {
+                    status: 200,
+                    headers: {'content-type': 'text/event-stream'}
+                });
+            };
+        }"""
+    )
+
+    def frame(event_name: str, payload: dict[str, object]) -> str:
+        return f"event: {event_name}\ndata: {json.dumps(payload)}\n\n"
+
+    request_id = "synthetic-coalesced-frame-test"
+    payload = frame(
+        "started",
+        {"request_id": request_id, "model_id": "synthetic-model", "provider_type": "ollama", "locality": "local"},
+    )
+    expected = "x" * 900 * 40
+    payload += "".join(
+        frame("text_delta", {"request_id": request_id, "delta": "x" * 900})
+        for _ in range(40)
+    )
+    payload += frame("completed", {"request_id": request_id})
+    assert len(payload.encode("utf-8")) > 32_768
+    page.evaluate(
+        "payload => { window.__auraSsePayload = payload; window.__auraSseChunks = null; }",
+        payload,
+    )
+    page.locator("#chat-input").fill("Read coalesced synthetic frames")
+    page.get_by_role("button", name="Send message", exact=True).click()
+    complete = page.locator(".streaming-message").last
+    page.wait_for_function(
+        "() => ['Response complete', 'Response unavailable', 'Response interrupted'].includes("
+        "document.querySelector('#chat-status')?.textContent)"
+    )
+    assert complete.locator(".streamed-content").inner_text() == expected
+    assert "error" not in (complete.get_attribute("class") or "")
+
+    fragment_id = "synthetic-fragmented-utf8-test"
+    fragment_text = "A🙂é"
+    fragmented = frame(
+        "started",
+        {"request_id": fragment_id, "model_id": "synthetic-model", "provider_type": "ollama", "locality": "local"},
+    )
+    fragmented += (
+        "event: text_delta\ndata: "
+        + json.dumps(
+            {"request_id": fragment_id, "delta": fragment_text},
+            ensure_ascii=False,
+        )
+        + "\n\n"
+    )
+    fragmented += frame("completed", {"request_id": fragment_id})
+    encoded = fragmented.encode("utf-8")
+    emoji_offset = encoded.index("🙂".encode("utf-8"))
+    delimiter_offset = encoded.index(b"\n\n", emoji_offset)
+    chunks = [
+        list(encoded[: emoji_offset + 2]),
+        list(encoded[emoji_offset + 2 : delimiter_offset + 1]),
+        list(encoded[delimiter_offset + 1 :]),
+    ]
+    page.evaluate("chunks => { window.__auraSseChunks = chunks; }", chunks)
+    page.locator("#chat-input").fill("Read fragmented UTF-8 frames")
+    page.get_by_role("button", name="Send message", exact=True).click()
+    fragmented_bubble = page.locator(".streaming-message").last
+    page.wait_for_function(
+        "() => document.querySelector('#chat-status')?.textContent === 'Response complete'"
+    )
+    assert fragmented_bubble.locator(".streamed-content").inner_text() == fragment_text
+
+    oversized_id = "synthetic-oversized-complete-frame"
+    oversized_complete = frame(
+        "started",
+        {"request_id": oversized_id, "model_id": "synthetic-model", "provider_type": "ollama", "locality": "local"},
+    ) + frame(
+        "text_delta",
+        {"request_id": oversized_id, "delta": "s" * 33_000},
+    )
+    page.evaluate(
+        "payload => { window.__auraSsePayload = payload; window.__auraSseChunks = null; }",
+        oversized_complete,
+    )
+    page.locator("#chat-input").fill("Reject an oversized complete frame")
+    page.get_by_role("button", name="Send message", exact=True).click()
+    rejected_complete = page.locator(".streaming-message").last
+    rejected_complete.locator(".streamed-content").get_by_text(
+        "The Chat stream exceeded its event limit.", exact=True
+    ).wait_for(state="visible")
+    assert "error" in (rejected_complete.get_attribute("class") or "")
+    assert "s" * 500 not in rejected_complete.locator(".streamed-content").inner_text()
+
+    oversized_incomplete = frame(
+        "started",
+        {"request_id": "synthetic-oversized-incomplete-frame", "model_id": "synthetic-model", "provider_type": "ollama", "locality": "local"},
+    ) + 'event: text_delta\ndata: {"request_id":"synthetic-oversized-incomplete-frame","delta":"' + "u" * 33_000
+    page.evaluate(
+        "payload => { window.__auraSsePayload = payload; window.__auraSseChunks = null; }",
+        oversized_incomplete,
+    )
+    page.locator("#chat-input").fill("Reject an oversized incomplete frame")
+    page.get_by_role("button", name="Send message", exact=True).click()
+    rejected_incomplete = page.locator(".streaming-message").last
+    rejected_incomplete.locator(".streamed-content").get_by_text(
+        "The Chat stream exceeded its event limit.", exact=True
+    ).wait_for(state="visible")
+    assert "error" in (rejected_incomplete.get_attribute("class") or "")
+    assert "u" * 500 not in rejected_incomplete.locator(".streamed-content").inner_text()
+    assert not browser_session.external_attempts
     _assert_no_uncaught_errors(browser_session)

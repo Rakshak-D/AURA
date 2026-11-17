@@ -142,6 +142,7 @@ class SyntheticProviderStream:
                 for marker, behavior in (
                     ("SYNTHETIC_STREAM_INTERRUPTED", "interrupted"),
                     ("SYNTHETIC_PROGRESSIVE_STREAM", "progressive"),
+                    ("SYNTHETIC_NAVIGATION_STREAM", "navigation"),
                     ("SYNTHETIC_SLOW_STREAM", "slow"),
                 )
                 if marker in message
@@ -171,6 +172,12 @@ class SyntheticProviderStream:
                 ]
             elif self.behavior == "slow":
                 self.frames = [json.dumps({"model": model_id, "message": {"role": "assistant", "content": "Synthetic partial"}, "done": False}).encode() + b"\n"]
+            elif self.behavior == "navigation":
+                self.frames = [json.dumps({"model": model_id, "message": {"role": "assistant", "content": "Synthetic partial"}, "done": False}).encode() + b"\n"]
+                self.after_gate_frames = [
+                    json.dumps({"model": model_id, "message": {"role": "assistant", "content": " late token"}, "done": False}).encode() + b"\n",
+                    json.dumps({"model": model_id, "message": {"role": "assistant", "content": ""}, "done": True, "done_reason": "stop"}).encode() + b"\n",
+                ]
             else:
                 self.frames = [
                     json.dumps({"model": model_id, "message": {"role": "assistant", "content": "Synthetic "}, "done": False}).encode() + b"\n",
@@ -216,7 +223,7 @@ class SyntheticProviderStream:
     async def __anext__(self):
         if self.frames:
             return self.frames.pop(0)
-        if self.behavior == "progressive":
+        if self.behavior in {"progressive", "navigation"}:
             self.transport.slow_stream_started = True
             await asyncio.to_thread(self.transport.release_slow_stream.wait)
             self.frames.extend(self.after_gate_frames)

@@ -29,6 +29,7 @@ from .contracts import (
     ProviderMessage,
 )
 from .errors import ProviderError, ProviderErrorCode, normalize_provider_error
+from .endpoint_policy import _parse_endpoint
 from .ollama import OllamaAdapter
 from .openai_compatible import OpenAICompatibleAdapter
 from .secret_store import SecretStore, build_production_secret_store
@@ -43,6 +44,17 @@ _CAPABILITY_FIELDS = (
     "streaming",
     "embeddings",
 )
+_INVALID_ENDPOINT_MESSAGE = (
+    "Enter a valid provider URL without embedded credentials, secret query parameters, or fragments."
+)
+
+
+def _configured_endpoint(url: str):
+    """Validate a stored endpoint without resolving DNS or exposing input text."""
+    try:
+        return _parse_endpoint(url)
+    except ProviderError:
+        raise ValueError(_INVALID_ENDPOINT_MESSAGE) from None
 
 
 def _safe_identifier(value: str, *, maximum: int = 512) -> str:
@@ -212,12 +224,14 @@ class ProviderService:
             base_url = base_url or OLLAMA_DEFAULT_URL
         if not isinstance(base_url, str) or not base_url.strip() or len(base_url) > 2048:
             raise ProviderError(ProviderErrorCode.INCOMPLETE_CONFIGURATION)
+        base_url = base_url.strip()
+        _configured_endpoint(base_url)
         connection = ProviderConnection(
             id=str(uuid4()),
             user_id=user_id,
             name=name.strip(),
             provider_type=provider.value,
-            base_url=base_url.strip(),
+            base_url=base_url,
             configuration={"token_limit_parameter": token_limit_parameter},
         )
         session.add(connection)
@@ -241,15 +255,35 @@ class ProviderService:
     ) -> dict[str, object]:
         connection = self._owned_connection(session, user_id, connection_id)
         changed = False
+        new_base_url = None
+        if base_url is not None:
+            if not base_url.strip() or len(base_url) > 2048:
+                raise ProviderError(ProviderErrorCode.INCOMPLETE_CONFIGURATION)
+            new_base_url = base_url.strip()
+            new_endpoint = _configured_endpoint(new_base_url)
+            if ProviderCredential.get_owned(session, user_id, connection.id) is not None:
+                current_endpoint = _configured_endpoint(connection.base_url)
+                current_origin = (
+                    current_endpoint.scheme,
+                    current_endpoint.host,
+                    current_endpoint.port,
+                )
+                new_origin = (
+                    new_endpoint.scheme,
+                    new_endpoint.host,
+                    new_endpoint.port,
+                )
+                if new_origin != current_origin:
+                    raise ValueError(
+                        "Remove the stored API key before changing the endpoint origin."
+                    )
         if name is not None:
             if not name.strip() or len(name.strip()) > 100:
                 raise ProviderError(ProviderErrorCode.INCOMPLETE_CONFIGURATION)
             connection.name = name.strip()
             changed = True
-        if base_url is not None:
-            if not base_url.strip() or len(base_url) > 2048:
-                raise ProviderError(ProviderErrorCode.INCOMPLETE_CONFIGURATION)
-            connection.base_url = base_url.strip()
+        if new_base_url is not None:
+            connection.base_url = new_base_url
             changed = True
         if token_limit_parameter is not None:
             if token_limit_parameter not in {"max_tokens", "max_completion_tokens"}:

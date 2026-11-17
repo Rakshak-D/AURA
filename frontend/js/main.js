@@ -168,6 +168,11 @@ function ensureAuthenticated() {
 
 // View Switching
 function switchView(viewId) {
+    const chatView = document.getElementById('view-chat');
+    if (viewId !== 'chat' && chatView?.classList.contains('active')) {
+        stopGeneration();
+    }
+
     // Hide all views
     document.querySelectorAll('.view').forEach(el => el.classList.remove('active'));
 

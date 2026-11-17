@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
 from backend.app import main
+from backend.app.models.sql_models import ProviderConnection
 from backend.app.providers.secret_store import MasterKeyMaterial, SecretStore
 from backend.app.providers.service import ProviderService, get_provider_service
 
@@ -51,6 +53,16 @@ class SyntheticTransport:
             body = json.dumps(value).encode()
 
         return Response()
+
+
+def _deny_provider_dns(monkeypatch) -> None:
+    async def fail_resolve(_resolver, _host, _port):
+        pytest.fail("Saving a provider endpoint must not perform DNS resolution")
+
+    monkeypatch.setattr(
+        "backend.app.providers.endpoint_policy.SystemResolver.resolve",
+        fail_resolve,
+    )
 
 
 @pytest.fixture
@@ -131,6 +143,162 @@ def test_model_settings_supports_multiple_exact_connections_and_tombstones(model
     assert snapshot["roles"]["chat"]["connection_name"] == "Secondary"
     assert all(connection["id"] != created[1]["id"] for connection in snapshot["connections"] if not connection["removed"])
     assert len(service.transport.calls) == calls_before_removal
+
+
+@pytest.mark.parametrize(
+    "base_url",
+    (
+        "http://synthetic-user:synthetic-pass@127.0.0.1:9001/v1",
+        "https://api.example.test/v1?api_key=SYNTHETIC_QUERY_SECRET",
+        "https://api.example.test/v1#fragment",
+        "ftp://api.example.test/v1",
+        "https://api.example.test:invalid/v1",
+        "https://bad host.example.test/v1",
+    ),
+)
+def test_connection_creation_rejects_unsafe_endpoint_urls(model_api, base_url, monkeypatch):
+    client, headers, _factory, service = model_api
+    _deny_provider_dns(monkeypatch)
+
+    response = client.post(
+        "/api/settings/models/connections",
+        headers=headers,
+        json={
+            "name": "Invalid endpoint",
+            "provider_type": "openai_compatible",
+            "base_url": base_url,
+        },
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == (
+        "Enter a valid provider URL without embedded credentials, secret query parameters, or fragments."
+    )
+    assert "SYNTHETIC_QUERY_SECRET" not in response.text
+    assert "synthetic-pass" not in response.text
+    assert client.get("/api/settings/models", headers=headers).json()["connections"] == []
+    assert service.transport.calls == []
+
+
+@pytest.mark.parametrize(
+    "base_url",
+    (
+        "http://synthetic-user:synthetic-pass@127.0.0.1:9001/v1",
+        "https://api.example.test/v1?access_token=SYNTHETIC_QUERY_SECRET",
+        "https://api.example.test/v1#fragment",
+        "ftp://api.example.test/v1",
+        "https://api.example.test:invalid/v1",
+        "https://bad host.example.test/v1",
+    ),
+)
+def test_connection_update_rejects_unsafe_endpoint_urls_without_persisting(
+    model_api, base_url, monkeypatch
+):
+    client, headers, _factory, service = model_api
+    _deny_provider_dns(monkeypatch)
+    created = client.post(
+        "/api/settings/models/connections",
+        headers=headers,
+        json={
+            "name": "Valid endpoint",
+            "provider_type": "openai_compatible",
+            "base_url": "https://api.example.test/v1",
+        },
+    ).json()
+
+    response = client.patch(
+        f"/api/settings/models/connections/{created['id']}",
+        headers=headers,
+        json={"base_url": base_url},
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == (
+        "Enter a valid provider URL without embedded credentials, secret query parameters, or fragments."
+    )
+    assert "SYNTHETIC_QUERY_SECRET" not in response.text
+    assert "synthetic-pass" not in response.text
+    snapshot = client.get("/api/settings/models", headers=headers).json()
+    assert snapshot["connections"][0]["base_url"] == "https://api.example.test/v1"
+    assert service.transport.calls == []
+
+
+@pytest.mark.parametrize(
+    "new_origin_url",
+    (
+        "https://other.example.test/v1",
+        "https://api.example.test:8443/v1",
+        "http://api.example.test/v1",
+    ),
+)
+def test_credentialed_connection_requires_key_removal_before_origin_change(
+    model_api, new_origin_url, monkeypatch
+):
+    client, headers, factory, service = model_api
+    _deny_provider_dns(monkeypatch)
+    created = client.post(
+        "/api/settings/models/connections",
+        headers=headers,
+        json={
+            "name": "Credentialed endpoint",
+            "provider_type": "openai_compatible",
+            "base_url": "https://api.example.test/v1",
+        },
+    ).json()
+    original_key = "SYNTHETIC_ORIGIN_BOUND_API_KEY"
+    assert client.put(
+        f"/api/settings/models/connections/{created['id']}/credential",
+        headers=headers,
+        json={"api_key": original_key},
+    ).status_code == 200
+
+    same_origin = client.patch(
+        f"/api/settings/models/connections/{created['id']}",
+        headers=headers,
+        json={"base_url": "https://api.example.test/custom/v2"},
+    )
+    assert same_origin.status_code == 200
+    assert same_origin.json()["base_url"] == "https://api.example.test/custom/v2"
+    assert same_origin.json()["has_api_key"] is True
+
+    rejected = client.patch(
+        f"/api/settings/models/connections/{created['id']}",
+        headers=headers,
+        json={"base_url": new_origin_url},
+    )
+    assert rejected.status_code == 409
+    assert rejected.json()["detail"] == (
+        "Remove the stored API key before changing the endpoint origin."
+    )
+    assert original_key not in rejected.text
+    snapshot = client.get("/api/settings/models", headers=headers)
+    assert snapshot.json()["connections"][0]["base_url"] == "https://api.example.test/custom/v2"
+    assert snapshot.json()["connections"][0]["has_api_key"] is True
+    assert original_key not in snapshot.text
+
+    with factory() as session:
+        connection = session.get(ProviderConnection, created["id"])
+        credential = service.secret_store.get_credential(
+            session, connection.user_id, connection.id
+        )
+        assert credential is not None and credential.value == original_key
+    database_path = factory.kw["bind"].url.database
+    assert original_key.encode() not in Path(database_path).read_bytes()
+
+    removed = client.delete(
+        f"/api/settings/models/connections/{created['id']}/credential",
+        headers=headers,
+    )
+    assert removed.status_code == 200
+    changed = client.patch(
+        f"/api/settings/models/connections/{created['id']}",
+        headers=headers,
+        json={"base_url": new_origin_url},
+    )
+    assert changed.status_code == 200
+    assert changed.json()["base_url"] == new_origin_url
+    assert changed.json()["has_api_key"] is False
+    assert service.transport.calls == []
 
 
 def test_local_only_prevents_remote_probe_and_secrets_are_write_only(model_api):
