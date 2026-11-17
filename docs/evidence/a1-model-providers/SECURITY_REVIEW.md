@@ -82,7 +82,7 @@ The final review identified that a connection tombstone initially left its encry
 
 **PASS_SYNTHETIC** — On Windows, each Python version ran `python -m pytest -m 'not browser' --cov=backend.app --cov-report=term-missing --cov-report=xml:<versioned coverage path>` with `AURA_ENVIRONMENT=test`. Each collected 229 tests, passed 222, and deselected 7 browser tests; Python 3.11.7 emitted 3 warnings and Python 3.12.10 emitted 4 warnings, including the existing Python tar-extraction deprecation warning. The test doubles keep this evidence synthetic for network-security behavior; unrelated backend tests also use isolated test fixtures. Full-suite coverage was 84% for `endpoint_policy.py` and 83% for `transport.py` on both versions.
 
-Commands executed in Windows PowerShell (temporary venvs are task-owned and removed after export):
+Commands executed in Windows PowerShell (the task-owned temporary venvs remain under the system temp directory because cleanup was rejected by command policy):
 
 ```powershell
 & 'C:\Users\abhis\AppData\Local\Temp\aura-a1d-checks-1794898204120\py311\Scripts\python.exe' -m pytest -q tests/test_provider_network_policy.py
@@ -107,7 +107,7 @@ Result: `222 passed, 7 deselected` on each version. The first emitted 3 warnings
 
 **NOT_TESTED** — No real socket, DNS resolver, TLS handshake, public service, local provider, LAN device, metadata service, or provider API was contacted. The fake backend demonstrates the destination and TLS parameters passed at the production transport boundary; it is not socket-level proof. Native Linux/Ubuntu execution, hosted CI, actual Windows Credential Manager operations, and HTTP/2 behavior were not tested. Trusted LAN grants have no production persistence source in this round and remain unavailable by default. No frontend, schema, migration, route, Chat, adapter, or dependency changes were made.
 
-**Repository hygiene** — Added `backend/app/providers/endpoint_policy.py`, `backend/app/providers/transport.py`, and `tests/test_provider_network_policy.py`; appended this A1-D record to the existing review document. No directory or dependency was added. Temporary Python environments and coverage outputs were created under the system temp directory for verification and are scheduled for removal after source export. Existing ignored cache/evidence artifacts were inspected and preserved because their ownership predates or is uncertain for this round. The root `docs.zip` was not present when checked. No other file is staged or modified.
+**Repository hygiene** — Added `backend/app/providers/endpoint_policy.py`, `backend/app/providers/transport.py`, and `tests/test_provider_network_policy.py`; appended this A1-D record to the existing review document. No directory or dependency was added. Temporary Python environments and coverage outputs were created under `C:\Users\abhis\AppData\Local\Temp\aura-a1d-checks-1794898204120`. After export, the command policy rejected the exact cleanup command for these task-owned artifacts; they remain preserved, and no alternate deletion mechanism was attempted. Existing ignored cache/evidence artifacts were inspected and preserved because their ownership predates or is uncertain for this round. The root `docs.zip` was not present when checked. No other file is staged or modified.
 
 ## A1-D differential security review
 
