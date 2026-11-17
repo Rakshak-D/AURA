@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import AsyncIterator
+from typing import Literal
 from urllib.parse import unquote, urlsplit, urlunsplit
 
 from .adapter_utils import (
@@ -36,6 +37,8 @@ from .errors import ProviderError, ProviderErrorCode
 from .transport import ProviderStreamResponse, ProviderTransport
 
 _MAX_SSE_FRAME_BYTES = 1_048_576
+_MAX_MODEL_IDENTIFIER_CHARS = 512
+TokenLimitParameter = Literal["max_tokens", "max_completion_tokens"]
 
 
 def _nonnegative_integer(value: object) -> int | None:
@@ -195,8 +198,20 @@ def _validated_tool_arguments(value: object) -> str:
     return arguments
 
 
+def _validate_reported_model(payload: dict[str, object], requested_model: str) -> None:
+    if "model" not in payload:
+        return
+    try:
+        reported_model = _identifier(payload["model"])
+    except ProviderError:
+        raise ProviderError(ProviderErrorCode.INVALID_RESPONSE) from None
+    if len(reported_model) > _MAX_MODEL_IDENTIFIER_CHARS or reported_model != requested_model:
+        raise ProviderError(ProviderErrorCode.INVALID_RESPONSE)
+
+
 def _read_chat_result(value: object, request: ChatRequest) -> ChatResult:
     payload = _object(value)
+    _validate_reported_model(payload, request.model_id)
     choices = payload.get("choices")
     if not isinstance(choices, list) or len(choices) != 1:
         raise ProviderError(ProviderErrorCode.INVALID_RESPONSE)
@@ -291,6 +306,7 @@ def _tool_deltas(value: object) -> tuple[ToolCallDelta, ...]:
 
 def _choice_chunk(value: object, request: ChatRequest) -> ChatChunk | None:
     payload = _object(value)
+    _validate_reported_model(payload, request.model_id)
     if "error" in payload:
         raise ProviderError(ProviderErrorCode.INVALID_RESPONSE)
     choices = payload.get("choices")
@@ -380,8 +396,16 @@ def _sse_data(frame: bytes) -> str | None:
 class OpenAICompatibleAdapter:
     """Adapter for connection-scoped OpenAI-compatible API prefixes."""
 
-    def __init__(self, transport: ProviderTransport) -> None:
+    def __init__(
+        self,
+        transport: ProviderTransport,
+        *,
+        token_limit_parameter: TokenLimitParameter = "max_tokens",
+    ) -> None:
+        if token_limit_parameter not in ("max_tokens", "max_completion_tokens"):
+            raise ValueError("unsupported token-limit parameter")
         self._transport = transport
+        self._token_limit_parameter = token_limit_parameter
 
     @staticmethod
     def _validate_context(context: ProviderConnectionContext) -> None:
@@ -478,15 +502,14 @@ class OpenAICompatibleAdapter:
             embeddings=unknown,
         )
 
-    @staticmethod
-    def _chat_payload(request: ChatRequest, *, stream: bool) -> dict[str, object]:
+    def _chat_payload(self, request: ChatRequest, *, stream: bool) -> dict[str, object]:
         payload: dict[str, object] = {
             "model": request.model_id,
             "messages": _request_messages(tuple(request.messages)),
             "stream": stream,
         }
         if request.options.max_tokens is not None:
-            payload["max_completion_tokens"] = request.options.max_tokens
+            payload[self._token_limit_parameter] = request.options.max_tokens
         if request.options.temperature is not None:
             payload["temperature"] = request.options.temperature
         if request.options.json_mode:

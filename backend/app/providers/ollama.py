@@ -170,6 +170,14 @@ def _model_id(value: object) -> str:
     return model_id
 
 
+def _validate_reported_model(payload: Mapping[str, object], requested_model: str) -> None:
+    if "model" not in payload:
+        return
+    reported_model = _model_id(payload["model"])
+    if reported_model != requested_model:
+        raise ProviderError(ProviderErrorCode.INVALID_RESPONSE)
+
+
 def _tool_arguments(value: object) -> str:
     if not isinstance(value, Mapping):
         raise ProviderError(ProviderErrorCode.INVALID_RESPONSE)
@@ -229,7 +237,10 @@ def _read_output_message(value: object, request: ChatRequest) -> ProviderMessage
         arguments = _tool_arguments(function.get("arguments"))
         if name not in allowed_names:
             raise ProviderError(ProviderErrorCode.INVALID_RESPONSE)
-        calls.append(ToolCall(f"ollama-{index}-{uuid4().hex}", name, arguments))
+        try:
+            calls.append(ToolCall(f"ollama-{index}-{uuid4().hex}", name, arguments))
+        except ValueError:
+            raise ProviderError(ProviderErrorCode.INVALID_RESPONSE) from None
     return ProviderMessage(MessageRole.ASSISTANT, content, tool_calls=tuple(calls))
 
 
@@ -479,6 +490,7 @@ class OllamaAdapter:
                 unsupported_features=self._requested_features(request),
             )
         )
+        _validate_reported_model(payload, request.model_id)
         if payload.get("done") is not True or payload.get("done_reason") != "stop":
             raise ProviderError(ProviderErrorCode.INVALID_RESPONSE)
         message = _read_output_message(payload.get("message"), request)
@@ -521,6 +533,7 @@ class OllamaAdapter:
                 payload = _object(_decode_json(raw_record))
                 if "error" in payload:
                     raise ProviderError(ProviderErrorCode.INVALID_RESPONSE)
+                _validate_reported_model(payload, request.model_id)
                 done = payload.get("done")
                 if type(done) is not bool:
                     raise ProviderError(ProviderErrorCode.INVALID_RESPONSE)
@@ -546,14 +559,17 @@ class OllamaAdapter:
                         if name not in allowed_names:
                             raise ProviderError(ProviderErrorCode.INVALID_RESPONSE)
                         arguments = _tool_arguments(function.get("arguments"))
-                        deltas.append(
-                            ToolCallDelta(
-                                index=next_tool_index,
-                                call_id=f"ollama-{next_tool_index}-{uuid4().hex}",
-                                name_fragment=name,
-                                arguments_fragment=arguments,
+                        try:
+                            deltas.append(
+                                ToolCallDelta(
+                                    index=next_tool_index,
+                                    call_id=f"ollama-{next_tool_index}-{uuid4().hex}",
+                                    name_fragment=name,
+                                    arguments_fragment=arguments,
+                                )
                             )
-                        )
+                        except ValueError:
+                            raise ProviderError(ProviderErrorCode.INVALID_RESPONSE) from None
                         next_tool_index += 1
                 saw_tool_calls = saw_tool_calls or bool(deltas)
                 if done:

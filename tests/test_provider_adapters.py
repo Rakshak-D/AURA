@@ -908,7 +908,8 @@ async def test_openai_compatible_chat_maps_messages_tools_json_mode_and_auth():
         },
         {"role": "user", "content": "find x again"},
     ]
-    assert body["max_completion_tokens"] == 50
+    assert body["max_tokens"] == 50
+    assert "max_completion_tokens" not in body
     assert body["response_format"] == {"type": "json_object"}
     assert body["tools"][0]["function"]["name"] == "lookup"
     assert secret not in result.message.content
@@ -1551,3 +1552,297 @@ def test_provider_adapters_import_without_network_activity(monkeypatch):
     ):
         module = importlib.import_module(module_name)
         assert importlib.reload(module)
+
+
+@pytest.mark.asyncio
+@pytest.mark.unit
+async def test_ollama_chat_normalizes_oversized_tool_arguments_without_returning_proposal():
+    adapter_type = _load_adapter("backend.app.providers.ollama", "OllamaAdapter")
+    sentinel = "SENSITIVE-OLLAMA-ARGUMENT"
+    response = {
+        "model": "m1",
+        "done": True,
+        "done_reason": "stop",
+        "message": {
+            "role": "assistant",
+            "content": "must not become a successful result",
+            "tool_calls": [
+                {"function": {"name": "lookup", "arguments": {"value": sentinel + "x" * 70_000}}}
+            ],
+        },
+    }
+    transport, _, _ = _make_transport(json.dumps(response).encode())
+    request = ChatRequest(
+        "m1",
+        (ProviderMessage(MessageRole.USER, "lookup"),),
+        tools=(ToolDefinition("lookup", {"type": "object"}),),
+    )
+
+    with pytest.raises(ProviderError) as error:
+        await adapter_type(transport).chat(
+            _context(ProviderId.OLLAMA, "http://127.0.0.1:11434"), request
+        )
+
+    assert error.value.code is ProviderErrorCode.INVALID_RESPONSE
+    assert str(error.value) == "The provider returned an invalid response."
+    assert sentinel not in str(error.value)
+    assert "x" * 128 not in str(error.value)
+    assert "must not become a successful result" not in str(error.value)
+
+
+@pytest.mark.asyncio
+@pytest.mark.unit
+async def test_ollama_stream_normalizes_oversized_tool_arguments_before_emitting_proposal():
+    adapter_type = _load_adapter("backend.app.providers.ollama", "OllamaAdapter")
+    sentinel = "SENSITIVE-OLLAMA-STREAM-ARGUMENT"
+    event = {
+        "model": "m1",
+        "message": {
+            "role": "assistant",
+            "content": "partial text must not accompany a rejected call",
+            "tool_calls": [
+                {"function": {"name": "lookup", "arguments": {"value": sentinel + "x" * 70_000}}}
+            ],
+        },
+        "done": False,
+    }
+    body = (
+        json.dumps(event)
+        + '\n{"model":"m1","done":true,"done_reason":"stop"}\n'
+    ).encode()
+    transport, _, _ = _make_transport(body, content_type="application/x-ndjson")
+    request = ChatRequest(
+        "m1",
+        (ProviderMessage(MessageRole.USER, "lookup"),),
+        tools=(ToolDefinition("lookup", {"type": "object"}),),
+    )
+    emitted = []
+
+    with pytest.raises(ProviderError) as error:
+        async for chunk in adapter_type(transport).stream_chat(
+            _context(ProviderId.OLLAMA, "http://127.0.0.1:11434"), request
+        ):
+            emitted.append(chunk)
+
+    assert error.value.code is ProviderErrorCode.INVALID_RESPONSE
+    assert emitted == []
+    assert str(error.value) == "The provider returned an invalid response."
+    assert sentinel not in str(error.value)
+    assert "x" * 128 not in str(error.value)
+
+
+@pytest.mark.asyncio
+@pytest.mark.unit
+async def test_ollama_chat_rejects_reported_model_mismatch():
+    adapter_type = _load_adapter("backend.app.providers.ollama", "OllamaAdapter")
+    transport, _, _ = _make_transport(
+        b'{"model":"different-model","done":true,"done_reason":"stop",'
+        b'"message":{"role":"assistant","content":"wrong model"}}'
+    )
+
+    with pytest.raises(ProviderError) as error:
+        await adapter_type(transport).chat(
+            _context(ProviderId.OLLAMA, "http://127.0.0.1:11434"),
+            ChatRequest("requested-model", (ProviderMessage(MessageRole.USER, "hi"),)),
+        )
+
+    assert error.value.code is ProviderErrorCode.INVALID_RESPONSE
+    assert "different-model" not in str(error.value)
+
+
+@pytest.mark.asyncio
+@pytest.mark.unit
+async def test_ollama_stream_rejects_reported_model_mismatch_before_success():
+    adapter_type = _load_adapter("backend.app.providers.ollama", "OllamaAdapter")
+    body = (
+        b'{"model":"different-model","message":{"role":"assistant","content":"wrong"},"done":false}\n'
+        b'{"model":"requested-model","done":true,"done_reason":"stop"}\n'
+    )
+    transport, _, _ = _make_transport(body, content_type="application/x-ndjson")
+    emitted = []
+
+    with pytest.raises(ProviderError) as error:
+        async for chunk in adapter_type(transport).stream_chat(
+            _context(ProviderId.OLLAMA, "http://127.0.0.1:11434"),
+            ChatRequest("requested-model", (ProviderMessage(MessageRole.USER, "hi"),)),
+        ):
+            emitted.append(chunk)
+
+    assert error.value.code is ProviderErrorCode.INVALID_RESPONSE
+    assert emitted == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.unit
+async def test_ollama_chat_accepts_omitted_reported_model_identity():
+    adapter_type = _load_adapter("backend.app.providers.ollama", "OllamaAdapter")
+    transport, _, _ = _make_transport(
+        b'{"done":true,"done_reason":"stop","message":{"role":"assistant","content":"ok"}}'
+    )
+
+    result = await adapter_type(transport).chat(
+        _context(ProviderId.OLLAMA, "http://127.0.0.1:11434"),
+        ChatRequest("requested-model", (ProviderMessage(MessageRole.USER, "hi"),)),
+    )
+
+    assert result.model_id == "requested-model"
+
+
+@pytest.mark.asyncio
+@pytest.mark.unit
+async def test_openai_compatible_chat_rejects_reported_model_mismatch():
+    adapter_type = _load_adapter(
+        "backend.app.providers.openai_compatible", "OpenAICompatibleAdapter"
+    )
+    response = {
+        "model": "different-model",
+        "choices": [{"index": 0, "message": {"role": "assistant", "content": "wrong"}, "finish_reason": "stop"}],
+    }
+    transport, _, _ = _make_transport(
+        json.dumps(response).encode(), base_url="http://127.0.0.1:1234/v1"
+    )
+
+    with pytest.raises(ProviderError) as error:
+        await adapter_type(transport).chat(
+            _context(ProviderId.OPENAI_COMPATIBLE, "http://127.0.0.1:1234/v1"),
+            ChatRequest("requested-model", (ProviderMessage(MessageRole.USER, "hi"),)),
+        )
+
+    assert error.value.code is ProviderErrorCode.INVALID_RESPONSE
+    assert "different-model" not in str(error.value)
+
+
+@pytest.mark.asyncio
+@pytest.mark.unit
+async def test_openai_compatible_stream_rejects_reported_model_mismatch_before_success():
+    adapter_type = _load_adapter(
+        "backend.app.providers.openai_compatible", "OpenAICompatibleAdapter"
+    )
+    body = (
+        b'data: {"model":"different-model","choices":[{"index":0,"delta":{"content":"wrong"},"finish_reason":null}]}\n\n'
+        b'data: {"model":"requested-model","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n'
+        b"data: [DONE]\n\n"
+    )
+    transport, _, _ = _make_transport(
+        body,
+        base_url="http://127.0.0.1:1234/v1",
+        content_type="text/event-stream",
+    )
+    emitted = []
+
+    with pytest.raises(ProviderError) as error:
+        async for chunk in adapter_type(transport).stream_chat(
+            _context(ProviderId.OPENAI_COMPATIBLE, "http://127.0.0.1:1234/v1"),
+            ChatRequest("requested-model", (ProviderMessage(MessageRole.USER, "hi"),)),
+        ):
+            emitted.append(chunk)
+
+    assert error.value.code is ProviderErrorCode.INVALID_RESPONSE
+    assert emitted == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.unit
+async def test_openai_compatible_chat_accepts_omitted_reported_model_identity():
+    adapter_type = _load_adapter(
+        "backend.app.providers.openai_compatible", "OpenAICompatibleAdapter"
+    )
+    response = {
+        "choices": [{"index": 0, "message": {"role": "assistant", "content": "ok"}, "finish_reason": "stop"}]
+    }
+    transport, _, _ = _make_transport(
+        json.dumps(response).encode(), base_url="http://127.0.0.1:1234/v1"
+    )
+
+    result = await adapter_type(transport).chat(
+        _context(ProviderId.OPENAI_COMPATIBLE, "http://127.0.0.1:1234/v1"),
+        ChatRequest("requested-model", (ProviderMessage(MessageRole.USER, "hi"),)),
+    )
+
+    assert result.model_id == "requested-model"
+
+
+@pytest.mark.asyncio
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("token_limit_parameter", "expected_key"),
+    [("max_tokens", "max_tokens"), ("max_completion_tokens", "max_completion_tokens")],
+)
+@pytest.mark.parametrize("streaming", [False, True])
+async def test_openai_compatible_uses_explicit_token_limit_parameter(
+    token_limit_parameter: str, expected_key: str, streaming: bool
+):
+    adapter_type = _load_adapter(
+        "backend.app.providers.openai_compatible", "OpenAICompatibleAdapter"
+    )
+    response = (
+        b'data: {"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n'
+        b"data: [DONE]\n\n"
+        if streaming
+        else json.dumps(
+            {
+                "choices": [
+                    {"index": 0, "message": {"role": "assistant", "content": "ok"}, "finish_reason": "stop"}
+                ]
+            }
+        ).encode()
+    )
+    transport, _, backend = _make_transport(
+        response,
+        base_url="http://127.0.0.1:1234/v1",
+        content_type="text/event-stream" if streaming else "application/json",
+    )
+    adapter = adapter_type(transport, token_limit_parameter=token_limit_parameter)
+
+    request = ChatRequest(
+        "m1",
+        (ProviderMessage(MessageRole.USER, "hi"),),
+        ChatOptions(max_tokens=37),
+    )
+    context = _context(ProviderId.OPENAI_COMPATIBLE, "http://127.0.0.1:1234/v1")
+    if streaming:
+        async for _chunk in adapter.stream_chat(context, request):
+            pass
+    else:
+        await adapter.chat(context, request)
+
+    body = _request_body(backend.streams[0])
+    assert body[expected_key] == 37
+    assert {key for key in ("max_tokens", "max_completion_tokens") if key in body} == {
+        expected_key
+    }
+
+
+@pytest.mark.asyncio
+@pytest.mark.unit
+@pytest.mark.parametrize("token_limit_parameter", ["max_tokens", "max_completion_tokens"])
+async def test_openai_compatible_does_not_retry_rejected_token_parameter(
+    token_limit_parameter: str,
+):
+    adapter_type = _load_adapter(
+        "backend.app.providers.openai_compatible", "OpenAICompatibleAdapter"
+    )
+    transport, _, backend = _make_transport(
+        b'{"error":{"message":"synthetic rejected parameter"}}',
+        base_url="http://127.0.0.1:1234/v1",
+        status=400,
+    )
+    adapter = adapter_type(transport, token_limit_parameter=token_limit_parameter)
+
+    with pytest.raises(ProviderError) as error:
+        await adapter.chat(
+            _context(ProviderId.OPENAI_COMPATIBLE, "http://127.0.0.1:1234/v1"),
+            ChatRequest(
+                "m1",
+                (ProviderMessage(MessageRole.USER, "hi"),),
+                ChatOptions(max_tokens=37),
+            ),
+        )
+
+    assert error.value.code is ProviderErrorCode.INVALID_RESPONSE
+    assert len(backend.connect_calls) == 1
+    assert len(backend.streams) == 1
+    body = _request_body(backend.streams[0])
+    assert body[token_limit_parameter] == 37
+    other_parameter = "max_tokens" if token_limit_parameter == "max_completion_tokens" else "max_completion_tokens"
+    assert other_parameter not in body

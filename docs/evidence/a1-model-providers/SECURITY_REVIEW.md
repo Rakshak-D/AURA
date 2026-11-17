@@ -200,3 +200,46 @@ git diff --check
 The focused regression selection passed 263 tests on each interpreter. The full non-browser suite passed 324 tests and deselected 7 browser tests on each interpreter. Each Python 3.11 run emitted 3 existing Pydantic deprecation warnings; Python 3.12 emitted those 3 plus the existing tar-extraction deprecation warning. Both versions reported `All checks passed!` for Ruff and `No broken requirements found.` for `pip check`; `compileall` was quiet with exit code 0. An initial Ruff pass found five issues (three unused imports and two `anext` name checks); those were corrected, and the final Ruff runs passed. `git diff --check` is run again on the final reviewed diff before commit.
 
 **Repository hygiene** — No directories, manifests, models, or generated evidence files were added to the repository. The pre-existing untracked `docs/evidence/a1-model-providers.zip` remains unchanged and unstaged. Tests created ignored bytecode for the three new adapter helpers and their test module; the exact A1-F files are `backend/app/providers/__pycache__/adapter_utils.cpython-{311,312}.pyc`, `ollama.cpython-{311,312}.pyc`, `openai_compatible.cpython-{311,312}.pyc`, and `tests/__pycache__/test_provider_adapters.cpython-{311,312}-pytest-7.4.3.pyc`. Compileall used the task-specific system-temp directories `aura-a1f-compile-311-20261117` and `aura-a1f-compile-312-20261117`. The exact-path cleanup command was rejected by the command safety policy before execution; these artifacts remain preserved and ignored, and no alternate deletion method was attempted. Other ignored bytecode, including `tests/browser/__pycache__`, was preserved because it is unrelated or ownership-uncertain. No temporary project scripts or network traces were created.
+
+## A1-F-R1 corrective verification
+
+**Scope** — The R1 patch is limited to `backend/app/providers/ollama.py`, `backend/app/providers/openai_compatible.py`, `tests/test_provider_adapters.py`, and this evidence document plus `ARCHITECTURE.md`. Ollama's oversized complete and streaming tool proposals now raise only the fixed `invalid_response` error; the oversized stream event emits no chunk. Both adapters reject malformed or different reported model IDs in complete and streaming Chat. Omitted model IDs remain accepted and are documented as unverified request associations. OpenAI-compatible requests use an explicit `token_limit_parameter` (`max_tokens` by default for generic compatibility; `max_completion_tokens` when selected), with no alternate-parameter retry. The existing size, call-count, cumulative-stream and argument-redaction safeguards remain unchanged.
+
+**PASS_SYNTHETIC** — Provider adapter tests use the production A1-D transport with a fake resolver and fake HTTPCore backend. No Ollama process, cloud provider, model, real credential, external network, or live provider was used. The new tests reproduce the prior raw `ValueError`, mismatch, token-parameter, and duplicate-generation risks deterministically.
+
+**PASS_REAL** — Local Windows test and static-check processes completed on Python 3.11.7 and Python 3.12.10. Exact commands and results:
+
+```powershell
+& 'C:\Users\abhis\AppData\Local\Temp\aura-a1d-checks-1794898204120\py311\Scripts\python.exe' -m pytest -q tests/test_provider_adapters.py
+& 'C:\Users\abhis\AppData\Local\Temp\aura-a1d-checks-1794898204120\py312\Scripts\python.exe' -m pytest -q tests/test_provider_adapters.py
+```
+
+Result: `80 passed, 3 warnings` on each Python version.
+
+```powershell
+& 'C:\Users\abhis\AppData\Local\Temp\aura-a1d-checks-1794898204120\py311\Scripts\python.exe' -m pytest -q tests/test_provider_adapters.py tests/test_provider_contracts.py tests/test_provider_secrets.py tests/test_provider_storage.py tests/test_provider_network_policy.py
+& 'C:\Users\abhis\AppData\Local\Temp\aura-a1d-checks-1794898204120\py312\Scripts\python.exe' -m pytest -q tests/test_provider_adapters.py tests/test_provider_contracts.py tests/test_provider_secrets.py tests/test_provider_storage.py tests/test_provider_network_policy.py
+```
+
+Result: `241 passed, 3 warnings` on each Python version.
+
+```powershell
+& 'C:\Users\abhis\AppData\Local\Temp\aura-a1d-checks-1794898204120\py311\Scripts\python.exe' -m pytest -m 'not browser' -q
+& 'C:\Users\abhis\AppData\Local\Temp\aura-a1d-checks-1794898204120\py312\Scripts\python.exe' -m pytest -m 'not browser' -q
+```
+
+Result: `338 passed, 7 deselected` on each Python version. Python 3.11 reported three existing Pydantic deprecation warnings; Python 3.12 reported those three plus the existing tar-extraction deprecation warning.
+
+```powershell
+$env:PYTHONPYCACHEPREFIX = 'C:\Users\abhis\AppData\Local\Temp\aura-a1f-r1-compile-311-20261117'
+& 'C:\Users\abhis\AppData\Local\Temp\aura-a1d-checks-1794898204120\py311\Scripts\python.exe' -m compileall -q backend tests scripts
+& 'C:\Users\abhis\AppData\Local\Temp\aura-a1d-checks-1794898204120\py311\Scripts\python.exe' -m ruff check backend tests scripts --select E4,E7,E9,F
+& 'C:\Users\abhis\AppData\Local\Temp\aura-a1d-checks-1794898204120\py311\Scripts\python.exe' -m pip check
+$env:PYTHONPYCACHEPREFIX = 'C:\Users\abhis\AppData\Local\Temp\aura-a1f-r1-compile-312-20261117'
+& 'C:\Users\abhis\AppData\Local\Temp\aura-a1d-checks-1794898204120\py312\Scripts\python.exe' -m compileall -q backend tests scripts
+& 'C:\Users\abhis\AppData\Local\Temp\aura-a1d-checks-1794898204120\py312\Scripts\python.exe' -m ruff check backend tests scripts --select E4,E7,E9,F
+& 'C:\Users\abhis\AppData\Local\Temp\aura-a1d-checks-1794898204120\py312\Scripts\python.exe' -m pip check
+git diff --check
+```
+
+Result: `compileall` exited 0 silently, Ruff printed `All checks passed!` and `pip check` printed `No broken requirements found.` on both interpreters. `git diff --check` passed. Hosted CI, non-Windows platforms, and real-server compatibility remain `NOT_TESTED`. The evidence ZIP already present before R1 was preserved unchanged and unstaged.
