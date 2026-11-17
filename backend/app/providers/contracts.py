@@ -39,6 +39,14 @@ class ChatStreamEventType(StrEnum):
     TEXT_DELTA = "text_delta"
     TOOL_CALL_FRAGMENT = "tool_call_fragment"
     COMPLETION = "completion"
+    FAILURE = "failure"
+
+
+class SuccessfulChatFinishReason(StrEnum):
+    """Provider-neutral terminal reasons that authorize successful assembly."""
+
+    STOP = "stop"
+    TOOL_CALLS = "tool_calls"
 
 
 class CapabilityState(StrEnum):
@@ -58,6 +66,7 @@ _MAX_TOOL_CALL_ID_LENGTH = 128
 _MAX_TOOL_PAYLOAD_BYTES = 65_536
 _MAX_TOOL_COUNT = 128
 _MAX_CUMULATIVE_TOOL_PAYLOAD_BYTES = 1_048_576
+_MAX_FINISH_REASON_LENGTH = 64
 
 
 def _validate_identity(value: object, label: str, maximum_length: int) -> str:
@@ -401,6 +410,17 @@ class ChatChunk:
             raise ValueError("stream model_id must be a non-empty string")
         if not isinstance(self.delta, str):
             raise ValueError("stream text delta must be text")
+        if self.finish_reason is not None and (
+            not isinstance(self.finish_reason, str)
+            or not self.finish_reason
+            or len(self.finish_reason) > _MAX_FINISH_REASON_LENGTH
+            or self.finish_reason != self.finish_reason.strip()
+            or any(
+                ord(character) < 32 or ord(character) == 127
+                for character in self.finish_reason
+            )
+        ):
+            raise ValueError("stream finish reason must be bounded, non-whitespace text")
         tool_call_deltas = tuple(self.tool_call_deltas)
         if len(tool_call_deltas) > _MAX_TOOL_COUNT:
             raise ValueError("stream tool-call count exceeds the maximum")
@@ -414,14 +434,19 @@ class ChatChunk:
 
     @property
     def event_types(self) -> tuple[ChatStreamEventType, ...]:
-        """Describe every event carried by this chunk, including mixed chunks."""
+        """Describe each delta and distinguish successful from failed termination."""
         events: list[ChatStreamEventType] = []
         if self.delta:
             events.append(ChatStreamEventType.TEXT_DELTA)
         if self.tool_call_deltas:
             events.append(ChatStreamEventType.TOOL_CALL_FRAGMENT)
         if self.finish_reason is not None:
-            events.append(ChatStreamEventType.COMPLETION)
+            try:
+                SuccessfulChatFinishReason(self.finish_reason)
+            except (TypeError, ValueError):
+                events.append(ChatStreamEventType.FAILURE)
+            else:
+                events.append(ChatStreamEventType.COMPLETION)
         return tuple(events)
 
 
@@ -511,6 +536,12 @@ class ToolCallAssembler:
 
         if chunk.finish_reason is None:
             return None
+        try:
+            SuccessfulChatFinishReason(chunk.finish_reason)
+        except (TypeError, ValueError):
+            raise ValueError(
+                "tool-call stream ended unsuccessfully or with an unknown reason"
+            ) from None
 
         calls: list[ToolCall] = []
         for index in sorted(self._calls):

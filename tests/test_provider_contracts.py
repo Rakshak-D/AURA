@@ -257,6 +257,7 @@ def test_stream_events_and_assembler_reconstruct_interleaved_calls():
         contracts.ChatStreamEventType.TOOL_CALL_FRAGMENT,
     )
     assert completion.event_types == (contracts.ChatStreamEventType.COMPLETION,)
+    assert not hasattr(assembler, "execute")
     assert assembler.consume(first) is None
     assert assembler.consume(second) is None
     calls = assembler.consume(completion)
@@ -266,7 +267,63 @@ def test_stream_events_and_assembler_reconstruct_interleaved_calls():
         ("call-weather", "lookup_weather", '{"city":"Paris"}'),
         ("call-count", "count_items", '{"count":2}'),
     ]
+    assert all(
+        type(call) is contracts.ToolCall and not hasattr(call, "execute") for call in calls
+    )
     assert "Paris" not in repr(calls)
+
+
+def test_text_only_stream_accepts_normal_stop_completion():
+    contracts = _contracts()
+    assembler = contracts.ToolCallAssembler()
+    assert contracts.SuccessfulChatFinishReason.STOP.value == "stop"
+    assert contracts.SuccessfulChatFinishReason.TOOL_CALLS.value == "tool_calls"
+
+    text = contracts.ChatChunk(model_id="model-a", delta="complete answer")
+    stop = contracts.ChatChunk(model_id="model-a", delta="", finish_reason="stop")
+
+    assert assembler.consume(text) is None
+    assert stop.event_types == (contracts.ChatStreamEventType.COMPLETION,)
+    assert assembler.consume(stop) == ()
+
+
+@pytest.mark.parametrize("reason", ["length", "filtered", "cancelled", "error", "banana"])
+def test_tool_call_assembler_rejects_unsuccessful_and_unknown_completion_reasons(reason):
+    contracts = _contracts()
+    assembler = contracts.ToolCallAssembler()
+    pending = contracts.ChatChunk(
+        model_id="model-a",
+        delta="",
+        tool_call_deltas=(
+            contracts.ToolCallDelta(
+                index=0,
+                call_id="call-valid-json",
+                name_fragment="lookup",
+                arguments_fragment='{"valid":true}',
+            ),
+        ),
+    )
+
+    assert assembler.consume(pending) is None
+    assert len(assembler._calls) == 1
+    failed_terminal = contracts.ChatChunk(model_id="model-a", delta="", finish_reason=reason)
+    assert failed_terminal.event_types == (contracts.ChatStreamEventType.FAILURE,)
+    with pytest.raises(ValueError):
+        assembler.consume(failed_terminal)
+
+    assert assembler._calls == {}
+    with pytest.raises(ValueError):
+        assembler.consume(
+            contracts.ChatChunk(model_id="model-a", delta="", finish_reason="stop")
+        )
+
+
+@pytest.mark.parametrize("reason", ["", " stop", "stop\n", "x" * 65, 1, True])
+def test_chat_chunk_rejects_malformed_terminal_values(reason):
+    contracts = _contracts()
+
+    with pytest.raises(ValueError):
+        contracts.ChatChunk(model_id="model-a", delta="", finish_reason=reason)
 
 
 def test_tool_call_assembler_rejects_missing_or_conflicting_identities():
