@@ -45,14 +45,14 @@ _CAPABILITY_FIELDS = (
     "embeddings",
 )
 _INVALID_ENDPOINT_MESSAGE = (
-    "Enter a valid provider URL without embedded credentials, secret query parameters, or fragments."
+    "Enter a valid provider URL without embedded credentials, query parameters, or fragments."
 )
 
 
 def _configured_endpoint(url: str):
     """Validate a stored endpoint without resolving DNS or exposing input text."""
     try:
-        return _parse_endpoint(url)
+        return _parse_endpoint(url, allow_query=False)
     except ProviderError:
         raise ValueError(_INVALID_ENDPOINT_MESSAGE) from None
 

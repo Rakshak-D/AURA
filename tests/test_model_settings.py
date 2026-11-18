@@ -150,6 +150,7 @@ def test_model_settings_supports_multiple_exact_connections_and_tombstones(model
     (
         "http://synthetic-user:synthetic-pass@127.0.0.1:9001/v1",
         "https://api.example.test/v1?api_key=SYNTHETIC_QUERY_SECRET",
+        "https://api.example.test/v1?mode=SYNTHETIC_QUERY_VALUE",
         "https://api.example.test/v1#fragment",
         "ftp://api.example.test/v1",
         "https://api.example.test:invalid/v1",
@@ -172,9 +173,10 @@ def test_connection_creation_rejects_unsafe_endpoint_urls(model_api, base_url, m
 
     assert response.status_code == 409
     assert response.json()["detail"] == (
-        "Enter a valid provider URL without embedded credentials, secret query parameters, or fragments."
+        "Enter a valid provider URL without embedded credentials, query parameters, or fragments."
     )
     assert "SYNTHETIC_QUERY_SECRET" not in response.text
+    assert "SYNTHETIC_QUERY_VALUE" not in response.text
     assert "synthetic-pass" not in response.text
     assert client.get("/api/settings/models", headers=headers).json()["connections"] == []
     assert service.transport.calls == []
@@ -185,6 +187,7 @@ def test_connection_creation_rejects_unsafe_endpoint_urls(model_api, base_url, m
     (
         "http://synthetic-user:synthetic-pass@127.0.0.1:9001/v1",
         "https://api.example.test/v1?access_token=SYNTHETIC_QUERY_SECRET",
+        "https://api.example.test/v1?mode=SYNTHETIC_QUERY_VALUE",
         "https://api.example.test/v1#fragment",
         "ftp://api.example.test/v1",
         "https://api.example.test:invalid/v1",
@@ -214,9 +217,10 @@ def test_connection_update_rejects_unsafe_endpoint_urls_without_persisting(
 
     assert response.status_code == 409
     assert response.json()["detail"] == (
-        "Enter a valid provider URL without embedded credentials, secret query parameters, or fragments."
+        "Enter a valid provider URL without embedded credentials, query parameters, or fragments."
     )
     assert "SYNTHETIC_QUERY_SECRET" not in response.text
+    assert "SYNTHETIC_QUERY_VALUE" not in response.text
     assert "synthetic-pass" not in response.text
     snapshot = client.get("/api/settings/models", headers=headers).json()
     assert snapshot["connections"][0]["base_url"] == "https://api.example.test/v1"
