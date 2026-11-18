@@ -4,6 +4,8 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel, field_validator
 
+from ..providers.contracts import ModelRole
+
 
 class TaskCreate(BaseModel):
     title: str
@@ -99,3 +101,18 @@ class SettingsUpdate(BaseModel):
     default_reminder_time: Optional[str] = None
     username: Optional[str] = None
     ai_temperature: Optional[float] = None
+
+
+class ModelRoleSelectionValue(BaseModel):
+    """Validated persisted binding to one exact connection and model."""
+
+    role: ModelRole
+    connection_id: str
+    model_id: str
+
+    @field_validator("connection_id", "model_id")
+    @classmethod
+    def require_nonempty_identifier(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("connection_id and model_id must be non-empty")
+        return value

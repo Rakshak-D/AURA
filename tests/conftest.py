@@ -6,6 +6,9 @@ from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import pytest
+import asyncio
+import json
+import threading
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session, sessionmaker
 from starlette.testclient import TestClient
@@ -17,6 +20,225 @@ from backend.app.models.llm_models import llm
 from backend.app.models.sql_models import Base, User
 from backend.app.services import rag_service, reminder_service
 from backend.app.websocket_manager import manager
+
+
+class SyntheticProviderTransport:
+    """Provider transport boundary with controlled local responses and no sockets."""
+
+    def __init__(self) -> None:
+        from types import SimpleNamespace
+
+        self.requests: list[dict[str, object]] = []
+        self.streams_opened = 0
+        self.streams_closed = 0
+        self.slow_stream_started = False
+        self.next_stream_behavior: str | None = None
+        self.streams_closed_event = threading.Event()
+        self.release_slow_stream = threading.Event()
+        self.limits = SimpleNamespace(
+            max_response_bytes=1_048_576,
+            max_streamed_response_bytes=4_194_304,
+        )
+
+    @staticmethod
+    def _message(body: bytes | str | None) -> tuple[str, str]:
+        payload = json.loads(body or b"{}")
+        messages = payload.get("messages", [])
+        user_message = next(
+            (item.get("content", "") for item in reversed(messages) if item.get("role") == "user"),
+            "",
+        )
+        return str(payload.get("model", "")), str(user_message)
+
+    @staticmethod
+    def _status(message: str, url: str = "", headers=None, model_id: str = "") -> int:
+        authorization = next(
+            (str(value) for key, value in (headers or {}).items() if key.lower() == "authorization"),
+            "",
+        )
+        if "SYNTHETIC_AUTH_FAILURE" in message or "SYNTHETIC_BROWSER_API_KEY" in authorization:
+            return 401
+        if "SYNTHETIC_MODEL_MISSING" in message or "SYNTHETIC_MODEL_MISSING" in model_id or "synthetic-model-missing" in url:
+            return 404
+        if "SYNTHETIC_UNAVAILABLE" in message or "synthetic-unavailable" in url:
+            return 503
+        return 200
+
+    @staticmethod
+    def _response(status_code: int, value: object):
+        from types import SimpleNamespace
+
+        return SimpleNamespace(
+            status_code=status_code,
+            headers=(("content-type", "application/json"),),
+            body=json.dumps(value).encode("utf-8"),
+        )
+
+    def _record(self, method, url, context, headers, body) -> tuple[str, str]:
+        from backend.app.providers.endpoint_policy import EndpointPolicy
+
+        EndpointPolicy().preflight_local_only(context)
+        self.requests.append(
+            {"method": method, "url": url, "context": context, "headers": dict(headers or {}), "body": body}
+        )
+        return self._message(body)
+
+    async def request(self, method, url, *, context, headers=None, body=None):
+        model_id, message = self._record(method, url, context, headers, body)
+        status = self._status(message, url, headers, model_id)
+        path = url.split("?", 1)[0]
+        if path.endswith("/api/tags"):
+            value = {"models": [{"name": "qwen2.5:latest", "model": "qwen2.5:latest"}]}
+        elif path.endswith("/api/show"):
+            value = {"capabilities": ["tools", "embedding"], "model_info": {"x.context_length": 8192}}
+        elif path.endswith("/v1/models"):
+            value = {"data": [{"id": "gpt-test"}, {"id": "gpt-test-2"}]}
+        elif path.endswith("/api/chat"):
+            value = {
+                "model": model_id,
+                "done": True,
+                "done_reason": "stop",
+                "message": {"role": "assistant", "content": "Synthetic provider response."},
+            }
+        elif path.endswith("/v1/chat/completions"):
+            value = {
+                "model": model_id,
+                "choices": [{
+                    "index": 0,
+                    "finish_reason": "stop",
+                    "message": {"role": "assistant", "content": "Synthetic provider response."},
+                }],
+            }
+        else:
+            value = {"error": {"message": "synthetic upstream failure"}}
+        return self._response(status, value)
+
+    def stream(self, method, url, *, context, headers=None, body=None):
+        return SyntheticProviderStream(self, method, url, context, headers, body)
+
+
+class SyntheticProviderStream:
+    def __init__(self, transport, method, url, context, headers, body) -> None:
+        self.transport = transport
+        self.method = method
+        self.url = url
+        self.context = context
+        self.headers_in = headers
+        self.body = body
+        self.status_code = 200
+        self.headers = (("content-type", "application/x-ndjson"),)
+        self.frames: list[bytes] = []
+        self.after_gate_frames: list[bytes] = []
+        self.behavior: str | None = None
+
+    async def __aenter__(self):
+        from backend.app.providers.endpoint_policy import EndpointPolicy
+
+        EndpointPolicy().preflight_local_only(self.context)
+        model_id, message = self.transport._message(self.body)
+        self.behavior = self.transport.next_stream_behavior or next(
+            (
+                behavior
+                for marker, behavior in (
+                    ("SYNTHETIC_STREAM_INTERRUPTED", "interrupted"),
+                    ("SYNTHETIC_PROGRESSIVE_STREAM", "progressive"),
+                    ("SYNTHETIC_NAVIGATION_STREAM", "navigation"),
+                    ("SYNTHETIC_SLOW_STREAM", "slow"),
+                )
+                if marker in message
+            ),
+            None,
+        )
+        self.transport.next_stream_behavior = None
+        self.transport.requests.append({
+            "method": self.method,
+            "url": self.url,
+            "context": self.context,
+            "headers": dict(self.headers_in or {}),
+            "body": self.body,
+        })
+        self.status_code = self.transport._status(message, self.url, self.headers_in, model_id)
+        self.transport.streams_opened += 1
+        self.transport.streams_closed_event.clear()
+        self.transport.release_slow_stream.clear()
+        if self.url.split("?", 1)[0].endswith("/api/chat"):
+            if self.behavior == "interrupted":
+                self.frames = [json.dumps({"model": model_id, "message": {"role": "assistant", "content": "partial"}, "done": False}).encode() + b"\n"]
+            elif self.behavior == "progressive":
+                self.frames = [json.dumps({"model": model_id, "message": {"role": "assistant", "content": "Synthetic "}, "done": False}).encode() + b"\n"]
+                self.after_gate_frames = [
+                    json.dumps({"model": model_id, "message": {"role": "assistant", "content": "stream response."}, "done": False}).encode() + b"\n",
+                    json.dumps({"model": model_id, "message": {"role": "assistant", "content": ""}, "done": True, "done_reason": "stop"}).encode() + b"\n",
+                ]
+            elif self.behavior == "slow":
+                self.frames = [json.dumps({"model": model_id, "message": {"role": "assistant", "content": "Synthetic partial"}, "done": False}).encode() + b"\n"]
+            elif self.behavior == "navigation":
+                self.frames = [json.dumps({"model": model_id, "message": {"role": "assistant", "content": "Synthetic partial"}, "done": False}).encode() + b"\n"]
+                self.after_gate_frames = [
+                    json.dumps({"model": model_id, "message": {"role": "assistant", "content": " late token"}, "done": False}).encode() + b"\n",
+                    json.dumps({"model": model_id, "message": {"role": "assistant", "content": ""}, "done": True, "done_reason": "stop"}).encode() + b"\n",
+                ]
+            else:
+                self.frames = [
+                    json.dumps({"model": model_id, "message": {"role": "assistant", "content": "Synthetic "}, "done": False}).encode() + b"\n",
+                    json.dumps({"model": model_id, "message": {"role": "assistant", "content": "stream response."}, "done": False}).encode() + b"\n",
+                    json.dumps({"model": model_id, "message": {"role": "assistant", "content": ""}, "done": True, "done_reason": "stop"}).encode() + b"\n",
+                ]
+        elif self.behavior == "progressive":
+            self.headers = (("content-type", "text/event-stream"),)
+            self.frames = [
+                f"data: {json.dumps({'model': model_id, 'choices': [{'index': 0, 'delta': {'content': 'Synthetic '}, 'finish_reason': None}]})}\n\n".encode()
+            ]
+            self.after_gate_frames = [
+                f"data: {json.dumps({'model': model_id, 'choices': [{'index': 0, 'delta': {'content': 'stream response.'}, 'finish_reason': None}]})}\n\n".encode(),
+                f"data: {json.dumps({'model': model_id, 'choices': [{'index': 0, 'delta': {}, 'finish_reason': 'stop'}]})}\n\n".encode(),
+                b"data: [DONE]\n\n",
+            ]
+        elif self.behavior == "slow":
+            self.headers = (("content-type", "text/event-stream"),)
+            self.frames = [
+                f"data: {json.dumps({'model': model_id, 'choices': [{'index': 0, 'delta': {'content': 'Synthetic partial'}, 'finish_reason': None}]})}\n\n".encode()
+            ]
+        else:
+            self.headers = (("content-type", "text/event-stream"),)
+            frames = [
+                {"model": model_id, "choices": [{"index": 0, "delta": {"content": "Synthetic "}, "finish_reason": None}]},
+                {"model": model_id, "choices": [{"index": 0, "delta": {"content": "stream response."}, "finish_reason": None}]},
+                {"model": model_id, "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]},
+            ]
+            self.frames = [f"data: {json.dumps(frame)}\n\n".encode() for frame in frames] + [b"data: [DONE]\n\n"]
+        self.model_id = model_id
+        self.message = message
+        return self
+
+    async def __aexit__(self, exc_type, exc_value, traceback):
+        self.transport.streams_closed += 1
+        self.transport.release_slow_stream.set()
+        if self.transport.streams_closed == self.transport.streams_opened:
+            self.transport.streams_closed_event.set()
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        if self.frames:
+            return self.frames.pop(0)
+        if self.behavior in {"progressive", "navigation"}:
+            self.transport.slow_stream_started = True
+            await asyncio.to_thread(self.transport.release_slow_stream.wait)
+            self.frames.extend(self.after_gate_frames)
+            self.after_gate_frames.clear()
+            if self.frames:
+                return self.frames.pop(0)
+        if self.behavior == "slow":
+            self.transport.slow_stream_started = True
+            await asyncio.to_thread(self.transport.release_slow_stream.wait)
+        raise StopAsyncIteration
+
+
+@pytest.fixture
+def synthetic_provider_transport() -> SyntheticProviderTransport:
+    return SyntheticProviderTransport()
 
 
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:

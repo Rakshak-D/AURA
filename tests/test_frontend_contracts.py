@@ -24,15 +24,27 @@ def test_frontend_has_no_fake_stream_and_settings_single_initialization():
     assert "simulateStreaming" not in chat
     assert settings.count("loadSettings();") == 1
     assert "Invalid tasks response" in read("tasks.js")
-    assert "Invalid chat response" in chat
+    assert "/chat/stream" in chat
+    assert "new AbortController()" in chat
+    assert "content.textContent += payload.delta" in chat
+    assert "currentChatContext" not in chat
     assert "loadUploadedFiles();" in read("main.js")
     assert "API_REQUEST_TIMEOUT_MS" in read("main.js")
 
 
 def test_external_content_uses_safe_dom_boundaries():
-    for name in ("chat.js", "search.js", "upload.js", "tasks.js", "notifications.js"):
+    for name in ("chat.js", "search.js", "upload.js", "tasks.js", "notifications.js", "settings.js"):
         source = read(name)
         assert "innerHTML" not in source
+
+
+def test_application_markup_has_no_inline_event_or_style_attributes():
+    import re
+
+    index = (FRONTEND_ROOT / "index.html").read_text(encoding="utf-8")
+    assert not re.search(r"\s(?:on[a-z]+|style)\s*=", index, re.IGNORECASE)
+    assert 'data-action="stop-generation"' in index
+    assert 'id="models-panel"' in index
 
 
 def test_browser_dependencies_are_self_hosted_and_versioned():

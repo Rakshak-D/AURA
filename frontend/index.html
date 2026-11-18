@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AURA</title>
-    <link rel="stylesheet" href="/static/css/styles.css?v=3">
+    <link rel="stylesheet" href="/static/css/styles.css?v=4">
 </head>
 
 <body>
@@ -19,30 +19,30 @@
             </div>
 
             <nav class="nav-menu">
-                <button class="nav-item active" aria-label="Chat" onclick="switchView('chat')">
+                <button class="nav-item active" aria-label="Chat" data-view="chat" type="button">
                     <i data-lucide="message-square"></i>
                     <span class="nav-text">Chat</span>
                 </button>
-                <button class="nav-item" aria-label="Tasks" onclick="switchView('tasks')">
+                <button class="nav-item" aria-label="Tasks" data-view="tasks" type="button">
                     <i data-lucide="check-square"></i>
                     <span class="nav-text">Tasks</span>
                 </button>
-                <button class="nav-item" aria-label="Calendar" onclick="switchView('calendar')">
+                <button class="nav-item" aria-label="Calendar" data-view="calendar" type="button">
                     <i data-lucide="calendar"></i>
                     <span class="nav-text">Calendar</span>
                 </button>
-                <button class="nav-item" aria-label="Knowledge" onclick="switchView('knowledge')">
+                <button class="nav-item" aria-label="Knowledge" data-view="knowledge" type="button">
                     <i data-lucide="file-text"></i>
                     <span class="nav-text">Knowledge</span>
                 </button>
-                <button class="nav-item" aria-label="Insights" onclick="switchView('insights')">
+                <button class="nav-item" aria-label="Insights" data-view="insights" type="button">
                     <i data-lucide="bar-chart-2"></i>
                     <span class="nav-text">Insights</span>
                 </button>
             </nav>
 
-            <div class="nav-menu" style="margin-top: auto; flex: 0;">
-                <button class="nav-item" aria-label="Settings" onclick="openSettings()">
+            <div class="nav-menu nav-menu-footer">
+                <button class="nav-item" aria-label="Settings" data-action="open-settings" type="button">
                     <i data-lucide="settings"></i>
                     <span class="nav-text">Settings</span>
                 </button>
@@ -54,7 +54,7 @@
 
             <!-- Mobile Menu Button -->
             <button class="icon-btn mobile-menu-btn" aria-label="Toggle navigation menu" aria-expanded="false"
-                onclick="toggleSidebar()">
+                data-action="toggle-sidebar" type="button">
                 <i data-lucide="menu"></i>
             </button>
 
@@ -65,24 +65,24 @@
 
                         <!-- NEW: Welcome Message + Suggestions -->
                         <div class="welcome-panel">
-                            <h2 class="welcome-title">Hello, I’m AURA 👋</h2>
+                            <h2 class="welcome-title">AURA</h2>
                             <p class="welcome-subtext">Your personal assistant for tasks, planning, insights, and more.
                             </p>
 
                             <div class="suggestion-grid">
-                                <button class="suggestion-btn" onclick="useSuggestion('Create a study schedule')">
+                                <button class="suggestion-btn" data-suggestion="Create a study schedule" type="button">
                                     <i data-lucide="calendar"></i>
                                     Create a study schedule
                                 </button>
-                                <button class="suggestion-btn" onclick="useSuggestion('Summarize this text')">
+                                <button class="suggestion-btn" data-suggestion="Summarize this text" type="button">
                                     <i data-lucide="file-text"></i>
                                     Summarize text
                                 </button>
-                                <button class="suggestion-btn" onclick="useSuggestion('What should I focus on today?')">
+                                <button class="suggestion-btn" data-suggestion="What should I focus on today?" type="button">
                                     <i data-lucide="sparkles"></i>
                                     Daily focus recommendation
                                 </button>
-                                <button class="suggestion-btn" onclick="useSuggestion('Show me my tasks')">
+                                <button class="suggestion-btn" data-suggestion="Show me my tasks" type="button">
                                     <i data-lucide="check-circle"></i>
                                     Show my tasks
                                 </button>
@@ -92,17 +92,22 @@
                     </div>
 
                     <div class="input-area">
+                        <div class="chat-composer-meta">
+                            <span id="chat-model-indicator">No Chat model selected</span>
+                            <span id="chat-status" role="status" aria-live="polite" aria-atomic="true"></span>
+                        </div>
                         <div class="input-container">
-                            <button class="icon-btn" onclick="toggleVoice()" aria-label="Use voice input" title="Use voice input">
+                            <button class="icon-btn" data-action="toggle-voice" aria-label="Use voice input" title="Use voice input" type="button">
                                 <i data-lucide="mic"></i>
                             </button>
-                            <textarea id="chat-input" placeholder="Ask me anything..." rows="1"></textarea>
-                            <button class="icon-btn" onclick="clearChatHistory()" aria-label="Clear chat" title="Clear chat">
+                            <textarea id="chat-input" aria-label="Message to AURA" placeholder="Message AURA" rows="1"></textarea>
+                            <button class="icon-btn" data-action="clear-chat" aria-label="Clear chat" title="Clear chat" type="button">
                                 <i data-lucide="trash-2"></i>
                             </button>
-                            <button class="send-btn" onclick="sendMessage()">
+                            <button class="send-btn" data-action="send-message" aria-label="Send message" type="button">
                                 <i data-lucide="send"></i>
                             </button>
+                            <button class="stop-btn" data-action="stop-generation" type="button" hidden>Stop</button>
                         </div>
                     </div>
                 </div>
@@ -110,16 +115,16 @@
 
             <!-- Tasks View -->
             <div id="view-tasks" class="view">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                <div class="task-view-header">
                     <h2>Tasks</h2>
-                    <button id="add-task-btn" class="btn-primary" style="width: auto;" onclick="openTaskModal()">+ New
+                    <button id="add-task-btn" class="btn-primary btn-compact" data-action="open-task-modal" type="button">+ New
                         Task</button>
                 </div>
 
                 <div class="kanban-board">
                     <div class="kanban-column">
                         <div class="column-header">To Do
-                            <span id="count-todo" style="color: var(--text-muted); font-size: 0.8rem;">0</span>
+                            <span id="count-todo" class="count-badge">0</span>
                         </div>
                         <div class="task-list" id="todo-list"></div>
                     </div>
@@ -127,9 +132,9 @@
                     <div class="kanban-column">
                         <div class="column-header">
                             <span>Done
-                                <span id="count-done" style="color: var(--text-muted); font-size: 0.8rem;">0</span>
+                                <span id="count-done" class="count-badge">0</span>
                             </span>
-                            <button class="btn-clear-completed" onclick="clearCompletedTasks()">
+                            <button class="btn-clear-completed" data-action="clear-completed" aria-label="Clear completed tasks" type="button">
                                 <i data-lucide="trash-2"></i>
                             </button>
                         </div>
@@ -142,14 +147,14 @@
             <div id="view-calendar" class="view">
                 <div class="calendar-header">
                     <div class="calendar-nav">
-                        <button class="nav-btn" onclick="prevDay()" aria-label="Previous day"><i data-lucide="chevron-left"></i></button>
+                        <button class="nav-btn" data-action="calendar-prev" aria-label="Previous day" type="button"><i data-lucide="chevron-left"></i></button>
                         <h2 id="calendar-date-header" class="calendar-date-title">Loading...</h2>
-                        <button class="nav-btn" onclick="nextDay()" aria-label="Next day"><i data-lucide="chevron-right"></i></button>
+                        <button class="nav-btn" data-action="calendar-next" aria-label="Next day" type="button"><i data-lucide="chevron-right"></i></button>
                     </div>
                     <div class="calendar-actions">
-                        <button class="btn-secondary" onclick="goToToday()"><i
+                        <button class="btn-secondary" data-action="calendar-today" type="button"><i
                                 data-lucide="calendar"></i><span>Today</span></button>
-                        <button class="btn-primary" onclick="autoSchedule()"><i data-lucide="sparkles"></i><span>Magic
+                        <button class="btn-primary" data-action="calendar-auto" type="button"><i data-lucide="sparkles"></i><span>Magic
                                 Schedule</span></button>
                     </div>
                 </div>
@@ -170,16 +175,15 @@
             <!-- Knowledge View -->
             <div id="view-knowledge" class="view">
                 <h2>Knowledge Base</h2>
-                <div class="upload-section" style="margin-top: 2rem;">
-                    <div class="upload-area" id="drop-zone"
-                        style="border: 2px dashed var(--border-color); padding: 3rem; text-align: center; border-radius: var(--radius-lg); margin-bottom: 1.5rem;">
-                        <i data-lucide="upload-cloud" style="width: 48px; height: 48px; margin-bottom: 1rem;"></i>
+                <div class="upload-section knowledge-upload">
+                    <div class="upload-area" id="drop-zone">
+                        <i data-lucide="upload-cloud" class="upload-icon"></i>
                         <p>Drag & Drop documents here or click to upload</p>
-                        <input type="file" id="file-upload" accept=".pdf,.txt,.docx,.md" multiple style="display: none;">
+                        <input type="file" id="file-upload" accept=".pdf,.txt,.docx,.md" multiple class="visually-hidden">
                     </div>
-                    <button id="upload-btn" class="btn-primary" style="width: auto;">Upload to Brain</button>
+                    <button id="upload-btn" class="btn-primary btn-compact" type="button">Upload to Brain</button>
                 </div>
-                <div id="file-list" style="margin-top: 2rem;"></div>
+                <div id="file-list" class="file-list"></div>
             </div>
 
             <!-- Insights View -->
@@ -211,29 +215,142 @@
     </div>
 
     <!-- Settings Modal -->
-    <div class="modal" id="settings-modal">
-        <div class="modal-content">
-            <h3>Settings</h3>
-
-            <label for="setting-username">Username</label>
-            <input type="text" class="modal-input" id="setting-username">
-
-            <label for="setting-theme">Theme</label>
-            <select class="modal-input" id="setting-theme">
-                <option value="dark">Dark</option>
-                <option value="light">Light</option>
-            </select>
-
-            <label for="settings-temp">AI Temperature</label>
-            <input type="range" class="modal-input" id="settings-temp" min="0" max="1" step="0.1" value="0.7">
-
-            <div style="display:flex; gap:1rem; margin-top:1rem;">
-                <button class="btn-primary" onclick="saveSettings()">Save</button>
-                <button class="btn-primary" style="background:transparent; border:1px solid var(--border-color);"
-                    onclick="closeSettings()">Cancel</button>
-                <button class="btn-primary" style="background:transparent; border:1px solid var(--border-color);"
-                    onclick="logout(); closeSettings();">Log out</button>
+    <div class="modal" id="settings-modal" role="dialog" aria-modal="true" aria-labelledby="settings-title" aria-hidden="true">
+        <div class="modal-content models-modal-content">
+            <header class="settings-modal-header">
+                <div>
+                    <p class="eyebrow">AURA SETTINGS</p>
+                    <h2 id="settings-title" tabindex="-1">Settings</h2>
+                </div>
+                <button class="icon-btn modal-close" data-action="close-settings" type="button" aria-label="Close settings">×</button>
+            </header>
+            <div class="settings-tabs" role="tablist" aria-label="Settings sections">
+                <button class="settings-tab active" id="models-tab" type="button" role="tab" aria-selected="true" aria-controls="models-panel" data-settings-tab="models">Models</button>
+                <button class="settings-tab" id="general-tab" type="button" role="tab" aria-selected="false" aria-controls="general-panel" data-settings-tab="general">General</button>
             </div>
+
+            <section class="models-workspace" id="models-panel" role="tabpanel" aria-labelledby="models-tab">
+                <div class="models-heading">
+                    <div>
+                        <p class="eyebrow">MODEL CONNECTIONS</p>
+                        <h3>Choose how AURA thinks</h3>
+                        <p>Connect a provider, test it, then choose the exact model for each role.</p>
+                    </div>
+                    <button class="btn-primary" data-action="add-connection" type="button">Add connection</button>
+                </div>
+
+                <section class="local-only-row" aria-labelledby="local-only-title">
+                    <div>
+                        <h4 id="local-only-title">Keep model requests on this device</h4>
+                        <p>When enabled, requests to cloud models are blocked by AURA.</p>
+                        <p id="local-only-state" class="inline-state" aria-live="polite">Loading privacy setting…</p>
+                    </div>
+                    <label class="toggle-control" for="local-only-toggle">
+                        <span class="visually-hidden">Keep model requests on this device</span>
+                        <input id="local-only-toggle" type="checkbox" checked>
+                        <span class="toggle-track" aria-hidden="true"></span>
+                    </label>
+                </section>
+
+                <div class="models-layout">
+                    <section class="connection-column" aria-labelledby="connections-title">
+                        <div class="section-heading">
+                            <h4 id="connections-title">Connections</h4>
+                            <span id="connection-count" class="count-badge">0</span>
+                        </div>
+                        <div id="connection-list" class="connection-list" aria-live="polite">
+                            <p class="empty-state">Loading connections…</p>
+                        </div>
+                    </section>
+
+                    <section class="role-column" aria-labelledby="roles-title">
+                        <div class="section-heading">
+                            <div>
+                                <h4 id="roles-title">Model roles</h4>
+                                <p>Each role keeps its exact connection and model.</p>
+                            </div>
+                        </div>
+                        <div id="role-summary" class="role-summary"></div>
+                        <form id="role-form" class="role-form">
+                            <label for="role-name">Role</label>
+                            <select id="role-name" class="modal-input">
+                                <option value="chat">Chat</option>
+                                <option value="router">Router</option>
+                                <option value="embedding">Embedding</option>
+                            </select>
+                            <label for="role-connection">Connection</label>
+                            <select id="role-connection" class="modal-input" required></select>
+                            <label for="role-model">Discovered model</label>
+                            <select id="role-model" class="modal-input"></select>
+                            <label for="role-model-manual">Or enter a model ID (unverified)</label>
+                            <input id="role-model-manual" class="modal-input mono-input" type="text" maxlength="512" autocomplete="off" placeholder="Exact provider model ID">
+                            <div class="role-actions">
+                                <button class="btn-primary" type="submit">Save role</button>
+                                <button class="btn-secondary" id="clear-role" type="button">Clear role</button>
+                                <button class="btn-secondary" id="check-capabilities" type="button">Check capabilities</button>
+                            </div>
+                        </form>
+                        <div id="capability-panel" class="capability-panel" aria-live="polite">
+                            <p>Select a model and explicitly check its reported capabilities.</p>
+                        </div>
+                    </section>
+                </div>
+
+                <form id="connection-form" class="connection-editor" hidden>
+                    <div class="connection-editor-heading">
+                        <div>
+                            <p class="eyebrow">CONNECTION DETAILS</p>
+                            <h4 id="connection-form-title">Add a connection</h4>
+                        </div>
+                        <button class="icon-btn" type="button" data-action="cancel-connection" aria-label="Close connection editor">×</button>
+                    </div>
+                    <input id="connection-id" type="hidden">
+                    <label for="connection-provider">Provider</label>
+                    <select id="connection-provider" class="modal-input" required>
+                        <option value="ollama">Ollama</option>
+                        <option value="openai_compatible">OpenAI-compatible</option>
+                    </select>
+                    <label for="connection-name">Name</label>
+                    <input id="connection-name" class="modal-input" type="text" maxlength="100" required autocomplete="off" placeholder="e.g. Work laptop">
+                    <label for="connection-url">Base URL</label>
+                    <input id="connection-url" class="modal-input mono-input" type="url" maxlength="2048" required autocomplete="url" placeholder="http://127.0.0.1:11434">
+                    <p class="field-help">AURA validates each destination before connecting. Ollama defaults to loopback.</p>
+                    <div id="token-parameter-wrap" hidden>
+                        <label for="token-parameter">Output token parameter</label>
+                        <select id="token-parameter" class="modal-input">
+                            <option value="max_tokens">max_tokens (default)</option>
+                            <option value="max_completion_tokens">max_completion_tokens</option>
+                        </select>
+                    </div>
+                    <div id="credential-field">
+                        <label for="connection-key">API key <span id="credential-state">(optional)</span></label>
+                        <input id="connection-key" class="modal-input" type="password" maxlength="8192" autocomplete="new-password" placeholder="Enter once; AURA will not show it again">
+                        <p class="field-help">The key is write-only. It is cleared after saving and never stored in browser storage.</p>
+                    </div>
+                    <div class="editor-actions">
+                        <button class="btn-primary" type="submit">Save connection</button>
+                        <button class="btn-secondary" type="button" data-action="cancel-connection">Cancel</button>
+                    </div>
+                </form>
+            </section>
+
+            <section class="general-settings" id="general-panel" role="tabpanel" aria-labelledby="general-tab" hidden>
+                <h3>General</h3>
+                <label for="setting-username">Username</label>
+                <input type="text" class="modal-input" id="setting-username">
+                <label for="setting-theme">Theme</label>
+                <select class="modal-input" id="setting-theme">
+                    <option value="dark">Dark</option>
+                    <option value="light">Light</option>
+                </select>
+                <label for="settings-temp">AI Temperature</label>
+                <input type="range" class="modal-input" id="settings-temp" min="0" max="1" step="0.1" value="0.7">
+                <div class="modal-actions">
+                    <button class="btn-primary" data-action="save-settings" type="button">Save</button>
+                    <button class="btn-secondary" data-action="close-settings" type="button">Close</button>
+                    <button class="btn-secondary" data-action="logout" type="button">Log out</button>
+                </div>
+            </section>
         </div>
     </div>
 
@@ -249,7 +366,7 @@
             <label for="task-desc">Description</label>
             <textarea class="modal-input" id="task-desc" rows="3"></textarea>
 
-            <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
+            <div class="task-field-grid">
                 <div>
                     <label for="task-date">Due Date</label>
                     <input type="datetime-local" class="modal-input" id="task-date">
@@ -266,13 +383,12 @@
                 </div>
             </div>
 
-            <label for="task-duration" style="margin-top:1rem;">Duration (minutes)</label>
+            <label class="task-duration-label" for="task-duration">Duration (minutes)</label>
             <input type="number" class="modal-input" id="task-duration" min="1" value="30">
 
-            <div style="display:flex; gap:1rem; margin-top:1rem;">
-                <button class="btn-primary" onclick="saveTask()">Save Task</button>
-                <button class="btn-primary" style="background:transparent; border:1px solid var(--border-color);"
-                    onclick="closeTaskModal()">Cancel</button>
+            <div class="modal-actions">
+                <button class="btn-primary" data-action="save-task" type="button">Save Task</button>
+                <button class="btn-secondary" data-action="close-task-modal" type="button">Cancel</button>
             </div>
         </div>
     </div>
@@ -283,11 +399,11 @@
     <script src="/static/js/safe-dom.js?v=1"></script>
     <script src="/static/js/voice.js?v=1"></script>
     <script src="/static/js/notifications.js?v=1"></script>
-    <script src="/static/js/main.js?v=2"></script>
-    <script src="/static/js/chat.js?v=2"></script>
+    <script src="/static/js/main.js?v=3"></script>
+    <script src="/static/js/chat.js?v=3"></script>
     <script src="/static/js/tasks.js?v=2"></script>
     <script src="/static/js/calendar.js?v=2"></script>
-    <script src="/static/js/settings.js?v=2"></script>
+    <script src="/static/js/settings.js?v=3"></script>
     <script src="/static/js/upload.js?v=2"></script>
     <script src="/static/js/analytics.js?v=2"></script>
 </body>

@@ -1,0 +1,316 @@
+{
+  "local_test_application_startup_ms": 533.01,
+  "startup_models_initialized": false,
+  "models_initial_render_ms": 256.88,
+  "local_connection_test_ms": 236.26,
+  "synthetic_model_listing_ms": 174.15,
+  "first_synthetic_token_ms": 62.68,
+  "stream_cancellation_cleanup_ms": 19.97,
+  "chat_responsive_layout": [
+    {
+      "width": 1440,
+      "clientWidth": 1440,
+      "visualWidth": 1440,
+      "documentWidth": 1440,
+      "app": {
+        "left": 0,
+        "right": 1440,
+        "top": 0,
+        "bottom": 900,
+        "width": 1440,
+        "height": 900,
+        "cssWidth": "1440px",
+        "inlineWidth": ""
+      },
+      "main": {
+        "left": 240,
+        "right": 1440,
+        "top": 0,
+        "bottom": 900,
+        "width": 1200,
+        "height": 900,
+        "cssWidth": "1200px",
+        "inlineWidth": ""
+      },
+      "chat": {
+        "left": 390,
+        "right": 1290,
+        "top": 32,
+        "bottom": 868,
+        "width": 900,
+        "height": 836,
+        "cssWidth": "900px",
+        "inlineWidth": ""
+      },
+      "chatView": {
+        "display": "block",
+        "visibility": "visible",
+        "opacity": "1"
+      },
+      "latestMessage": {
+        "left": 390,
+        "right": 1110,
+        "top": 589.9375,
+        "bottom": 691.96875,
+        "width": 720,
+        "height": 102.03125,
+        "visibility": "visible",
+        "opacity": "1"
+      },
+      "composer": {
+        "left": 390,
+        "right": 1190,
+        "top": 767.609375,
+        "bottom": 852,
+        "width": 800,
+        "height": 84.390625,
+        "cssWidth": "800px",
+        "inlineWidth": ""
+      }
+    },
+    {
+      "width": 1024,
+      "clientWidth": 1024,
+      "visualWidth": 1024,
+      "documentWidth": 1024,
+      "app": {
+        "left": 0,
+        "right": 1024,
+        "top": 0,
+        "bottom": 768,
+        "width": 1024,
+        "height": 768,
+        "cssWidth": "1024px",
+        "inlineWidth": ""
+      },
+      "main": {
+        "left": 240,
+        "right": 1024,
+        "top": 0,
+        "bottom": 768,
+        "width": 784,
+        "height": 768,
+        "cssWidth": "784px",
+        "inlineWidth": ""
+      },
+      "chat": {
+        "left": 272,
+        "right": 992,
+        "top": 32,
+        "bottom": 736,
+        "width": 720,
+        "height": 704,
+        "cssWidth": "720px",
+        "inlineWidth": ""
+      },
+      "chatView": {
+        "display": "block",
+        "visibility": "visible",
+        "opacity": "1"
+      },
+      "latestMessage": {
+        "left": 272,
+        "right": 848,
+        "top": 457.9375,
+        "bottom": 559.96875,
+        "width": 576,
+        "height": 102.03125,
+        "visibility": "visible",
+        "opacity": "1"
+      },
+      "composer": {
+        "left": 272,
+        "right": 992,
+        "top": 635.609375,
+        "bottom": 720,
+        "width": 720,
+        "height": 84.390625,
+        "cssWidth": "720px",
+        "inlineWidth": ""
+      }
+    },
+    {
+      "width": 768,
+      "clientWidth": 768,
+      "visualWidth": 768,
+      "documentWidth": 768,
+      "app": {
+        "left": 0,
+        "right": 768,
+        "top": 0,
+        "bottom": 1024,
+        "width": 768,
+        "height": 1024,
+        "cssWidth": "768px",
+        "inlineWidth": ""
+      },
+      "main": {
+        "left": 0,
+        "right": 768,
+        "top": 0,
+        "bottom": 1024,
+        "width": 768,
+        "height": 1024,
+        "cssWidth": "768px",
+        "inlineWidth": ""
+      },
+      "chat": {
+        "left": 16,
+        "right": 752,
+        "top": 64,
+        "bottom": 1008,
+        "width": 736,
+        "height": 944,
+        "cssWidth": "736px",
+        "inlineWidth": ""
+      },
+      "chatView": {
+        "display": "block",
+        "visibility": "visible",
+        "opacity": "1"
+      },
+      "latestMessage": {
+        "left": 16,
+        "right": 707.828125,
+        "top": 713.9375,
+        "bottom": 815.96875,
+        "width": 691.828125,
+        "height": 102.03125,
+        "visibility": "visible",
+        "opacity": "1"
+      },
+      "composer": {
+        "left": 16,
+        "right": 752,
+        "top": 915.609375,
+        "bottom": 1000,
+        "width": 736,
+        "height": 84.390625,
+        "cssWidth": "736px",
+        "inlineWidth": ""
+      }
+    },
+    {
+      "width": 390,
+      "clientWidth": 390,
+      "visualWidth": 390,
+      "documentWidth": 390,
+      "app": {
+        "left": 0,
+        "right": 390,
+        "top": 0,
+        "bottom": 844,
+        "width": 390,
+        "height": 844,
+        "cssWidth": "390px",
+        "inlineWidth": ""
+      },
+      "main": {
+        "left": 0,
+        "right": 390,
+        "top": 0,
+        "bottom": 844,
+        "width": 390,
+        "height": 844,
+        "cssWidth": "390px",
+        "inlineWidth": ""
+      },
+      "chat": {
+        "left": 12,
+        "right": 378,
+        "top": 64,
+        "bottom": 832,
+        "width": 366,
+        "height": 768,
+        "cssWidth": "366px",
+        "inlineWidth": ""
+      },
+      "chatView": {
+        "display": "block",
+        "visibility": "visible",
+        "opacity": "1"
+      },
+      "latestMessage": {
+        "left": 12,
+        "right": 356.03125,
+        "top": 537.734375,
+        "bottom": 639.765625,
+        "width": 344.03125,
+        "height": 102.03125,
+        "visibility": "visible",
+        "opacity": "1"
+      },
+      "composer": {
+        "left": 12,
+        "right": 378,
+        "top": 739.609375,
+        "bottom": 824,
+        "width": 366,
+        "height": 84.390625,
+        "cssWidth": "366px",
+        "inlineWidth": ""
+      }
+    },
+    {
+      "width": 320,
+      "clientWidth": 320,
+      "visualWidth": 320,
+      "documentWidth": 320,
+      "app": {
+        "left": 0,
+        "right": 320,
+        "top": 0,
+        "bottom": 844,
+        "width": 320,
+        "height": 844,
+        "cssWidth": "320px",
+        "inlineWidth": ""
+      },
+      "main": {
+        "left": 0,
+        "right": 320,
+        "top": 0,
+        "bottom": 844,
+        "width": 320,
+        "height": 844,
+        "cssWidth": "320px",
+        "inlineWidth": ""
+      },
+      "chat": {
+        "left": 12,
+        "right": 308,
+        "top": 64,
+        "bottom": 832,
+        "width": 296,
+        "height": 768,
+        "cssWidth": "296px",
+        "inlineWidth": ""
+      },
+      "chatView": {
+        "display": "block",
+        "visibility": "visible",
+        "opacity": "1"
+      },
+      "latestMessage": {
+        "left": 12,
+        "right": 290.234375,
+        "top": 538.125,
+        "bottom": 640.15625,
+        "width": 278.234375,
+        "height": 102.03125,
+        "visibility": "visible",
+        "opacity": "1"
+      },
+      "composer": {
+        "left": 12,
+        "right": 308,
+        "top": 726.40625,
+        "bottom": 824,
+        "width": 296,
+        "height": 97.59375,
+        "cssWidth": "296px",
+        "inlineWidth": ""
+      }
+    }
+  ]
+}

@@ -22,6 +22,7 @@ from .routes import (
     export,
     health,
     insights,
+    model_settings,
     reminders,
     routine,
     schedule,
@@ -130,6 +131,7 @@ app.include_router(export.router, prefix="/api")
 app.include_router(schedule.router, prefix="/api")
 app.include_router(insights.router, prefix="/api/insights")
 app.include_router(settings.router, prefix="/api")
+app.include_router(model_settings.router, prefix="/api")
 app.include_router(routine.router, prefix="/api")
 app.include_router(health.router)
 

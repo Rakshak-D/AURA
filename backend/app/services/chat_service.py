@@ -9,6 +9,7 @@ from ..config import config
 from ..database import utc_now
 from ..models.llm_models import llm
 from ..models.sql_models import ChatHistory, Task, User
+from ..providers.errors import ProviderError, ProviderErrorCode
 from .ai_actions import (
     ActionRejected,
     CompleteTaskAction,
@@ -21,7 +22,6 @@ from .ai_actions import (
     parse_action,
     parse_json_object,
 )
-from .intent_service import detect_intent
 from .rag_service import query_rag
 from .schedule_service import generate_daily_schedule, generate_routine
 
@@ -81,19 +81,18 @@ class ChatService:
             "general_chat": self.handle_general_chat,
         }
 
-    async def process_chat(self, user_id: int, message_data: any, db: Session):
-        """
-        Main chat processing with intelligent Tool Router.
-        The bot now acts as an agent that can access schedule, create tasks, and query knowledge.
-        """
+    async def process_chat(self, user_id: int, message_data: any, db: Session, provider_service=None):
+        """Route deterministic schedule requests or the explicitly selected Chat provider."""
         try:
+            if provider_service is None:
+                from ..providers.service import get_provider_service
+
+                provider_service = get_provider_service()
             # Handle both string (legacy) and object input
             if isinstance(message_data, str):
                 message = message_data
-                context = {}
             else:
                 message = message_data.message
-                context = message_data.context or {}
 
             if not message or not message.strip():
                 return {
@@ -103,127 +102,40 @@ class ChatService:
 
             self.save_message(user_id, "user", message, db)
 
-            message_lower = message.lower()
-
-            # ===== TOOL ROUTER: Intelligent Agent Logic =====
-
-            # 1. Schedule/Calendar Query Detection
-            schedule_keywords = [
-                "schedule",
-                "calendar",
-                "what am i doing",
-                "what's on my schedule",
-                "what do i have",
-                "am i free",
-                "free time",
-                "what am i scheduled",
-                "my day",
-                "appointments",
-                "meetings",
-            ]
-            if any(keyword in message_lower for keyword in schedule_keywords):
-                logger.info(f"Detected schedule query: {message}")
-                result = await self.handle_query_schedule(user_id, message, db, None)
-                self.save_message(
-                    user_id,
-                    "assistant",
-                    result["response"],
-                    db,
-                    intent="query_schedule",
-                )
-                result["suggestions"] = self.generate_suggestions(
-                    "query_schedule", db, user_id
-                )
-                return result
-
-            # 2. Task Creation Detection
-            task_keywords = [
-                "remind me",
-                "add task",
-                "create task",
-                "schedule a task",
-                "add to my list",
-                "set a reminder",
-                "i need to",
-                "help me",
-                "remind",
-                "todo",
-                "to-do",
-                "buy",
-                "get",
-                "finish",
-            ]
-            if any(keyword in message_lower for keyword in task_keywords):
-                logger.info(f"Detected task creation: {message}")
-                # Use intent detection to extract task details
-                intent_result = detect_intent(message)
-                result = await self.handle_task_create(
-                    user_id, message, db, intent_result
-                )
-                self.save_message(
-                    user_id, "assistant", result["response"], db, intent="add_task"
-                )
-                result["suggestions"] = self.generate_suggestions(
-                    "add_task", db, user_id
-                )
-                return result
-
-            # 3. Knowledge Base Query Detection (Question patterns)
-            question_patterns = [
-                "how",
-                "what is",
-                "what are",
-                "explain",
-                "tell me about",
-                "summarize",
-                "what did",
-                "what does",
-                "describe",
-                "who",
-                "when",
-                "where",
-                "why",
-                "can you",
-                "do you know",
-            ]
-            if any(
-                message_lower.startswith(pattern) or f" {pattern} " in message_lower
-                for pattern in question_patterns
-            ):
-                logger.info(f"Detected knowledge query: {message}")
-                result = await self.handle_query_knowledge(user_id, message, db, None)
-                self.save_message(
-                    user_id,
-                    "assistant",
-                    result["response"],
-                    db,
-                    intent="query_knowledge",
-                )
-                result["suggestions"] = self.generate_suggestions(
-                    "query_knowledge", db, user_id
-                )
-                return result
-
-            # 4. Standard Intent Detection (fallback for other intents)
-            intent_result = detect_intent(message)
-            intent = intent_result.get("intent", "general_chat")
-
-            # Route to appropriate handler
-            if intent == "general_chat":
-                result = await self.handle_general_chat(user_id, message, db, context)
-            else:
-                handler = self.intents.get(intent, self.handle_general_chat)
-                # Pass intent_result to handler to access entities
-                if asyncio.iscoroutinefunction(handler):
-                    result = await handler(user_id, message, db, intent_result)
-                else:
-                    result = handler(user_id, message, db, intent_result)
-
-            self.save_message(
-                user_id, "assistant", result["response"], db, intent=intent
+            chat_selection = provider_service.chat_role(db, user_id)
+            result = await self.process_pre_provider_actions(
+                user_id, message, db, chat_selection is not None
             )
-            result["suggestions"] = self.generate_suggestions(intent, db, user_id)
+            if result is not None:
+                return result
 
+            # A configured Chat role is authoritative for general messages.
+            # Do not invoke the legacy GGUF intent classifier behind it.
+            if chat_selection is not None:
+                result = await self.handle_provider_general_chat(
+                    user_id, message, db, provider_service
+                )
+                self.save_message(
+                    user_id,
+                    "assistant",
+                    result["response"],
+                    db,
+                    intent="general_chat",
+                )
+                result["suggestions"] = self.generate_suggestions("general_chat", db, user_id)
+                return result
+
+            # A missing Chat role never authorizes the legacy GGUF runtime,
+            # regardless of whether an old model file happens to exist.
+            result = {
+                "response": "No AI model is available right now, so I can't answer general chat messages.",
+                "action_taken": "error",
+                "data": {},
+            }
+            self.save_message(
+                user_id, "assistant", result["response"], db, intent="general_chat"
+            )
+            result["suggestions"] = self.generate_suggestions("general_chat", db, user_id)
             return result
 
         except Exception as e:
@@ -232,6 +144,101 @@ class ChatService:
                 "response": "I encountered an error. Please try again.",
                 "action_taken": "error",
                 "data": {},
+            }
+
+    async def process_pre_provider_actions(
+        self, user_id: int, message: str, db: Session, has_chat_role: bool
+    ):
+        """Preserve deterministic Chat routes without invoking an unselected model."""
+        message_lower = message.lower()
+        schedule_keywords = (
+            "schedule",
+            "calendar",
+            "what am i doing",
+            "what's on my schedule",
+            "what do i have",
+            "am i free",
+            "free time",
+            "what am i scheduled",
+            "my day",
+            "appointments",
+            "meetings",
+        )
+        if any(keyword in message_lower for keyword in schedule_keywords):
+            result = await self.handle_query_schedule(user_id, message, db, None)
+            return self._persist_routed_result(
+                user_id, db, result, "query_schedule"
+            )
+
+        selected_model_action_keywords = (
+            "remind me",
+            "add task",
+            "create task",
+            "schedule a task",
+            "add to my list",
+            "set a reminder",
+            "todo",
+            "to-do",
+        )
+        if any(keyword in message_lower for keyword in selected_model_action_keywords):
+            if has_chat_role:
+                result = {
+                    "response": "Task requests that need model interpretation are unavailable while a Chat model is selected. Use the Tasks view to create or edit tasks.",
+                    "action_taken": "unavailable",
+                    "data": {},
+                }
+            else:
+                result = {
+                    "response": "Task requests that need model interpretation are unavailable without a selected Chat model. Use the Tasks view to create or edit tasks.",
+                    "action_taken": "unavailable",
+                    "data": {},
+                }
+            return self._persist_routed_result(user_id, db, result, "add_task")
+        return None
+
+    def _persist_routed_result(self, user_id: int, db: Session, result: dict, intent: str):
+        self.save_message(user_id, "assistant", result["response"], db, intent=intent)
+        result["suggestions"] = self.generate_suggestions(intent, db, user_id)
+        return result
+
+    async def handle_provider_general_chat(
+        self, user_id: int, message: str, db: Session, provider_service
+    ):
+        try:
+            resolved = provider_service.resolve_chat(db, user_id)
+            if resolved is None:
+                return {
+                    "response": "No AI model is available right now, so I can't answer general chat messages.",
+                    "action_taken": "error",
+                    "data": {},
+                }
+            # Release any read transaction before the upstream request.
+            db.rollback()
+            request = provider_service.chat_request(resolved["model_id"], message)
+            result = await resolved["adapter"].chat(resolved["context"], request)
+            if result.message.tool_calls or not result.message.content.strip():
+                raise ProviderError(ProviderErrorCode.INVALID_RESPONSE)
+            return {
+                "response": result.message.content,
+                "action_taken": "general_chat",
+                "data": {
+                    "model_id": resolved["model_id"],
+                    "provider_type": resolved["provider_type"],
+                    "connection_name": resolved["connection_name"],
+                    "locality": resolved["locality"],
+                },
+            }
+        except ProviderError as error:
+            return {
+                "response": error.safe_message,
+                "action_taken": "error",
+                "data": {"error_code": error.code.value},
+            }
+        except Exception:
+            return {
+                "response": "The selected provider could not complete this request.",
+                "action_taken": "error",
+                "data": {"error_code": "unavailable"},
             }
 
     async def handle_task_create(
@@ -1001,5 +1008,5 @@ END UNTRUSTED RETRIEVED DOCUMENT DATA
 chat_service = ChatService()
 
 
-async def process_chat(user_id: int, message: str, db: Session):
-    return await chat_service.process_chat(user_id, message, db)
+async def process_chat(user_id: int, message: str, db: Session, provider_service=None):
+    return await chat_service.process_chat(user_id, message, db, provider_service)
