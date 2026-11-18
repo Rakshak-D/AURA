@@ -1,13 +1,18 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
 from backend.app import main
-from backend.app.models.sql_models import ChatHistory
+from backend.app.config import config
+from backend.app.models.llm_models import llm
+from backend.app.models.sql_models import ChatHistory, Task
 from backend.app.providers.service import ProviderService, get_provider_service
 from backend.app.providers.secret_store import MasterKeyMaterial, SecretStore
+import backend.app.services.chat_service as chat_service_module
+import backend.app.services.intent_service as intent_service_module
 
 NO_MODEL_RESPONSE = "No AI model is available right now, so I can't answer general chat messages."
 
@@ -78,6 +83,69 @@ def _events(text: str) -> list[tuple[str, dict[str, object]]]:
     return result
 
 
+def _watch_legacy_model(monkeypatch):
+    calls = {
+        "detect_intent": 0,
+        "generate": 0,
+        "embed": 0,
+        "load_llm": 0,
+        "load_embeddings": 0,
+    }
+    original_detect_intent = getattr(
+        chat_service_module, "detect_intent", intent_service_module.detect_intent
+    )
+
+    def detect_intent_spy(message):
+        calls["detect_intent"] += 1
+        return original_detect_intent(message)
+
+    def generate_spy(prompt, *args, **kwargs):
+        calls["generate"] += 1
+        if "You classify one user request." in prompt:
+            if "Add task buy milk" in prompt:
+                return '{"intent":"add_task","entities":{"title":"Buy milk"}}'
+            return '{"intent":"general_chat","entities":{}}'
+        return "Synthetic legacy model answer."
+
+    def embed_spy(*args, **kwargs):
+        calls["embed"] += 1
+        return [0.0, 1.0]
+
+    def load_llm_spy(*args, **kwargs):
+        calls["load_llm"] += 1
+        raise AssertionError("Chat attempted legacy GGUF initialization")
+
+    def load_embeddings_spy(*args, **kwargs):
+        calls["load_embeddings"] += 1
+        raise AssertionError("Chat attempted legacy embedding initialization")
+
+    if hasattr(chat_service_module, "detect_intent"):
+        monkeypatch.setattr(chat_service_module, "detect_intent", detect_intent_spy)
+    else:
+        monkeypatch.setattr(intent_service_module, "detect_intent", detect_intent_spy)
+    monkeypatch.setattr(llm, "generate", generate_spy)
+    monkeypatch.setattr(llm, "embed", embed_spy)
+    monkeypatch.setattr(llm, "_load_llm", load_llm_spy)
+    monkeypatch.setattr(llm, "_load_embeddings", load_embeddings_spy)
+    return calls
+
+
+def _legacy_calls_are_zero(calls):
+    assert calls == {
+        "detect_intent": 0,
+        "generate": 0,
+        "embed": 0,
+        "load_llm": 0,
+        "load_embeddings": 0,
+    }
+
+
+def _make_synthetic_legacy_model_file():
+    path = Path(config.model_path)
+    path.write_text("synthetic placeholder; not a model", encoding="utf-8")
+    return path
+
+
 def test_no_model_chat_fallback_is_exact_and_history_is_not_duplicated(chat_api):
     client, headers, factory, _service = chat_api
     response = client.post(
@@ -96,8 +164,10 @@ def test_no_model_chat_fallback_is_exact_and_history_is_not_duplicated(chat_api)
     ]
 
 
-def test_configured_chat_uses_selected_provider_and_minimal_messages(chat_api):
+def test_configured_chat_uses_selected_provider_and_minimal_messages(chat_api, monkeypatch):
     client, headers, _factory, service = chat_api
+    _make_synthetic_legacy_model_file()
+    legacy_calls = _watch_legacy_model(monkeypatch)
     connection = _configure_chat(client, headers)
     sentinel = "CURRENT-MESSAGE-SENTINEL"
     response = client.post(
@@ -117,10 +187,15 @@ def test_configured_chat_uses_selected_provider_and_minimal_messages(chat_api):
     serialized = json.dumps(payload)
     assert "MUST-NOT-LEAVE-DEVICE" not in serialized
     assert "chat history" not in serialized.casefold()
+    _legacy_calls_are_zero(legacy_calls)
 
 
-def test_authenticated_sse_stream_completes_with_correlation_and_history(chat_api):
+def test_authenticated_sse_stream_completes_with_correlation_and_history(
+    chat_api, monkeypatch
+):
     client, headers, factory, service = chat_api
+    _make_synthetic_legacy_model_file()
+    legacy_calls = _watch_legacy_model(monkeypatch)
     _configure_chat(client, headers)
     response = client.post(
         "/api/chat/stream",
@@ -148,6 +223,166 @@ def test_authenticated_sse_stream_completes_with_correlation_and_history(chat_ap
         rows = db.query(ChatHistory).filter_by(user_id=user_id).order_by(ChatHistory.id).all()
     assert [row.role for row in rows] == ["user", "assistant"]
     assert rows[-1].content == "Synthetic stream response."
+    _legacy_calls_are_zero(legacy_calls)
+
+
+@pytest.mark.parametrize("legacy_model_exists", [False, True])
+def test_task_request_without_chat_role_is_unavailable_without_legacy_inference(
+    chat_api, monkeypatch, legacy_model_exists
+):
+    client, headers, factory, service = chat_api
+    if legacy_model_exists:
+        _make_synthetic_legacy_model_file()
+    legacy_calls = _watch_legacy_model(monkeypatch)
+
+    response = client.post(
+        "/api/chat",
+        headers=headers,
+        json={"message": "Add task buy milk"},
+    )
+
+    assert response.status_code == 200
+    _legacy_calls_are_zero(legacy_calls)
+    payload = response.json()
+    assert payload["action_taken"] == "unavailable"
+    assert "Tasks view" in payload["response"]
+    assert service.transport.requests == []
+    user_id = client.get("/api/auth/me", headers=headers).json()["id"]
+    with factory() as db:
+        assert db.query(Task).filter_by(user_id=user_id).count() == 0
+
+
+@pytest.mark.parametrize("legacy_model_exists", [False, True])
+@pytest.mark.parametrize(
+    "message",
+    ["What is photosynthesis?", "Say something useful."],
+)
+def test_general_chat_without_role_uses_exact_fallback_without_legacy_inference(
+    chat_api, monkeypatch, legacy_model_exists, message
+):
+    client, headers, _factory, service = chat_api
+    if legacy_model_exists:
+        _make_synthetic_legacy_model_file()
+    legacy_calls = _watch_legacy_model(monkeypatch)
+
+    response = client.post(
+        "/api/chat", headers=headers, json={"message": message}
+    )
+
+    assert response.status_code == 200
+    _legacy_calls_are_zero(legacy_calls)
+    assert response.json()["response"] == NO_MODEL_RESPONSE
+    assert service.transport.requests == []
+
+
+def test_no_role_keeps_deterministic_schedule_without_legacy_inference(
+    chat_api, monkeypatch
+):
+    client, headers, _factory, service = chat_api
+    _make_synthetic_legacy_model_file()
+    legacy_calls = _watch_legacy_model(monkeypatch)
+
+    response = client.post(
+        "/api/chat",
+        headers=headers,
+        json={"message": "Show my schedule for today."},
+    )
+
+    assert response.status_code == 200
+    _legacy_calls_are_zero(legacy_calls)
+    assert response.json()["action_taken"] == "query_schedule"
+    assert service.transport.requests == []
+
+
+@pytest.mark.parametrize("legacy_model_exists", [False, True])
+@pytest.mark.parametrize(
+    ("message", "expected_event", "expected_action"),
+    [
+        ("Add task buy milk", "completed", "unavailable"),
+        ("What is photosynthesis?", "failed", None),
+    ],
+)
+def test_stream_without_chat_role_never_uses_legacy_model(
+    chat_api,
+    monkeypatch,
+    legacy_model_exists,
+    message,
+    expected_event,
+    expected_action,
+):
+    client, headers, factory, service = chat_api
+    if legacy_model_exists:
+        _make_synthetic_legacy_model_file()
+    legacy_calls = _watch_legacy_model(monkeypatch)
+
+    response = client.post(
+        "/api/chat/stream", headers=headers, json={"message": message}
+    )
+
+    assert response.status_code == 200
+    _legacy_calls_are_zero(legacy_calls)
+    events = _events(response.text)
+    assert events[-1][0] == expected_event
+    if expected_action is not None:
+        assert events[-1][1]["action_taken"] == expected_action
+        assert "Tasks view" in "".join(
+            payload.get("delta", "")
+            for event, payload in events
+            if event == "text_delta"
+        )
+    else:
+        assert events[-1][1]["code"] == "no_model_available"
+        assert events[-1][1]["message"] == NO_MODEL_RESPONSE
+    assert service.transport.requests == []
+    user_id = client.get("/api/auth/me", headers=headers).json()["id"]
+    with factory() as db:
+        assert db.query(Task).filter_by(user_id=user_id).count() == 0
+
+
+def test_selected_provider_failure_never_falls_back_to_legacy_model(
+    chat_api, monkeypatch
+):
+    client, headers, _factory, service = chat_api
+    _make_synthetic_legacy_model_file()
+    legacy_calls = _watch_legacy_model(monkeypatch)
+    connection = _configure_chat(client, headers)
+
+    response = client.post(
+        "/api/chat",
+        headers=headers,
+        json={"message": "SYNTHETIC_UNAVAILABLE"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["action_taken"] == "error"
+    assert response.json()["response"] != NO_MODEL_RESPONSE
+    assert len(service.transport.requests) == 1
+    assert service.transport.requests[0]["context"].connection_id == connection["id"]
+    _legacy_calls_are_zero(legacy_calls)
+
+
+def test_selected_provider_stream_failure_never_falls_back_to_legacy_model(
+    chat_api, monkeypatch
+):
+    client, headers, _factory, service = chat_api
+    _make_synthetic_legacy_model_file()
+    legacy_calls = _watch_legacy_model(monkeypatch)
+    connection = _configure_chat(client, headers)
+
+    response = client.post(
+        "/api/chat/stream",
+        headers=headers,
+        json={"message": "SYNTHETIC_UNAVAILABLE"},
+    )
+
+    events = _events(response.text)
+    assert response.status_code == 200
+    assert events[-1][0] == "failed"
+    assert events[-1][1]["code"] == "unavailable"
+    assert len(service.transport.requests) == 1
+    assert service.transport.requests[0]["context"].connection_id == connection["id"]
+    assert service.transport.streams_opened == service.transport.streams_closed == 1
+    _legacy_calls_are_zero(legacy_calls)
 
 
 def test_interrupted_provider_stream_is_failed_and_partial_answer_is_not_saved(chat_api):

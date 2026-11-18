@@ -22,7 +22,6 @@ from .ai_actions import (
     parse_action,
     parse_json_object,
 )
-from .intent_service import detect_intent
 from .rag_service import query_rag
 from .schedule_service import generate_daily_schedule, generate_routine
 
@@ -83,10 +82,7 @@ class ChatService:
         }
 
     async def process_chat(self, user_id: int, message_data: any, db: Session, provider_service=None):
-        """
-        Main chat processing with intelligent Tool Router.
-        The bot now acts as an agent that can access schedule, create tasks, and query knowledge.
-        """
+        """Route deterministic schedule requests or the explicitly selected Chat provider."""
         try:
             if provider_service is None:
                 from ..providers.service import get_provider_service
@@ -95,10 +91,8 @@ class ChatService:
             # Handle both string (legacy) and object input
             if isinstance(message_data, str):
                 message = message_data
-                context = {}
             else:
                 message = message_data.message
-                context = message_data.context or {}
 
             if not message or not message.strip():
                 return {
@@ -131,35 +125,17 @@ class ChatService:
                 result["suggestions"] = self.generate_suggestions("general_chat", db, user_id)
                 return result
 
-            # Do not initialize the legacy model merely to classify a request
-            # when no model is configured.
-            if llm.llm is None and not config.model_path.is_file():
-                result = await self.handle_general_chat(user_id, message, db, context)
-                self.save_message(user_id, "assistant", result["response"], db, intent="general_chat")
-                result["suggestions"] = self.generate_suggestions("general_chat", db, user_id)
-                return result
-
-            # 4. Standard Intent Detection (legacy behavior only when a local
-            # GGUF model is already available and no A1-G Chat role is selected).
-            intent_result = detect_intent(message)
-            intent = intent_result.get("intent", "general_chat")
-
-            # Route to appropriate handler
-            if intent == "general_chat":
-                result = await self.handle_general_chat(user_id, message, db, context)
-            else:
-                handler = self.intents.get(intent, self.handle_general_chat)
-                # Pass intent_result to handler to access entities
-                if asyncio.iscoroutinefunction(handler):
-                    result = await handler(user_id, message, db, intent_result)
-                else:
-                    result = handler(user_id, message, db, intent_result)
-
+            # A missing Chat role never authorizes the legacy GGUF runtime,
+            # regardless of whether an old model file happens to exist.
+            result = {
+                "response": "No AI model is available right now, so I can't answer general chat messages.",
+                "action_taken": "error",
+                "data": {},
+            }
             self.save_message(
-                user_id, "assistant", result["response"], db, intent=intent
+                user_id, "assistant", result["response"], db, intent="general_chat"
             )
-            result["suggestions"] = self.generate_suggestions(intent, db, user_id)
-
+            result["suggestions"] = self.generate_suggestions("general_chat", db, user_id)
             return result
 
         except Exception as e:
@@ -194,22 +170,6 @@ class ChatService:
                 user_id, db, result, "query_schedule"
             )
 
-        task_keywords = (
-            "remind me",
-            "add task",
-            "create task",
-            "schedule a task",
-            "add to my list",
-            "set a reminder",
-            "i need to",
-            "help me",
-            "remind",
-            "todo",
-            "to-do",
-            "buy",
-            "get",
-            "finish",
-        )
         selected_model_action_keywords = (
             "remind me",
             "add task",
@@ -220,10 +180,7 @@ class ChatService:
             "todo",
             "to-do",
         )
-        action_keywords = (
-            selected_model_action_keywords if has_chat_role else task_keywords
-        )
-        if any(keyword in message_lower for keyword in action_keywords):
+        if any(keyword in message_lower for keyword in selected_model_action_keywords):
             if has_chat_role:
                 result = {
                     "response": "Task requests that need model interpretation are unavailable while a Chat model is selected. Use the Tasks view to create or edit tasks.",
@@ -231,37 +188,12 @@ class ChatService:
                     "data": {},
                 }
             else:
-                intent_result = detect_intent(message)
-                result = await self.handle_task_create(
-                    user_id, message, db, intent_result
-                )
+                result = {
+                    "response": "Task requests that need model interpretation are unavailable without a selected Chat model. Use the Tasks view to create or edit tasks.",
+                    "action_taken": "unavailable",
+                    "data": {},
+                }
             return self._persist_routed_result(user_id, db, result, "add_task")
-
-        question_patterns = (
-            "how",
-            "what is",
-            "what are",
-            "explain",
-            "tell me about",
-            "summarize",
-            "what did",
-            "what does",
-            "describe",
-            "who",
-            "when",
-            "where",
-            "why",
-            "can you",
-            "do you know",
-        )
-        if not has_chat_role and any(
-            message_lower.startswith(pattern) or f" {pattern} " in message_lower
-            for pattern in question_patterns
-        ):
-            result = await self.handle_query_knowledge(user_id, message, db, None)
-            return self._persist_routed_result(
-                user_id, db, result, "query_knowledge"
-            )
         return None
 
     def _persist_routed_result(self, user_id: int, db: Session, result: dict, intent: str):
